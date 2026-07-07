@@ -18,6 +18,7 @@
 #include "../algorithms/component.hpp"
 #include "../algorithms/pad_band.hpp"
 #include "../multipath_mapper.hpp"
+#include "../mpmap_trace.hpp"
 #include "../mem_accelerator.hpp"
 #include "../surjector.hpp"
 #include "../multipath_alignment_emitter.hpp"
@@ -271,6 +272,8 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_REF_NAME = 1039;
     constexpr int OPT_LINEAR_PATH = 1040;
     constexpr int OPT_LINEAR_INDEX = 1041;
+    constexpr int OPT_TRACE_SPLICE_SEARCH = 1042;
+    constexpr int OPT_TRACE_TRUTH_JUNCTIONS = 1043;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -285,6 +288,8 @@ int main_mpmap(int argc, char** argv) {
     string ref_paths_name;
     std::unordered_set<std::string> reference_assembly_names;
     string intron_distr_name;
+    string trace_splice_search_name;
+    string trace_truth_junctions_name;
     int match_score = default_match;
     int mismatch_score = default_mismatch;
     int gap_open_score = default_gap_open;
@@ -525,6 +530,8 @@ int main_mpmap(int argc, char** argv) {
             {"no-qual-adjust", no_argument, 0, 'A'},
             {"threads", required_argument, 0, 't'},
             {"no-output", no_argument, 0, OPT_NO_OUTPUT},
+            {"trace-splice-search", required_argument, 0, OPT_TRACE_SPLICE_SEARCH},
+            {"trace-truth-junctions", required_argument, 0, OPT_TRACE_TRUTH_JUNCTIONS},
             {0, 0, 0, 0}
         };
 
@@ -929,7 +936,15 @@ int main_mpmap(int argc, char** argv) {
             case OPT_NO_OUTPUT:
                 no_output = true;
                 break;
-                
+
+            case OPT_TRACE_SPLICE_SEARCH:
+                trace_splice_search_name = ensure_writable(logger, optarg);
+                break;
+
+            case OPT_TRACE_TRUTH_JUNCTIONS:
+                trace_truth_junctions_name = require_exists(logger, optarg);
+                break;
+
             case 'h':
             case '?':
             default:
@@ -1950,7 +1965,16 @@ int main_mpmap(int argc, char** argv) {
     if (transcriptomic) {
         emitter->set_min_splice_length(min_splice_length);
     }
-    
+
+    // mpmap splice-search instrumentation: open the trace once, before the parallel
+    // mapping loop. Truth (if any) is loaded first so its count appears in the header.
+    if (!trace_splice_search_name.empty()) {
+        if (!trace_truth_junctions_name.empty()) {
+            mpmap_trace::open_truth(trace_truth_junctions_name);
+        }
+        mpmap_trace::open(trace_splice_search_name);
+    }
+
     // a buffer to hold read pairs that can't be unambiguously mapped before the fragment length distribution
     // is estimated
     // note: sufficient to have only one buffer because multithreading code enforces single threaded mode
@@ -2414,6 +2438,9 @@ int main_mpmap(int argc, char** argv) {
     }
     
     // flush output
+    // mpmap splice-search instrumentation: flush and close after all mapping
+    // (including the ambiguous-pair replay) has finished.
+    mpmap_trace::close();
     delete emitter;
     cout.flush();
     

@@ -24,6 +24,7 @@
 
 #include "multipath_mapper.hpp"
 
+#include "mpmap_trace.hpp"
 #include "multipath_alignment_graph.hpp"
 #include "kmp.hpp"
 #include "hash_map.hpp"
@@ -71,21 +72,273 @@ namespace vg {
     }
 
     MultipathMapper::~MultipathMapper() {
-        
+
     }
-    
+
+    // ---- mpmap splice-search instrumentation helpers (see mpmap_trace.hpp) ----
+    // These only READ mapper state and WRITE into a trace record; they never change
+    // mapping behavior. They exist so we can measure, per read, whether the current
+    // MEM-based seeding / clustering / soft-clip-gated rescue is sufficient for
+    // STAR-like novel splice-junction discovery, or whether a STAR-like seed/MMP
+    // front end is warranted.
+
+    static void trace_fill_mem_metrics(mpmap_trace::SpliceSearchTrace& tr,
+                                       const vector<MaximalExactMatch>& mems,
+                                       const MultipathMapper::match_fanouts_t* fanouts,
+                                       string::const_iterator seq_begin,
+                                       int64_t min_clustering_mem_length,
+                                       int64_t min_softclip_length_for_splice,
+                                       bool want_mem_details) {
+        tr.n_mems_total = mems.size();
+        for (const auto& mem : mems) {
+            const int64_t len = mem.length();
+            const int64_t hits = (int64_t) mem.nodes.size();
+            const int bin = mpmap_trace::length_bin(len);
+            tr.n_mems_by_length_bin[bin] += 1;
+            tr.n_hits_by_length_bin[bin] += hits;
+            tr.n_mem_hits_total += hits;
+            tr.n_mem_hits_after_hit_max += hits; // nodes.size() is already post hit_max
+            tr.n_mem_true_occurrences += (int64_t) mem.match_count;
+            tr.max_hits_per_mem = max<int64_t>(tr.max_hits_per_mem, hits);
+            if (len >= min_clustering_mem_length) {
+                tr.n_mems_after_filtering += 1;
+            }
+            if (len < min_softclip_length_for_splice) {
+                tr.sum_hits_for_short_mems += hits;
+            }
+            // hit-cap detection: fewer reported hits than the true occurrence count
+            if (mem.match_count > mem.nodes.size()) {
+                tr.n_mems_hit_capped += 1;
+            }
+            // "high fan-out" == MEM carried mismatch fan-out breaks (fanout match alg)
+            if (fanouts && fanouts->count(&mem) && !fanouts->at(&mem).empty()) {
+                tr.n_high_fanout_mems += 1;
+            }
+            if (want_mem_details) {
+                mpmap_trace::MemDetail md;
+                md.read_begin = mem.begin - seq_begin;
+                md.read_end = mem.end - seq_begin;
+                md.length = len;
+                md.match_count = (int64_t) mem.match_count;
+                md.reported_hits = hits;
+                md.primary = mem.primary;
+                const size_t cap = 16; // bound emitted positions
+                for (size_t k = 0; k < mem.nodes.size() && k < cap; ++k) {
+                    pos_t p = make_pos_t(mem.nodes[k]);
+                    mpmap_trace::TracePosition tp;
+                    tp.node_id = id(p);
+                    tp.offset = offset(p);
+                    tp.is_reverse = is_rev(p);
+                    md.hit_positions.push_back(tp);
+                }
+                tr.mem_details.push_back(std::move(md));
+            }
+        }
+    }
+
+    static void trace_fill_cluster_metrics(mpmap_trace::SpliceSearchTrace& tr,
+                                           const vector<MultipathMapper::memcluster_t>& clusters,
+                                           const vector<MultipathMapper::clustergraph_t>& cluster_graphs) {
+        tr.n_clusters = clusters.size();
+        tr.n_cluster_graphs = cluster_graphs.size();
+        for (const auto& cg : cluster_graphs) {
+            auto* g = get<0>(cg).get();
+            if (!g) {
+                continue;
+            }
+            const int64_t nodes = (int64_t) g->get_node_count();
+            const int64_t edges = (int64_t) g->get_edge_count();
+            tr.cluster_graph_nodes_total += nodes;
+            tr.cluster_graph_edges_total += edges;
+            tr.largest_cluster_graph_nodes = max<int64_t>(tr.largest_cluster_graph_nodes, nodes);
+            tr.largest_cluster_graph_edges = max<int64_t>(tr.largest_cluster_graph_edges, edges);
+        }
+        if (!cluster_graphs.empty()) {
+            // query_cluster_graphs sorts descending by read coverage, so front() is best
+            tr.best_cluster_read_coverage = (int64_t) get<2>(cluster_graphs.front());
+        }
+    }
+
+    static void trace_fill_final(mpmap_trace::SpliceSearchTrace& tr,
+                                 const vector<multipath_alignment_t>& mp_alns) {
+        tr.mapping_succeeded = !mp_alns.empty() && !mp_alns.front().subpath().empty();
+        if (mp_alns.empty()) {
+            return;
+        }
+        tr.best_score = optimal_alignment_score(mp_alns.front());
+        tr.mapq = mp_alns.front().mapping_quality();
+        if (mp_alns.size() > 1) {
+            tr.second_best_score = optimal_alignment_score(mp_alns[1]);
+        }
+        // record the primary alignment's graph placement for external truth join
+        if (tr.mapping_succeeded) {
+            Alignment aln;
+            optimal_alignment(mp_alns.front(), aln);
+            for (size_t i = 0; i < (size_t) aln.path().mapping_size(); ++i) {
+                const auto& pos = aln.path().mapping(i).position();
+                mpmap_trace::TracePosition tp;
+                tp.node_id = pos.node_id();
+                tp.offset = pos.offset();
+                tp.is_reverse = pos.is_reverse();
+                tr.final_positions.push_back(tp);
+            }
+        }
+    }
+
+    // Sum of the raw-MEM/cluster/aligned splice candidates the real rescue actually
+    // considered for this read (used as the denominator for the proactive ratio).
+    static int64_t trace_current_rescue_candidates(const mpmap_trace::SpliceSearchTrace& tr) {
+        int64_t total = 0;
+        for (const auto& a : tr.anchors) {
+            total += a.n_total_splice_candidates;
+        }
+        return total;
+    }
+
+    // Push a per-anchor splice record when the soft-clip gate is evaluated. Shared
+    // by the single- and paired-end find_spliced_alignments overloads via current().
+    static void trace_push_anchor(int64_t anchor_index,
+                                  int64_t interval_begin, int64_t interval_end,
+                                  int64_t read_len, int64_t left_ts, int64_t right_ts,
+                                  bool search_left, bool search_right) {
+        auto* tr = mpmap_trace::current();
+        if (!tr) {
+            return;
+        }
+        mpmap_trace::SpliceAnchorTrace a;
+        a.anchor_index = anchor_index;
+        a.aligned_interval_begin = interval_begin;
+        a.aligned_interval_end = interval_end;
+        a.left_tail_len = interval_begin;
+        a.right_tail_len = read_len - interval_end;
+        a.left_tail_max_score = left_ts;
+        a.right_tail_max_score = right_ts;
+        a.search_left = search_left;
+        a.search_right = search_right;
+        tr->anchors.push_back(a);
+        tr->n_splice_anchors_considered += 1;
+        if (search_left || search_right) {
+            tr->n_anchors_gate_opened += 1;
+        } else {
+            tr->n_anchors_gate_skipped += 1;
+        }
+    }
+
+    static void trace_add_candidates(int64_t n_aln, int64_t n_clust, int64_t n_hit) {
+        auto* tr = mpmap_trace::current();
+        if (!tr || tr->anchors.empty()) {
+            return;
+        }
+        auto& a = tr->anchors.back();
+        a.n_aligned_splice_candidates += n_aln;
+        a.n_unaligned_cluster_candidates += n_clust;
+        a.n_unclustered_raw_mem_hit_candidates += n_hit;
+        a.n_total_splice_candidates += (n_aln + n_clust + n_hit);
+    }
+
+    // Record how the candidate pool fared through the splice test, for the current
+    // anchor. Called once the candidate test's outcome is known:
+    //   n_aligned        = candidates that had an alignment to test (already-aligned
+    //                      local alns + unaligned candidates that align_to_splice_
+    //                      candidates successfully realigned)
+    //   n_rejected_before = unaligned candidates that could NOT be realigned
+    //   did_splice        = whether the candidate test accepted a splice; if so one
+    //                       candidate became the partner and the rest were rejected
+    static void trace_add_aligned_candidates(int64_t n_aligned, int64_t n_rejected_before,
+                                             bool did_splice) {
+        auto* tr = mpmap_trace::current();
+        if (!tr || tr->anchors.empty()) {
+            return;
+        }
+        auto& a = tr->anchors.back();
+        a.n_candidates_aligned += n_aligned;
+        a.n_candidates_rejected_before_alignment += max<int64_t>(0, n_rejected_before);
+        a.n_candidates_rejected_after_alignment += max<int64_t>(0, n_aligned - (did_splice ? 1 : 0));
+    }
+
+    static void trace_mark_adapter_rejected() {
+        auto* tr = mpmap_trace::current();
+        if (!tr) {
+            return;
+        }
+        if (!tr->anchors.empty()) {
+            tr->anchors.back().adapter_rejected = true;
+        }
+        tr->n_adapter_rejected += 1;
+    }
+
+    static void trace_add_motif_pairs(int64_t total_num_pairs, int64_t max_motif_pairs) {
+        auto* tr = mpmap_trace::current();
+        if (!tr || tr->anchors.empty()) {
+            return;
+        }
+        tr->anchors.back().n_motif_pairs_examined += total_num_pairs;
+        if (total_num_pairs >= max_motif_pairs) {
+            tr->anchors.back().motif_pairs_capped = true;
+        }
+    }
+
+    static void trace_add_splice_edges(int64_t n) {
+        auto* tr = mpmap_trace::current();
+        if (!tr || tr->anchors.empty()) {
+            return;
+        }
+        tr->anchors.back().n_splice_edges_considered += n;
+    }
+
+    static void trace_record_splice_produced(int64_t best_net_score) {
+        auto* tr = mpmap_trace::current();
+        if (!tr || tr->anchors.empty()) {
+            return;
+        }
+        auto& a = tr->anchors.back();
+        a.n_splice_alignments_produced += 1;
+        a.did_splice = true;
+        if (a.best_splice_score == mpmap_trace::NO_SCORE || best_net_score > a.best_splice_score) {
+            a.best_splice_score = best_net_score;
+        }
+    }
+
     void MultipathMapper::multipath_map(const Alignment& alignment,
                                         vector<multipath_alignment_t>& multipath_alns_out) {
-        
+
+        // mpmap splice-search instrumentation: disabled unless --trace-splice-search.
+        // When disabled this is a single boolean branch per read.
+        const bool _tracing = mpmap_trace::enabled();
+        mpmap_trace::SpliceSearchTrace _trace;
+        unique_ptr<mpmap_trace::TraceGuard> _trace_guard;
+        unique_ptr<mpmap_trace::ScopedTimer> _trace_total;
+        if (_tracing) {
+            _trace.read_name = alignment.name();
+            _trace.read_length = alignment.sequence().size();
+            _trace.is_paired = false;
+            _trace.mate = 0;
+            _trace.is_rna_mode = do_spliced_alignment;
+            _trace.min_softclipped_score_for_splice = min_softclipped_score_for_splice;
+            _trace.min_softclip_length_for_splice = min_softclip_length_for_splice;
+            _trace.max_softclip_overlap = max_softclip_overlap;
+            _trace_guard.reset(new mpmap_trace::TraceGuard(&_trace));
+            _trace_total.reset(new mpmap_trace::ScopedTimer(_trace.time_total_usec, true));
+        }
+
 #ifdef debug_multipath_mapper
         cerr << "multipath mapping read " << pb2json(alignment) << endl;
         cerr << "querying MEMs..." << endl;
 #endif
-        
+
         vector<deque<pair<string::const_iterator, char>>> mem_fanouts;
-        auto mems = find_mems(alignment, &mem_fanouts);
+        vector<MaximalExactMatch> mems;
+        {
+            mpmap_trace::ScopedTimer _t(_trace.time_find_mems_usec, _tracing);
+            mems = find_mems(alignment, &mem_fanouts);
+        }
         unique_ptr<match_fanouts_t> fanouts(mem_fanouts.empty() ? nullptr :
                                             new match_fanouts_t(record_fanouts(mems, mem_fanouts)));
+        if (_tracing) {
+            trace_fill_mem_metrics(_trace, mems, fanouts.get(), alignment.sequence().begin(),
+                                   min_clustering_mem_length, min_softclip_length_for_splice,
+                                   mpmap_trace::truth_loaded());
+        }
         
 #ifdef debug_multipath_mapper
         cerr << "obtained MEMs:" << endl;
@@ -107,7 +360,11 @@ namespace vg {
         MemoizingGraph memoizing_graph(xindex);
         unique_ptr<OrientedDistanceMeasurer> distance_measurer = get_distance_measurer(memoizing_graph);
         
-        vector<memcluster_t> clusters = get_clusters(alignment, mems, &(*distance_measurer), fanouts.get());
+        vector<memcluster_t> clusters;
+        {
+            mpmap_trace::ScopedTimer _t(_trace.time_cluster_usec, _tracing);
+            clusters = get_clusters(alignment, mems, &(*distance_measurer), fanouts.get());
+        }
         
 #ifdef debug_multipath_mapper
         cerr << "obtained clusters:" << endl;
@@ -127,14 +384,28 @@ namespace vg {
 #endif
         
         // extract graphs around the clusters
-        auto cluster_graphs = query_cluster_graphs(alignment, mems, clusters);
-        
+        vector<clustergraph_t> cluster_graphs;
+        {
+            mpmap_trace::ScopedTimer _t(_trace.time_query_cluster_graphs_usec, _tracing);
+            cluster_graphs = query_cluster_graphs(alignment, mems, clusters);
+        }
+        if (_tracing) {
+            // snapshot cluster-graph structure BEFORE align_to_cluster_graphs can mutate it
+            trace_fill_cluster_metrics(_trace, clusters, cluster_graphs);
+        }
+
         // actually perform the alignments and post-process to meet multipath_alignment_t invariants
         // TODO: do i still need cluster_idx? i think it might have only been used for capping
         vector<double> multiplicities;
         vector<size_t> cluster_idxs;
-        align_to_cluster_graphs(alignment, cluster_graphs, multipath_alns_out, multiplicities,
-                                num_mapping_attempts, fanouts.get(), &cluster_idxs);
+        {
+            mpmap_trace::ScopedTimer _t(_trace.time_align_cluster_graphs_usec, _tracing);
+            align_to_cluster_graphs(alignment, cluster_graphs, multipath_alns_out, multiplicities,
+                                    num_mapping_attempts, fanouts.get(), &cluster_idxs);
+        }
+        if (_tracing) {
+            _trace.n_local_multipath_alignments = multipath_alns_out.size();
+        }
         
         if (multipath_alns_out.empty()) {
             // add a null alignment so we know it wasn't mapped
@@ -148,9 +419,23 @@ namespace vg {
             multipath_alns_out.back().clear_start();
         }
         
+        int64_t _pre_splice_best = 0;
+        if (_tracing && !multipath_alns_out.empty()) {
+            _pre_splice_best = optimal_alignment_score(multipath_alns_out.front());
+        }
         if (do_spliced_alignment && !likely_mismapping(multipath_alns_out.front())) {
-            find_spliced_alignments(alignment, multipath_alns_out, multiplicities, cluster_idxs,
-                                    mems, cluster_graphs, fanouts.get());
+            if (_tracing) {
+                _trace.do_spliced_alignment = true;
+            }
+            mpmap_trace::ScopedTimer _t(_trace.time_splice_rescue_usec, _tracing);
+            bool _any_splices = find_spliced_alignments(alignment, multipath_alns_out, multiplicities, cluster_idxs,
+                                                        mems, cluster_graphs, fanouts.get());
+            if (_tracing) {
+                _trace.splice_improved_best_alignment =
+                    (!multipath_alns_out.empty() &&
+                     optimal_alignment_score(multipath_alns_out.front()) > _pre_splice_best);
+                _trace.splice_changed_primary = _any_splices;
+            }
         }
         
         if (agglomerate_multipath_alns) {
@@ -158,11 +443,17 @@ namespace vg {
             agglomerate_alignments(multipath_alns_out, &multiplicities);
         }
         
+        if (_tracing) {
+            _trace.n_alt_mappings_before_cap = multipath_alns_out.size();
+        }
         // if we computed extra alignments to get a mapping quality, remove them
         if (multipath_alns_out.size() > max_alt_mappings) {
             multipath_alns_out.resize(max_alt_mappings);
         }
-        
+        if (_tracing) {
+            _trace.n_alt_mappings_after_cap = multipath_alns_out.size();
+        }
+
         // mark unmapped reads and get rid of noise alignments
         purge_unmapped_alignments(multipath_alns_out);
         
@@ -315,8 +606,40 @@ namespace vg {
             _mem_stats << endl;
         }
 #endif
+
+        // mpmap splice-search instrumentation: finalize and emit the per-read record.
+        if (_tracing) {
+            trace_fill_final(_trace, multipath_alns_out);
+            if (_trace.mapping_succeeded) {
+                // Proactive bounded-MEM-window proxy over the primary alignment's
+                // soft clips: candidate-generation-only, never changes mapping.
+                mpmap_trace::ScopedTimer _t(_trace.time_proactive_proxy_usec, true);
+                unordered_map<const MaximalExactMatch*, bool> anchor_mems;
+                if (!cluster_idxs.empty() && cluster_idxs.front() < cluster_graphs.size()) {
+                    for (const auto& hit : get<1>(cluster_graphs[cluster_idxs.front()]).first) {
+                        anchor_mems[hit.first] = true;
+                    }
+                }
+                auto interval = aligned_interval(multipath_alns_out.front());
+                int64_t read_len = alignment.sequence().size();
+                auto alnr = get_aligner(!alignment.quality().empty());
+                int64_t left_ts = alnr->scorer->score_exact_match(alignment, 0, interval.first)
+                    + (interval.first == 0 ? 0 : alnr->scorer->score_full_length_bonus(true, alignment));
+                int64_t right_ts = alnr->scorer->score_exact_match(alignment, interval.second, read_len - interval.second)
+                    + (interval.second == read_len ? 0 : alnr->scorer->score_full_length_bonus(false, alignment));
+                mpmap_trace::fill_proactive(mems, anchor_mems, alignment.sequence().begin(),
+                                            read_len, interval.first, interval.second,
+                                            left_ts, right_ts,
+                                            min_softclip_length_for_splice, max_softclip_overlap,
+                                            min_softclipped_score_for_splice,
+                                            trace_current_rescue_candidates(_trace), _trace);
+            }
+            _trace_total.reset(); // stop the total-time timer before recording it
+            _trace.elapsed_usec_total = _trace.time_total_usec;
+            mpmap_trace::write(_trace);
+        }
     }
-    
+
     vector<MultipathMapper::memcluster_t> MultipathMapper::get_clusters(const Alignment& alignment, const vector<MaximalExactMatch>& mems,
                                                                         OrientedDistanceMeasurer* distance_measurer,
                                                                         const match_fanouts_t* fanouts) const {
@@ -1892,10 +2215,29 @@ namespace vg {
             return attempt_unpaired_multipath_map_of_pair(alignment1, alignment2, multipath_aln_pairs_out, ambiguous_pair_buffer);
         }
         
+        // mpmap splice-search instrumentation (paired). Set up the per-mate records
+        // and route the shared splice helpers into _rec1 for the whole paired search.
+        // Declared here (not after clustering) so the phase timers below and the
+        // pair-level total cover MEM finding / clustering / graph extraction too. The
+        // training early-return above is NOT instrumented here: that path maps each
+        // mate via the single-read routine, which emits its own single-read records.
+        const bool _tracing_p = mpmap_trace::enabled();
+        mpmap_trace::SpliceSearchTrace _rec1, _rec2;
+        unique_ptr<mpmap_trace::TraceGuard> _pguard;
+        unique_ptr<mpmap_trace::ScopedTimer> _ptotal;
+        if (_tracing_p) {
+            _pguard.reset(new mpmap_trace::TraceGuard(&_rec1));
+            _ptotal.reset(new mpmap_trace::ScopedTimer(_rec1.time_total_usec, true));
+        }
+
         // the fragment length distribution has been estimated, so we can do full-fledged paired mode
         vector<deque<pair<string::const_iterator, char>>> mem_fanouts1, mem_fanouts2;
-        auto mems1 = find_mems(alignment1, &mem_fanouts1);
-        auto mems2 = find_mems(alignment2, &mem_fanouts2);
+        vector<MaximalExactMatch> mems1, mems2;
+        {
+            mpmap_trace::ScopedTimer _t(_rec1.time_find_mems_usec, _tracing_p);
+            mems1 = find_mems(alignment1, &mem_fanouts1);
+            mems2 = find_mems(alignment2, &mem_fanouts2);
+        }
         unique_ptr<match_fanouts_t> fanouts1(mem_fanouts1.empty() ? nullptr
                                              : new match_fanouts_t(record_fanouts(mems1, mem_fanouts1)));
         unique_ptr<match_fanouts_t> fanouts2(mem_fanouts2.empty() ? nullptr
@@ -1927,17 +2269,25 @@ namespace vg {
         rescue_high_count_order_length_mems(mems2, order_length_repeat_hit_max);
         
         // do the clustering
-        vector<memcluster_t> clusters1 = get_clusters(alignment1, mems1, &(*distance_measurer), fanouts1.get());
-        vector<memcluster_t> clusters2 = get_clusters(alignment2, mems2, &(*distance_measurer), fanouts2.get());
+        vector<memcluster_t> clusters1, clusters2;
+        {
+            mpmap_trace::ScopedTimer _t(_rec1.time_cluster_usec, _tracing_p);
+            clusters1 = get_clusters(alignment1, mems1, &(*distance_measurer), fanouts1.get());
+            clusters2 = get_clusters(alignment2, mems2, &(*distance_measurer), fanouts2.get());
+        }
         
 #ifdef debug_time_phases
         cerr << "clustered MEMs, time elapsed: " << double(clock() - start) / CLOCKS_PER_SEC << " secs" << endl;
 #endif
         
         // extract graphs around the clusters and get the assignments of MEMs to these graphs
-        vector<clustergraph_t> cluster_graphs1 = query_cluster_graphs(alignment1, mems1, clusters1);
-        vector<clustergraph_t> cluster_graphs2 = query_cluster_graphs(alignment2, mems2, clusters2);
-        
+        vector<clustergraph_t> cluster_graphs1, cluster_graphs2;
+        {
+            mpmap_trace::ScopedTimer _t(_rec1.time_query_cluster_graphs_usec, _tracing_p);
+            cluster_graphs1 = query_cluster_graphs(alignment1, mems1, clusters1);
+            cluster_graphs2 = query_cluster_graphs(alignment2, mems2, clusters2);
+        }
+
 #ifdef debug_time_phases
         cerr << "extracted subgraphs, time elapsed: " << double(clock() - start) / CLOCKS_PER_SEC << " secs" << endl;
 #endif
@@ -2115,8 +2465,29 @@ namespace vg {
         
         // do paired spliced alignment only if we have real pairs
         if (proper_paired && do_spliced_alignment) {
-            find_spliced_alignments(alignment1, alignment2, multipath_aln_pairs_out, cluster_pairs, pair_multiplicities,
-                                    mems1, mems2, cluster_graphs1, cluster_graphs2);
+            // mpmap splice-search instrumentation: time the joint pair splice search
+            // and record whether it changed/improved the primary pair (accumulated
+            // into _rec1; the emission block mirrors the shared fields onto _rec2).
+            int64_t _pre_splice_pair_best = 0;
+            if (_tracing_p && !multipath_aln_pairs_out.empty()) {
+                _pre_splice_pair_best = optimal_alignment_score(multipath_aln_pairs_out.front().first)
+                                      + optimal_alignment_score(multipath_aln_pairs_out.front().second);
+            }
+            bool _any_pair_splices;
+            {
+                mpmap_trace::ScopedTimer _t(_rec1.time_splice_rescue_usec, _tracing_p);
+                _any_pair_splices = find_spliced_alignments(alignment1, alignment2, multipath_aln_pairs_out, cluster_pairs, pair_multiplicities,
+                                                            mems1, mems2, cluster_graphs1, cluster_graphs2);
+            }
+            if (_tracing_p) {
+                _rec1.do_spliced_alignment = true;
+                _rec1.splice_changed_primary = _any_pair_splices;
+                if (!multipath_aln_pairs_out.empty()) {
+                    int64_t _post = optimal_alignment_score(multipath_aln_pairs_out.front().first)
+                                  + optimal_alignment_score(multipath_aln_pairs_out.front().second);
+                    _rec1.splice_improved_best_alignment = (_post > _pre_splice_pair_best);
+                }
+            }
 #ifdef debug_time_phases
             cerr << "formed spliced alignments, time elapsed: " << double(clock() - start) / CLOCKS_PER_SEC << " secs" << endl;
 #endif
@@ -2171,9 +2542,116 @@ namespace vg {
             view_multipath_alignment(cerr, multipath_aln_pair.second, *xindex);
         }
 #endif
+
+        // mpmap splice-search instrumentation: emit one record per mate. MEM/cluster/
+        // graph/final/proxy metrics are per mate; the splice-search fields (accumulated
+        // into _rec1 during the joint paired splice search) are duplicated onto _rec2.
+        if (_tracing_p && !multipath_aln_pairs_out.empty()) {
+            const multipath_alignment_t& mp1 = multipath_aln_pairs_out.front().first;
+            const multipath_alignment_t& mp2 = multipath_aln_pairs_out.front().second;
+
+            _rec1.read_name = alignment1.name();  _rec1.read_length = alignment1.sequence().size();
+            _rec1.is_paired = true; _rec1.mate = 1;
+            _rec1.is_rna_mode = do_spliced_alignment; _rec1.do_spliced_alignment = do_spliced_alignment;
+            _rec2.read_name = alignment2.name();  _rec2.read_length = alignment2.sequence().size();
+            _rec2.is_paired = true; _rec2.mate = 2;
+            _rec2.is_rna_mode = do_spliced_alignment; _rec2.do_spliced_alignment = do_spliced_alignment;
+            for (auto* rec : {&_rec1, &_rec2}) {
+                rec->min_softclipped_score_for_splice = min_softclipped_score_for_splice;
+                rec->min_softclip_length_for_splice = min_softclip_length_for_splice;
+                rec->max_softclip_overlap = max_softclip_overlap;
+            }
+
+            trace_fill_mem_metrics(_rec1, mems1, fanouts1.get(), alignment1.sequence().begin(),
+                                   min_clustering_mem_length, min_softclip_length_for_splice,
+                                   mpmap_trace::truth_loaded());
+            trace_fill_mem_metrics(_rec2, mems2, fanouts2.get(), alignment2.sequence().begin(),
+                                   min_clustering_mem_length, min_softclip_length_for_splice,
+                                   mpmap_trace::truth_loaded());
+            trace_fill_cluster_metrics(_rec1, clusters1, cluster_graphs1);
+            trace_fill_cluster_metrics(_rec2, clusters2, cluster_graphs2);
+            _rec1.n_local_multipath_alignments = multipath_aln_pairs_out.size();
+            _rec2.n_local_multipath_alignments = multipath_aln_pairs_out.size();
+            _rec1.n_alt_mappings_before_cap = multipath_aln_pairs_out.size();
+            _rec2.n_alt_mappings_before_cap = multipath_aln_pairs_out.size();
+            _rec1.n_alt_mappings_after_cap = multipath_aln_pairs_out.size();
+            _rec2.n_alt_mappings_after_cap = multipath_aln_pairs_out.size();
+
+            auto fill_final_mate = [&](mpmap_trace::SpliceSearchTrace& rec, const multipath_alignment_t& mp,
+                                       const multipath_alignment_t* second) {
+                rec.mapping_succeeded = !mp.subpath().empty();
+                rec.best_score = optimal_alignment_score(mp);
+                rec.mapq = mp.mapping_quality();
+                if (second) {
+                    rec.second_best_score = optimal_alignment_score(*second);
+                }
+                if (rec.mapping_succeeded) {
+                    Alignment a;
+                    optimal_alignment(mp, a);
+                    for (size_t i = 0; i < (size_t) a.path().mapping_size(); ++i) {
+                        const auto& pos = a.path().mapping(i).position();
+                        mpmap_trace::TracePosition tp;
+                        tp.node_id = pos.node_id(); tp.offset = pos.offset(); tp.is_reverse = pos.is_reverse();
+                        rec.final_positions.push_back(tp);
+                    }
+                }
+            };
+            const multipath_alignment_t* second1 = multipath_aln_pairs_out.size() > 1 ? &multipath_aln_pairs_out[1].first : nullptr;
+            const multipath_alignment_t* second2 = multipath_aln_pairs_out.size() > 1 ? &multipath_aln_pairs_out[1].second : nullptr;
+            fill_final_mate(_rec1, mp1, second1);
+            fill_final_mate(_rec2, mp2, second2);
+
+            // splice-search fields were accumulated into _rec1; duplicate onto _rec2
+            _rec2.anchors = _rec1.anchors;
+            _rec2.n_splice_anchors_considered = _rec1.n_splice_anchors_considered;
+            _rec2.n_anchors_gate_opened = _rec1.n_anchors_gate_opened;
+            _rec2.n_anchors_gate_skipped = _rec1.n_anchors_gate_skipped;
+            _rec2.n_adapter_rejected = _rec1.n_adapter_rejected;
+            _rec2.time_splice_rescue_usec = _rec1.time_splice_rescue_usec;
+            // pair-level phase timers accumulated into _rec1; mirror onto _rec2
+            _rec2.time_find_mems_usec = _rec1.time_find_mems_usec;
+            _rec2.time_cluster_usec = _rec1.time_cluster_usec;
+            _rec2.time_query_cluster_graphs_usec = _rec1.time_query_cluster_graphs_usec;
+            // pair-level splice outcome accumulated into _rec1; mirror onto _rec2
+            _rec2.do_spliced_alignment = _rec1.do_spliced_alignment;
+            _rec2.splice_changed_primary = _rec1.splice_changed_primary;
+            _rec2.splice_improved_best_alignment = _rec1.splice_improved_best_alignment;
+
+            // proactive proxy per mate (anchor MEM set omitted for paired -> upper bound)
+            auto run_proxy = [&](mpmap_trace::SpliceSearchTrace& rec, const Alignment& aln,
+                                 const vector<MaximalExactMatch>& mems, const multipath_alignment_t& mp) {
+                if (!rec.mapping_succeeded || mp.subpath().empty()) {
+                    return;
+                }
+                mpmap_trace::ScopedTimer _t(rec.time_proactive_proxy_usec, true);
+                unordered_map<const MaximalExactMatch*, bool> anchor_mems;
+                auto interval = aligned_interval(mp);
+                int64_t read_len = aln.sequence().size();
+                auto alnr = get_aligner(!aln.quality().empty());
+                int64_t left_ts = alnr->scorer->score_exact_match(aln, 0, interval.first)
+                    + (interval.first == 0 ? 0 : alnr->scorer->score_full_length_bonus(true, aln));
+                int64_t right_ts = alnr->scorer->score_exact_match(aln, interval.second, read_len - interval.second)
+                    + (interval.second == read_len ? 0 : alnr->scorer->score_full_length_bonus(false, aln));
+                mpmap_trace::fill_proactive(mems, anchor_mems, aln.sequence().begin(),
+                                            read_len, interval.first, interval.second, left_ts, right_ts,
+                                            min_softclip_length_for_splice, max_softclip_overlap,
+                                            min_softclipped_score_for_splice,
+                                            trace_current_rescue_candidates(rec), rec);
+            };
+            run_proxy(_rec1, alignment1, mems1, mp1);
+            run_proxy(_rec2, alignment2, mems2, mp2);
+
+            _ptotal.reset(); // stop total-time timer
+            _rec1.elapsed_usec_total = _rec1.time_total_usec;
+            _rec2.time_total_usec = _rec1.time_total_usec; // pair-level total, shared
+            _rec2.elapsed_usec_total = _rec1.time_total_usec;
+            mpmap_trace::write(_rec1);
+            mpmap_trace::write(_rec2);
+        }
+
         return proper_paired;
     }
-    
+
     void MultipathMapper::reduce_to_single_path(const multipath_alignment_t& multipath_aln, vector<Alignment>& alns_out,
                                                 size_t max_number) const {
     
@@ -2758,6 +3236,7 @@ namespace vg {
                 }
                 
                 // apportion the effort we'll spend across motifs
+                trace_add_motif_pairs((int64_t) total_num_pairs, (int64_t) max_motif_pairs);
                 vector<size_t> motif_max_num_pairs;
                 if (total_num_pairs < max_motif_pairs) {
                     // we can afford to do all of the candidates
@@ -2904,6 +3383,7 @@ namespace vg {
         };
         
         // order the joins by the highest upper bound on net score
+        trace_add_splice_edges((int64_t) putative_joins.size());
         make_heap(putative_joins.begin(), putative_joins.end(), score_bound_comp);
         
         while (!putative_joins.empty() && putative_joins.front().max_score >= best_net_score) {
@@ -2971,7 +3451,8 @@ namespace vg {
 #endif
             return false;
         }
-        
+        trace_record_splice_produced((int64_t) best_net_score);
+
         // greedily fix the strand
         // TODO: ideally we'd probably try fixing it each way and see which is better
         strand = (splice_stats.motif_is_reverse(best_join->motif_idx) ? Reverse : Forward);
@@ -3624,7 +4105,10 @@ namespace vg {
                                        + (interval.second == alignment.sequence().size() ? 0 : alnr->scorer->score_full_length_bonus(false, alignment)));
             bool search_left = left_max_score >= min_softclipped_score_for_splice;
             bool search_right = right_max_score >= min_softclipped_score_for_splice;
-            
+            trace_push_anchor(current_index[j], interval.first, interval.second,
+                              alignment.sequence().size(), left_max_score, right_max_score,
+                              search_left, search_right);
+
             if (!(search_left || search_right)) {
 #ifdef debug_multipath_mapper
                 cerr << "soft clips are not sufficiently large to look for spliced alignment on interval " << interval.first << ":" << interval.second << " with max tail scores " << left_max_score << " and " << right_max_score << ", max score required: " << min_softclipped_score_for_splice << endl;
@@ -3657,10 +4141,11 @@ namespace vg {
                     if (pos != string::npos) {
                         // this softclip is bracketed by a known adapter sequence, it is much more likely
                         // that it should be adapter trimmed rather than meriting a spliced alignment
+                        trace_mark_adapter_rejected();
                         continue;
                     }
                 }
-                
+
                 // move the anchor out of the vector to protect it from any shuffling that goes on
                 multipath_alignment_t splice_anchor = std::move(multipath_alns_out[current_index[j]]);
                 
@@ -3674,7 +4159,9 @@ namespace vg {
                 identify_unaligned_splice_candidates(alignment, do_left, interval, mems,
                                                      cluster_graphs, clusters_used, cluster_candidates,
                                                      hit_candidates);
-                
+                trace_add_candidates(mp_aln_candidates.size(), cluster_candidates.size(),
+                                     hit_candidates.size());
+
                 // make alignments for any unaligned candidates
                 vector<candidate_id_t> unaligned_candidates;
                 align_to_splice_candidates(alignment, cluster_graphs, mems, cluster_candidates, hit_candidates,
@@ -3767,7 +4254,11 @@ namespace vg {
                 bool did_splice = test_splice_candidates(alignment, do_left, splice_anchor, &anchor_multiplicity,
                                                          strand, mp_aln_candidates.size() + unaligned_candidates.size(),
                                                          get_candidate, get_multiplicity, consume_candidate);
-                
+                trace_add_aligned_candidates((int64_t) (mp_aln_candidates.size() + unaligned_candidates.size()),
+                                             (int64_t) (cluster_candidates.size() + hit_candidates.size())
+                                                 - (int64_t) unaligned_candidates.size(),
+                                             did_splice);
+
                 if (!did_splice && rescue_anchor && do_left != rescue_left) {
                     // we didn't find any splice junctions, but we might be able to rescue the spliced portion off
                     // of the other read
@@ -3895,7 +4386,10 @@ namespace vg {
                                            + (interval.second == aln.sequence().size() ? 0 : alnr->scorer->score_full_length_bonus(false, aln)));
                 bool search_left = left_max_score >= min_softclipped_score_for_splice;
                 bool search_right = right_max_score >= min_softclipped_score_for_splice;
-                
+                trace_push_anchor(current_index[j], interval.first, interval.second,
+                                  aln.sequence().size(), left_max_score, right_max_score,
+                                  search_left, search_right);
+
 #ifdef debug_check_adapters
                 if (do_read_1) {
                     attempt_1_left |= search_left;
@@ -3930,6 +4424,7 @@ namespace vg {
                         if (pos != string::npos) {
                             // this softclip is bracketed by a known adapter sequence, it is much more likely
                             // that it should be adapter trimmed rather than meriting a spliced alignment
+                            trace_mark_adapter_rejected();
                             continue;
                         }
                     }
@@ -3942,6 +4437,7 @@ namespace vg {
                         if (pos != string::npos) {
                             // this softclip is bracketed by a known adapter sequence, it is much more likely
                             // that it should be adapter trimmed rather than meriting a spliced alignment
+                            trace_mark_adapter_rejected();
                             continue;
                         }
                     }
@@ -3973,7 +4469,9 @@ namespace vg {
                     identify_unaligned_splice_candidates(aln, do_left, interval, *mems,
                                                          *cluster_graphs, clusters_used, cluster_candidates,
                                                          hit_candidates);
-                    
+                    trace_add_candidates(mp_aln_candidates.size(), cluster_candidates.size(),
+                                         hit_candidates.size());
+
                     // align splice candidates that haven't been aligned yet
                     vector<candidate_id_t> unaligned_candidates;
                     align_to_splice_candidates(aln, *cluster_graphs, *mems, cluster_candidates, hit_candidates,
@@ -4114,7 +4612,11 @@ namespace vg {
                     bool spliced_side = test_splice_candidates(aln, do_left, anchor_mp_aln, &anchor_multiplicity,
                                                                strand, mp_aln_candidates.size() + unaligned_candidates.size(),
                                                                get_candidate, get_multiplicity, consume_candidate);
-                    
+                    trace_add_aligned_candidates((int64_t) (mp_aln_candidates.size() + unaligned_candidates.size()),
+                                                 (int64_t) (cluster_candidates.size() + hit_candidates.size())
+                                                     - (int64_t) unaligned_candidates.size(),
+                                                 spliced_side);
+
                     if (!spliced_side && do_read_1 != do_left) {
                         // we might be able to rescue a spliced alignment segment
                         const auto& rescue_anchor = do_read_1 ? multipath_aln_pairs_out[current_index[j]].second

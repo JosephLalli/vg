@@ -809,7 +809,7 @@ inline double ReadFilter<MultipathAlignment>::get_score(const MultipathAlignment
         Alignment aln;
         optimal_alignment(mp_aln, aln);
         if (sub_score) {
-            score = identity(aln.path());
+            score = vg::identity(aln.path());
         }
         else {
             const static Aligner unadjusted;

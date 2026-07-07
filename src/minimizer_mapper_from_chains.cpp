@@ -2316,7 +2316,7 @@ void MinimizerMapper::pick_mappings_from_alignments(const Alignment& aln, const 
         } else {
             // Use base-level alignment score to rank alignments
             // Tiebreak by identity (which is always 0 to 1)
-            return alignments.at(alignment_number).score() + identity(alignments.at(alignment_number).path());
+            return alignments.at(alignment_number).score() + vg::identity(alignments.at(alignment_number).path());
         }
     };
     

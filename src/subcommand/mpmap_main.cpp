@@ -351,7 +351,7 @@ int main_mpmap(int argc, char** argv) {
     string trace_truth_junctions_name;
     // Experimental STAR-style MMP seed generator (hidden/advanced; see mpmap_mmp.hpp).
     bool mmp_seed_enabled = false;
-    int64_t mmp_min_prefix = 12;
+    int64_t mmp_min_prefix = 8;
     int64_t mmp_max_intron = (int64_t(1) << 18);
     int64_t mmp_hit_max = 16;
     int mmp_strand_mode = 0; // 0 = native, 1 = rc, 2 = both
@@ -360,7 +360,7 @@ int main_mpmap(int argc, char** argv) {
     int64_t mmp_max_seeds = 4;
     bool mmp_primary = false;  // --mmp-primary: MMP replaces the MEM pool (pure MMP seeding)
     bool mmp_augment = false;  // --mmp-augment: MMP augments the MEM pool (MEM + MMP)
-    int64_t mmp_start_lmax = 50;
+    int64_t mmp_start_lmax = 6;
     double mmp_start_lmax_over_lread = 1.0;
     int64_t mmp_seed_per_read_max = 1000;
     int match_score = default_match;

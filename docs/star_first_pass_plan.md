@@ -22,10 +22,17 @@ Implementation order (item 5 deferred to last, per instruction):
 All five items implemented, flag-gated, default-off byte-identical; tests 35 (31/31), 33 (25/25).
 Benchmarks on the PANGENOME (sampleA.spliced, 466-hap).
 
-- **Item 2 (multi-start seeding) -- DONE, verified.** `--mmp-start-lmax` (default 50),
-  `--mmp-start-lmax-over-lread`, `--mmp-seed-per-read-max`. Closes the sensitivity gap:
-  `--mmp-primary` mapped 3,243 (single-start) -> 3,305 (lmax 50) -> 3,407 (lmax 12) vs 3,461 MEM
-  baseline on 20k; seeds/read 5.1 -> 11.7. Trace `n_mmp_seed_starts`.
+- **Item 2 (multi-start seeding) -- DONE, tuned to mirror MEM.** `--mmp-start-lmax`,
+  `--mmp-start-lmax-over-lread`, `--mmp-seed-per-read-max`. Multi-start anchors MMP chains at a
+  ladder of read offsets so seeds overlap and densify. DEFAULTS tuned so the STAR mode mirrors
+  MEM finding's graph-tuned seed density (MEM's defaults are graph-tuned, so we target its
+  stats): `--mmp-start-lmax 6`, `--mmp-min-prefix 8`. On the pangenome 20k this matches MEM
+  almost exactly -- cluster_graphs/read 75.4 vs 74.5, cg_nodes/read 822 vs 831, mapped 3,458 vs
+  3,461 (full sensitivity), vs the sparse single-start baseline (lmax 50: 3,305 mapped, 19.5
+  cluster_graphs). Raising `--mmp-start-lmax` trades sensitivity for speed (lmax 12: 3,407 mapped
+  at ~2.5x MEM's speed). NOTE: `--mmp-hit-max` is NOT the density lever -- raising it 16 -> 1024
+  recovered only +4 reads; seed COUNT (multi-start + min-prefix), matching MEM's reseeding
+  density, is what matters. Trace `n_mmp_seed_starts`.
 - **Item 3 (mismatch handling) -- DONE (re-seed only; seed-level extension removed).**
   Seeds stay EXACT; mismatches are handled by a clean re-seed across the break (STAR's re-seed).
   Mismatch/gap-tolerant EXTENSION is delegated to `multipath_align`, which already extends seeds

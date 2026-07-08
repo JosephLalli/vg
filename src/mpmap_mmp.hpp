@@ -47,7 +47,8 @@ namespace mpmap_mmp {
 /// the mapper's existing defaults, so an un-configured generator never fires.
 struct MmpParams {
     bool enabled = false;
-    int64_t min_prefix = 12;                     // minimum MMP length kept as a seed
+    int64_t min_prefix = 8;                      // minimum MMP length kept as a seed (tuned so
+                                                 // multi-start density mirrors MEM finding on a graph)
     int64_t overlap_tol = 8;                     // breakpoint overlap slack (= max_softclip_overlap)
     int64_t min_intron = 20;                     // distance-prune lower bound
     int64_t max_intron = (int64_t(1) << 18);     // distance-prune upper bound (= max_intron_length)
@@ -68,7 +69,10 @@ struct MmpParams {
     int64_t primary_max_seeds = 16;              // cap on seeds per CHAIN in the whole-read walk
     // STAR-style multi-start seeding (seedSearchStartLmax): launch MMP chains anchored at a
     // ladder of read offsets so seeds overlap and densify (item 2).
-    int64_t start_lmax = 50;                      // max spacing between seed-search start points
+    int64_t start_lmax = 6;                       // spacing between seed-search start points; the
+                                                  // default is tuned so the whole-read walk's
+                                                  // cluster-graph density mirrors MEM finding on a
+                                                  // pangenome (raise it for faster/sparser seeding)
     double start_lmax_over_lread = 1.0;           // spacing cap as a fraction of read length
     int64_t seed_per_read_max = 1000;             // hard cap on primary seeds per read (STAR seedPerReadNmax)
     // Mismatch/gap handling is delegated to multipath_align (STAR's extendAlign, done natively

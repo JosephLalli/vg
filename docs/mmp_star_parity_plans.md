@@ -21,15 +21,17 @@ byte-identical), and verified on the de-novo linear MHC graph. Tests: `35_vg_mpm
   geometry, annotated-junction detection preserved (36 -> 36). Sub-option (b) exact
   multi-node relocation remains a reserved refinement.
 
-- **Primary seeding (plan A "option 2") -- DONE.** `--mmp-primary`: a whole-read sequential
-  MMP walk (`generate_primary_seeds` in `mpmap_mmp.cpp`) whose seeds AUGMENT the MEM pool
-  before clustering, hooked in `multipath_map` / `multipath_map_paired` right after
-  `find_mems` (padding `mem_fanouts` to satisfy `record_fanouts`' size assert; MMP seeds have
-  no fanouts). Unlike the splice-rescue path this can change the MAPPING RATE. 200k de-novo:
-  mapped 32,947 -> 32,985 (**+38 reads**), spliced 2,783 -> 3,276 (**+493, +17.7%**),
-  958,040 primary seeds, runtime +9.9%. Trace field `n_mmp_primary_seeds`. Default-off
-  byte-identical. This is the only MMP mode that maps previously-unmapped reads (the
-  splice-rescue modes only refine already-mapped reads).
+- **Whole-read seeding (plan A "option 2") -- DONE.** A whole-read sequential MMP walk
+  (`generate_primary_seeds` in `mpmap_mmp.cpp`), hooked in `multipath_map` /
+  `multipath_map_paired` at the `find_mems` site. Two modes; both change the MAPPING RATE
+  (unlike the splice-rescue path, which only refines already-mapped reads):
+    - `--mmp-augment`: MMP seeds are APPENDED to the MEM pool (MEM + MMP). Pads `mem_fanouts`
+      to satisfy `record_fanouts`' size assert (MMP seeds have no fanouts). Can only add
+      mappings. 200k de-novo: mapped 32,947 -> 32,985 (+38), spliced 2,783 -> 3,276 (+17.7%),
+      runtime +9.9%.
+    - `--mmp-primary`: MMP seeds REPLACE the MEM pool -- `find_mems` is skipped and MMP is the
+      sole seeder (pure MMP seeding; tests MMP standalone, may map fewer than MEMs).
+  Trace field `n_mmp_primary_seeds`. Default-off byte-identical.
 
 Large-scale validation (200,000 de-novo reads, linear MHC graph, truth junctions):
 baseline vs `--mmp-seed --mmp-strand-mode both --mmp-chain`: spliced 2,783 -> 2,953

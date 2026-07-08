@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH # for vg
 
-plan tests 27
+plan tests 28
 
 # Build a tiny graph + GCSA index (reuse the small xy fixtures used by 33_vg_mpmap.t).
 vg construct -m 1000 -a -r small/xy.fa -v small/xy2.vcf.gz >tr.vg
@@ -84,9 +84,12 @@ vg mpmap -x trs.xg -d trs.dist -g trs.gcsa -B -n rna -f trs.fq --splice-motif-sc
 is "$?" "0" "vg mpmap runs with --splice-motif-scores (configurable splice-motif table)"
 is "$(grep '"record_type":"read"' trs.motif.jsonl | head -n1 | jq '.do_spliced_alignment')" "true" "spliced alignment runs with a custom splice-motif table"
 
-# --- MMP as a primary seeding source (--mmp-primary): whole-read seeds augment the MEM pool ---
+# --- MMP as a whole-read seeding source: --mmp-primary (replace MEMs) / --mmp-augment (MEM + MMP) --
 vg mpmap -x trs.xg -d trs.dist -g trs.gcsa -B -n rna -f trs.fq --mmp-primary --trace-splice-search trs.prim.jsonl -t 1 >trs.prim.gamp 2>/dev/null
-is "$?" "0" "vg mpmap runs with --mmp-primary (whole-read MMP primary seeding)"
+is "$?" "0" "vg mpmap runs with --mmp-primary (pure MMP seeding, MEM pool replaced)"
 is "$(grep '"record_type":"read"' trs.prim.jsonl | head -n1 | jq 'has("n_mmp_primary_seeds")')" "true" "read record carries the primary-seed metric"
 
-rm -f trs.vg trs.xg trs.gcsa trs.gcsa.lcp trs.dist trs.fq trs.gamp trs.jsonl trs.pe.fq trs.pe.gamp trs.pe.jsonl trs.mmp.jsonl trs.mmp.gamp trs.both.gamp trs.chain.gamp trs.motifs.tsv trs.motif.jsonl trs.motif.gamp trs.prim.jsonl trs.prim.gamp
+vg mpmap -x trs.xg -d trs.dist -g trs.gcsa -B -n rna -f trs.fq --mmp-augment -t 1 >trs.aug.gamp 2>/dev/null
+is "$?" "0" "vg mpmap runs with --mmp-augment (MEM pool augmented with MMP seeds)"
+
+rm -f trs.vg trs.xg trs.gcsa trs.gcsa.lcp trs.dist trs.fq trs.gamp trs.jsonl trs.pe.fq trs.pe.gamp trs.pe.jsonl trs.mmp.jsonl trs.mmp.gamp trs.both.gamp trs.chain.gamp trs.motifs.tsv trs.motif.jsonl trs.motif.gamp trs.prim.jsonl trs.prim.gamp trs.aug.gamp

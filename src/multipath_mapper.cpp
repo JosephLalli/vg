@@ -338,17 +338,24 @@ namespace vg {
         vector<MaximalExactMatch> mems;
         {
             mpmap_trace::ScopedTimer _t(_trace.time_find_mems_usec, _tracing);
-            mems = find_mems(alignment, &mem_fanouts);
-        }
-        // Optional MMP primary seeding: augment the MEM pool with a whole-read sequential MMP
-        // walk BEFORE clustering, so it can change the mapping rate (unlike the splice-rescue
-        // path, which only refines already-mapped reads). Done here, before record_fanouts, so
-        // the fanout map keys on the final mems. MMP seeds have no fanouts; pad mem_fanouts to
-        // keep record_fanouts' size assertion happy (empty deques => no fanout).
-        if (mpmap_mmp::primary_enabled()) {
-            mpmap_mmp::generate_primary_seeds(gcsa, alignment, mems);
-            if (!mem_fanouts.empty() && mem_fanouts.size() < mems.size()) {
-                mem_fanouts.resize(mems.size());
+            // Seeding source (all MMP options change the mapping rate because they feed
+            // clustering, unlike the splice-rescue path which only refines mapped reads):
+            //  --mmp-primary : whole-read MMP seeds REPLACE the MEM pool (find_mems skipped).
+            //  --mmp-augment : MEM pool PLUS whole-read MMP seeds.
+            //  neither       : find_mems only (default).
+            if (mpmap_mmp::primary_enabled()) {
+                mpmap_mmp::generate_primary_seeds(gcsa, alignment, mems);
+                // mem_fanouts stays empty -> fanouts is nullptr below
+            } else {
+                mems = find_mems(alignment, &mem_fanouts);
+                if (mpmap_mmp::augment_enabled()) {
+                    mpmap_mmp::generate_primary_seeds(gcsa, alignment, mems);
+                    // MMP seeds have no fanouts; pad mem_fanouts to keep record_fanouts'
+                    // size assertion happy (empty deques => no fanout).
+                    if (!mem_fanouts.empty() && mem_fanouts.size() < mems.size()) {
+                        mem_fanouts.resize(mems.size());
+                    }
+                }
             }
         }
         unique_ptr<match_fanouts_t> fanouts(mem_fanouts.empty() ? nullptr :
@@ -2260,19 +2267,24 @@ namespace vg {
         vector<MaximalExactMatch> mems1, mems2;
         {
             mpmap_trace::ScopedTimer _t(_rec1.time_find_mems_usec, _tracing_p);
-            mems1 = find_mems(alignment1, &mem_fanouts1);
-            mems2 = find_mems(alignment2, &mem_fanouts2);
-        }
-        // Optional MMP primary seeding for both mates (see multipath_map). Pad mem_fanouts to
-        // keep record_fanouts' size assertion happy; MMP seeds have no fanouts.
-        if (mpmap_mmp::primary_enabled()) {
-            mpmap_mmp::generate_primary_seeds(gcsa, alignment1, mems1);
-            mpmap_mmp::generate_primary_seeds(gcsa, alignment2, mems2);
-            if (!mem_fanouts1.empty() && mem_fanouts1.size() < mems1.size()) {
-                mem_fanouts1.resize(mems1.size());
-            }
-            if (!mem_fanouts2.empty() && mem_fanouts2.size() < mems2.size()) {
-                mem_fanouts2.resize(mems2.size());
+            // Seeding source for both mates (see multipath_map): --mmp-primary REPLACES the
+            // MEM pool with whole-read MMP seeds (find_mems skipped); --mmp-augment adds them.
+            if (mpmap_mmp::primary_enabled()) {
+                mpmap_mmp::generate_primary_seeds(gcsa, alignment1, mems1);
+                mpmap_mmp::generate_primary_seeds(gcsa, alignment2, mems2);
+            } else {
+                mems1 = find_mems(alignment1, &mem_fanouts1);
+                mems2 = find_mems(alignment2, &mem_fanouts2);
+                if (mpmap_mmp::augment_enabled()) {
+                    mpmap_mmp::generate_primary_seeds(gcsa, alignment1, mems1);
+                    mpmap_mmp::generate_primary_seeds(gcsa, alignment2, mems2);
+                    if (!mem_fanouts1.empty() && mem_fanouts1.size() < mems1.size()) {
+                        mem_fanouts1.resize(mems1.size());
+                    }
+                    if (!mem_fanouts2.empty() && mem_fanouts2.size() < mems2.size()) {
+                        mem_fanouts2.resize(mems2.size());
+                    }
+                }
             }
         }
         unique_ptr<match_fanouts_t> fanouts1(mem_fanouts1.empty() ? nullptr

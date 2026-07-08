@@ -323,6 +323,7 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_MMP_MAX_SEEDS = 1051;
     constexpr int OPT_SPLICE_MOTIF_SCORES = 1052;
     constexpr int OPT_MMP_PRIMARY = 1053;
+    constexpr int OPT_MMP_AUGMENT = 1054;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -349,7 +350,8 @@ int main_mpmap(int argc, char** argv) {
     int64_t mmp_relax_accept = 0; // 0 = off; if >0, relaxed min soft-clip length for MMP candidates
     bool mmp_chain = false;
     int64_t mmp_max_seeds = 4;
-    bool mmp_primary = false;
+    bool mmp_primary = false;  // --mmp-primary: MMP replaces the MEM pool (pure MMP seeding)
+    bool mmp_augment = false;  // --mmp-augment: MMP augments the MEM pool (MEM + MMP)
     int match_score = default_match;
     int mismatch_score = default_mismatch;
     int gap_open_score = default_gap_open;
@@ -602,6 +604,7 @@ int main_mpmap(int argc, char** argv) {
             {"mmp-max-seeds", required_argument, 0, OPT_MMP_MAX_SEEDS},
             {"splice-motif-scores", required_argument, 0, OPT_SPLICE_MOTIF_SCORES},
             {"mmp-primary", no_argument, 0, OPT_MMP_PRIMARY},
+            {"mmp-augment", no_argument, 0, OPT_MMP_AUGMENT},
             {0, 0, 0, 0}
         };
 
@@ -1045,6 +1048,10 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_MMP_PRIMARY:
                 mmp_primary = true;
+                break;
+
+            case OPT_MMP_AUGMENT:
+                mmp_augment = true;
                 break;
 
             case OPT_SPLICE_MOTIF_SCORES:
@@ -2114,6 +2121,7 @@ int main_mpmap(int argc, char** argv) {
         mmp_params.relax_accept = mmp_relax_accept;
         mmp_params.chain = mmp_chain;
         mmp_params.max_seeds = mmp_max_seeds;
+        mmp_params.augment = mmp_augment;
         mmp_params.primary = mmp_primary;
         mpmap_mmp::configure(mmp_params);
     }

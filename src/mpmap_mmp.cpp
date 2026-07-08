@@ -36,6 +36,10 @@ bool enabled() {
     return g_params.enabled;
 }
 
+bool augment_enabled() {
+    return g_params.augment;
+}
+
 bool primary_enabled() {
     return g_params.primary;
 }

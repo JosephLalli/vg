@@ -99,6 +99,10 @@ namespace vg {
         /// support for non-canonical junctions by supplying their motifs.
         void set_splice_motifs(const vector<tuple<string, string, double>>& motifs);
 
+        /// STAR sjdb-style bonus (item 6): added to a spliced alignment's score when the junction
+        /// reuses an existing graph splice edge (annotated). 0 = no bonus (default, unchanged).
+        int32_t sjdb_score = 0;
+
         /// Decide how long of a tail alignment we want before we allow its subpath to be merged
         void set_max_merge_supression_length();
         

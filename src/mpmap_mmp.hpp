@@ -65,7 +65,16 @@ struct MmpParams {
     bool primary = false;                        // --mmp-primary: whole-read MMP seeds REPLACE
                                                  // the MEM pool (pure MMP seeding; find_mems is
                                                  // skipped). Tests MMP as the sole seeder.
-    int64_t primary_max_seeds = 16;              // cap on seeds per read for the whole-read walk
+    int64_t primary_max_seeds = 16;              // cap on seeds per CHAIN in the whole-read walk
+    // STAR-style multi-start seeding (seedSearchStartLmax): launch MMP chains anchored at a
+    // ladder of read offsets so seeds overlap and densify (item 2).
+    int64_t start_lmax = 50;                      // max spacing between seed-search start points
+    double start_lmax_over_lread = 1.0;           // spacing cap as a fraction of read length
+    int64_t seed_per_read_max = 1000;             // hard cap on primary seeds per read (STAR seedPerReadNmax)
+    // Mismatch handling (item 3): graph seed extension is off by default (explosion risk).
+    bool extend = false;                          // --mmp-extend: locate-then-graph-extend
+    int64_t extend_max_mismatch = 1;              // bound on mismatches during extension
+    int64_t extend_max_length = 20;               // bound on bases added per extension
 };
 
 /// Set the configuration once, single-threaded, from mpmap_main (before the parallel

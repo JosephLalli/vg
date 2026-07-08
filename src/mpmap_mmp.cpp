@@ -278,58 +278,117 @@ size_t generate_primary_seeds(gcsa::GCSA* gcsa, const Alignment& alignment,
     const MmpParams& p = g_params;
     const std::string& seq = alignment.sequence();
     std::string::const_iterator seq_begin = seq.begin();
-    std::string::const_iterator qe = seq.end();
-    int64_t cap = p.primary_max_seeds > 0 ? p.primary_max_seeds : 16;
+    int64_t L = (int64_t) seq.size();
+    int64_t per_chain = p.primary_max_seeds > 0 ? p.primary_max_seeds : 16;
+    int64_t total_cap = p.seed_per_read_max > 0 ? p.seed_per_read_max : 1000;
+
+    // STAR-style multi-start seeding (item 2): anchor exact-match chains at a ladder of read
+    // offsets spaced by `step` so seeds from different anchors overlap and densify the pool.
+    int64_t step = p.start_lmax > 0 ? p.start_lmax : L;
+    if (p.start_lmax_over_lread > 0.0) {
+        int64_t frac = (int64_t)(p.start_lmax_over_lread * (double) L);
+        if (frac >= 1 && frac < step) step = frac;
+    }
+    if (step < 1) step = (L > 0 ? L : 1);
 
     mpmap_trace::SpliceSearchTrace* tr = mpmap_trace::current();
     int64_t _sink = 0;
     mpmap_trace::ScopedTimer _timer(tr ? tr->time_mmp_seed_usec : _sink, tr != nullptr);
 
+    std::unordered_set<int64_t> seen; // dedup by read interval (rb*(L+1)+re) across anchors
     size_t added = 0;
-    for (int64_t d = 0; d < cap && (qe - seq_begin) >= p.min_prefix; ++d) {
-        // maximal exact suffix ending at qe (STAR's sequential MMP, right-to-left)
-        gcsa::range_type range = gcsa::range_type(0, gcsa->size() - 1);
-        gcsa::range_type matched = range;
-        std::string::const_iterator cur = qe;
-        while (cur > seq_begin) {
-            std::string::const_iterator nc = cur - 1;
-            if ((int64_t)(qe - nc) > (int64_t) gcsa->order()) {
-                break; // do not extend past the GCSA2 index order (see run_mmp)
+    int64_t reseeds = 0, starts = 0, extended = 0;
+    for (int64_t anchor = L; anchor >= p.min_prefix && (int64_t) added < total_cap; anchor -= step) {
+        ++starts;
+        std::string::const_iterator qe = seq_begin + anchor;
+        for (int64_t d = 0; d < per_chain && (qe - seq_begin) >= p.min_prefix
+                            && (int64_t) added < total_cap; ++d) {
+            // maximal exact suffix ending at qe (sequential MMP, right-to-left)
+            gcsa::range_type range = gcsa::range_type(0, gcsa->size() - 1);
+            gcsa::range_type matched = range;
+            std::string::const_iterator cur = qe;
+            int64_t mm = 0; // mismatches spent extending this seed (item 3, --mmp-extend)
+            while (cur > seq_begin) {
+                std::string::const_iterator nc = cur - 1;
+                if ((int64_t)(qe - nc) > (int64_t) gcsa->order()) {
+                    break; // do not extend past the GCSA2 index order (see run_mmp)
+                }
+                if (*nc == 'N') {
+                    break;
+                }
+                gcsa::range_type next = gcsa->LF(range, gcsa->alpha.char2comp[(unsigned char) (*nc)]);
+                if (gcsa::Range::empty(next)) {
+                    // Graph mismatch extension (--mmp-extend, item 3). GREEDY SINGLE-PATH: try
+                    // the other 3 bases, keep only the LARGEST-support continuation, spend one
+                    // mismatch. One O(1) 3-way probe per mismatch, then a single path continues
+                    // -- strictly linear, so it CANNOT branch-explode (the risk the plan warns
+                    // about). Bounded by extend_max_mismatch and extend_max_length.
+                    if (!p.extend || mm >= p.extend_max_mismatch
+                        || (int64_t)(qe - nc) > p.extend_max_length + p.min_prefix) {
+                        break;
+                    }
+                    auto read_comp = gcsa->alpha.char2comp[(unsigned char) (*nc)];
+                    gcsa::range_type best;
+                    bool found = false;
+                    size_t best_sz = 0;
+                    const char bases[4] = {'A', 'C', 'G', 'T'};
+                    for (int b = 0; b < 4; ++b) {
+                        auto comp = gcsa->alpha.char2comp[(unsigned char) bases[b]];
+                        if (comp == read_comp) {
+                            continue;
+                        }
+                        gcsa::range_type alt = gcsa->LF(range, comp);
+                        if (!gcsa::Range::empty(alt)) {
+                            size_t sz = alt.second - alt.first;
+                            if (!found || sz > best_sz) {
+                                best = alt;
+                                best_sz = sz;
+                                found = true;
+                            }
+                        }
+                    }
+                    if (!found) {
+                        break;
+                    }
+                    next = best;
+                    ++mm;
+                    ++extended;
+                }
+                range = next;
+                matched = next;
+                cur = nc;
             }
-            if (*nc == 'N') {
-                break;
+            int64_t Lm = qe - cur;
+            if (Lm < p.min_prefix || gcsa::Range::empty(matched)) {
+                // re-seed one base past the break (STAR-style; exact -> no branching, safe: item 3)
+                qe = qe - 1;
+                ++reseeds;
+                continue;
             }
-            gcsa::range_type next = gcsa->LF(range, gcsa->alpha.char2comp[(unsigned char) (*nc)]);
-            if (gcsa::Range::empty(next)) {
-                break;
+            int64_t rb = cur - seq_begin, re = qe - seq_begin;
+            int64_t key = rb * (L + 1) + re;
+            if (seen.insert(key).second) {
+                mems.emplace_back(cur, qe, matched);
+                MaximalExactMatch& mem = mems.back();
+                mem.match_count = gcsa->count(matched);
+                mem.queried_count = mem.match_count;
+                mem.fragment = 0;
+                mem.primary = true;
+                if (p.hit_max > 0) {
+                    gcsa->locate(matched, p.hit_max, mem.nodes);
+                } else {
+                    gcsa->locate(matched, mem.nodes);
+                }
+                ++added;
             }
-            range = next;
-            matched = next;
-            cur = nc;
+            qe = cur; // continue the chain: next seed covers [seq_begin, cur)
         }
-        int64_t L = qe - cur;
-        if (L < p.min_prefix || gcsa::Range::empty(matched)) {
-            // no long-enough match ending at qe (e.g. a mismatch at qe-1); skip the blocking
-            // base and re-seed, mimicking STAR's advance past a mismatch.
-            qe = qe - 1;
-            continue;
-        }
-        mems.emplace_back(cur, qe, matched);
-        MaximalExactMatch& mem = mems.back();
-        mem.match_count = gcsa->count(matched);
-        mem.queried_count = mem.match_count;
-        mem.fragment = 0;
-        mem.primary = true;
-        if (p.hit_max > 0) {
-            gcsa->locate(matched, p.hit_max, mem.nodes);
-        } else {
-            gcsa->locate(matched, mem.nodes);
-        }
-        ++added;
-        qe = cur; // next seed covers [seq_begin, cur)
     }
     if (tr != nullptr) {
         tr->n_mmp_primary_seeds += (int64_t) added;
+        tr->n_mmp_seed_starts += starts;
+        tr->n_mmp_reseeds += reseeds;
+        tr->n_mmp_extended += extended;
     }
     return added;
 }

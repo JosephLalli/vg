@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH # for vg
 
-plan tests 28
+plan tests 31
 
 # Build a tiny graph + GCSA index (reuse the small xy fixtures used by 33_vg_mpmap.t).
 vg construct -m 1000 -a -r small/xy.fa -v small/xy2.vcf.gz >tr.vg
@@ -92,4 +92,12 @@ is "$(grep '"record_type":"read"' trs.prim.jsonl | head -n1 | jq 'has("n_mmp_pri
 vg mpmap -x trs.xg -d trs.dist -g trs.gcsa -B -n rna -f trs.fq --mmp-augment -t 1 >trs.aug.gamp 2>/dev/null
 is "$?" "0" "vg mpmap runs with --mmp-augment (MEM pool augmented with MMP seeds)"
 
-rm -f trs.vg trs.xg trs.gcsa trs.gcsa.lcp trs.dist trs.fq trs.gamp trs.jsonl trs.pe.fq trs.pe.gamp trs.pe.jsonl trs.mmp.jsonl trs.mmp.gamp trs.both.gamp trs.chain.gamp trs.motifs.tsv trs.motif.jsonl trs.motif.gamp trs.prim.jsonl trs.prim.gamp trs.aug.gamp
+# --- STAR first pass: multi-start (item 2), SJ output (item 7), sjdb score (item 6) ---
+vg mpmap -x trs.xg -d trs.dist -g trs.gcsa -B -n rna -f trs.fq --mmp-primary --mmp-start-lmax 12 --trace-splice-search trs.ms.jsonl -t 1 >trs.ms.gamp 2>/dev/null
+is "$(grep '"record_type":"read"' trs.ms.jsonl | head -n1 | jq 'has("n_mmp_seed_starts") and has("n_mmp_reseeds")')" "true" "read record carries multi-start / re-seed metrics (items 2, 3)"
+
+vg mpmap -x trs.xg -d trs.dist -g trs.gcsa -B -n rna -f trs.fq --sj-out trs.sj.tab --sjdb-score 2 -t 1 >trs.sj.gamp 2>/dev/null
+is "$?" "0" "vg mpmap runs with --sj-out and --sjdb-score (items 6, 7)"
+is "$(head -n1 trs.sj.tab | grep -c 'donor_node')" "1" "SJ output has the junction table header (item 7)"
+
+rm -f trs.vg trs.xg trs.gcsa trs.gcsa.lcp trs.dist trs.fq trs.gamp trs.jsonl trs.pe.fq trs.pe.gamp trs.pe.jsonl trs.mmp.jsonl trs.mmp.gamp trs.both.gamp trs.chain.gamp trs.motifs.tsv trs.motif.jsonl trs.motif.gamp trs.prim.jsonl trs.prim.gamp trs.aug.gamp trs.ms.jsonl trs.ms.gamp trs.sj.tab trs.sj.gamp

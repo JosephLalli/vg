@@ -20,6 +20,7 @@
 #include "../multipath_mapper.hpp"
 #include "../mpmap_trace.hpp"
 #include "../mpmap_mmp.hpp"
+#include "../mpmap_sj.hpp"
 #include "../mem_accelerator.hpp"
 #include "../surjector.hpp"
 #include "../multipath_alignment_emitter.hpp"
@@ -324,6 +325,14 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_SPLICE_MOTIF_SCORES = 1052;
     constexpr int OPT_MMP_PRIMARY = 1053;
     constexpr int OPT_MMP_AUGMENT = 1054;
+    constexpr int OPT_MMP_START_LMAX = 1055;
+    constexpr int OPT_MMP_START_LMAX_OVER_LREAD = 1056;
+    constexpr int OPT_MMP_SEED_PER_READ_MAX = 1057;
+    constexpr int OPT_MMP_EXTEND = 1058;
+    constexpr int OPT_MMP_EXTEND_MAX_MISMATCH = 1059;
+    constexpr int OPT_MMP_EXTEND_MAX_LENGTH = 1060;
+    constexpr int OPT_SJ_OUT = 1061;
+    constexpr int OPT_SJDB_SCORE = 1062;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -339,6 +348,8 @@ int main_mpmap(int argc, char** argv) {
     std::unordered_set<std::string> reference_assembly_names;
     string intron_distr_name;
     string splice_motif_scores_name;
+    string sj_out_name;
+    int sjdb_score = 0;
     string trace_splice_search_name;
     string trace_truth_junctions_name;
     // Experimental STAR-style MMP seed generator (hidden/advanced; see mpmap_mmp.hpp).
@@ -352,6 +363,12 @@ int main_mpmap(int argc, char** argv) {
     int64_t mmp_max_seeds = 4;
     bool mmp_primary = false;  // --mmp-primary: MMP replaces the MEM pool (pure MMP seeding)
     bool mmp_augment = false;  // --mmp-augment: MMP augments the MEM pool (MEM + MMP)
+    int64_t mmp_start_lmax = 50;
+    double mmp_start_lmax_over_lread = 1.0;
+    int64_t mmp_seed_per_read_max = 1000;
+    bool mmp_extend = false;
+    int64_t mmp_extend_max_mismatch = 1;
+    int64_t mmp_extend_max_length = 20;
     int match_score = default_match;
     int mismatch_score = default_mismatch;
     int gap_open_score = default_gap_open;
@@ -603,8 +620,16 @@ int main_mpmap(int argc, char** argv) {
             {"mmp-chain", no_argument, 0, OPT_MMP_CHAIN},
             {"mmp-max-seeds", required_argument, 0, OPT_MMP_MAX_SEEDS},
             {"splice-motif-scores", required_argument, 0, OPT_SPLICE_MOTIF_SCORES},
+            {"sj-out", required_argument, 0, OPT_SJ_OUT},
+            {"sjdb-score", required_argument, 0, OPT_SJDB_SCORE},
             {"mmp-primary", no_argument, 0, OPT_MMP_PRIMARY},
             {"mmp-augment", no_argument, 0, OPT_MMP_AUGMENT},
+            {"mmp-start-lmax", required_argument, 0, OPT_MMP_START_LMAX},
+            {"mmp-start-lmax-over-lread", required_argument, 0, OPT_MMP_START_LMAX_OVER_LREAD},
+            {"mmp-seed-per-read-max", required_argument, 0, OPT_MMP_SEED_PER_READ_MAX},
+            {"mmp-extend", no_argument, 0, OPT_MMP_EXTEND},
+            {"mmp-extend-max-mismatch", required_argument, 0, OPT_MMP_EXTEND_MAX_MISMATCH},
+            {"mmp-extend-max-length", required_argument, 0, OPT_MMP_EXTEND_MAX_LENGTH},
             {0, 0, 0, 0}
         };
 
@@ -1054,8 +1079,40 @@ int main_mpmap(int argc, char** argv) {
                 mmp_augment = true;
                 break;
 
+            case OPT_MMP_START_LMAX:
+                mmp_start_lmax = parse<int64_t>(optarg);
+                break;
+
+            case OPT_MMP_START_LMAX_OVER_LREAD:
+                mmp_start_lmax_over_lread = parse<double>(optarg);
+                break;
+
+            case OPT_MMP_SEED_PER_READ_MAX:
+                mmp_seed_per_read_max = parse<int64_t>(optarg);
+                break;
+
+            case OPT_MMP_EXTEND:
+                mmp_extend = true;
+                break;
+
+            case OPT_MMP_EXTEND_MAX_MISMATCH:
+                mmp_extend_max_mismatch = parse<int64_t>(optarg);
+                break;
+
+            case OPT_MMP_EXTEND_MAX_LENGTH:
+                mmp_extend_max_length = parse<int64_t>(optarg);
+                break;
+
             case OPT_SPLICE_MOTIF_SCORES:
                 splice_motif_scores_name = require_exists(logger, optarg);
+                break;
+
+            case OPT_SJ_OUT:
+                sj_out_name = ensure_writable(logger, optarg);
+                break;
+
+            case OPT_SJDB_SCORE:
+                sjdb_score = parse<int>(optarg);
                 break;
 
             case OPT_MMP_STRAND_MODE:
@@ -2023,6 +2080,10 @@ int main_mpmap(int argc, char** argv) {
         ifstream motif_strm(splice_motif_scores_name);
         multipath_mapper.set_splice_motifs(parse_splice_motif_file(logger, motif_strm));
     }
+    multipath_mapper.sjdb_score = sjdb_score;
+    if (!sj_out_name.empty()) {
+        mpmap_sj::open(sj_out_name);
+    }
     multipath_mapper.set_read_1_adapter(read_1_adapter);
     multipath_mapper.set_read_2_adapter(read_2_adapter);
 
@@ -2123,6 +2184,12 @@ int main_mpmap(int argc, char** argv) {
         mmp_params.max_seeds = mmp_max_seeds;
         mmp_params.augment = mmp_augment;
         mmp_params.primary = mmp_primary;
+        mmp_params.start_lmax = mmp_start_lmax;
+        mmp_params.start_lmax_over_lread = mmp_start_lmax_over_lread;
+        mmp_params.seed_per_read_max = mmp_seed_per_read_max;
+        mmp_params.extend = mmp_extend;
+        mmp_params.extend_max_mismatch = mmp_extend_max_mismatch;
+        mmp_params.extend_max_length = mmp_extend_max_length;
         mpmap_mmp::configure(mmp_params);
     }
 
@@ -2592,6 +2659,7 @@ int main_mpmap(int argc, char** argv) {
     // mpmap splice-search instrumentation: flush and close after all mapping
     // (including the ambiguous-pair replay) has finished.
     mpmap_trace::close();
+    mpmap_sj::close();
     delete emitter;
     cout.flush();
     

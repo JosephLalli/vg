@@ -26,6 +26,7 @@
 
 #include "mpmap_trace.hpp"
 #include "mpmap_mmp.hpp"
+#include "mpmap_sj.hpp"
 #include "multipath_alignment_graph.hpp"
 #include "kmp.hpp"
 #include "hash_map.hpp"
@@ -3508,13 +3509,47 @@ namespace vg {
 
         *anchor_multiplicity_out = min<double>(get_multiplicity(best_join->left_candidate_idx),
                                                get_multiplicity(best_join->right_candidate_idx));
+
+        // STAR sjdb (item 6) + SJ collection (item 7): the junction's donor/acceptor graph
+        // positions are the two sides flanking the intron in the connecting alignment; a junction
+        // is "annotated" when an existing graph edge already connects them.
+        bool sj_annotated = false;
+        pos_t sj_donor, sj_acceptor;
+        bool sj_have_junction = false;
+        {
+            const auto& jpath = best_join->connecting_aln.path();
+            if (best_join->splice_idx >= 1 && (int) best_join->splice_idx < jpath.mapping_size()) {
+                const auto& dp = jpath.mapping(best_join->splice_idx - 1).position();
+                const auto& ap = jpath.mapping(best_join->splice_idx).position();
+                sj_donor = make_pos_t(dp.node_id(), dp.is_reverse(), dp.offset());
+                sj_acceptor = make_pos_t(ap.node_id(), ap.is_reverse(), ap.offset());
+                sj_have_junction = true;
+                handle_t dh = xindex->get_handle(dp.node_id(), dp.is_reverse());
+                handle_t ah = xindex->get_handle(ap.node_id(), ap.is_reverse());
+                xindex->follow_edges(dh, false, [&](const handle_t& n) {
+                    if (n == ah) { sj_annotated = true; return false; }
+                    return true;
+                });
+            }
+        }
+        int32_t sjdb_bonus = (sj_annotated ? sjdb_score : 0);
+
         anchor_mp_aln = fuse_spliced_alignments(alignment,
                                                 consume_candidate(best_join->left_candidate_idx),
                                                 consume_candidate(best_join->right_candidate_idx),
                                                 alignment.sequence().size() - best_join->left_clip_length,
                                                 best_join->connecting_aln, best_join->splice_idx,
-                                                splice_stats.motif_score(best_join->motif_idx) + best_join->intron_score - no_splice_log_odds,
+                                                splice_stats.motif_score(best_join->motif_idx) + best_join->intron_score - no_splice_log_odds + sjdb_bonus,
                                                 *get_aligner(!alignment.quality().empty()), *xindex);
+
+        if (sj_have_junction && mpmap_sj::enabled()) {
+            // canonical (unoriented) donor+acceptor label, e.g. "GTAG" (get<0>=donor, get<1>=acceptor)
+            string sj_motif = splice_stats.unoriented_motif(best_join->motif_idx, false)
+                            + splice_stats.unoriented_motif(best_join->motif_idx, true);
+            mpmap_sj::record(id(sj_donor), offset(sj_donor), is_rev(sj_donor),
+                             id(sj_acceptor), offset(sj_acceptor), is_rev(sj_acceptor),
+                             sj_motif, sj_annotated, 0, *anchor_multiplicity_out);
+        }
         
 #ifdef debug_multipath_mapper
         cerr << "found significant splice join, fused mp aln:" << endl;

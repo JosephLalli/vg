@@ -246,6 +246,7 @@ void write(const SpliceSearchTrace& r) {
       << ",\"n_mmp_seeds_kept_short\":" << r.n_mmp_seeds_kept_short
       << ",\"n_mmp_rc_seeds\":" << r.n_mmp_rc_seeds
       << ",\"n_mmp_chain_seeds\":" << r.n_mmp_chain_seeds
+      << ",\"n_mmp_primary_seeds\":" << r.n_mmp_primary_seeds
       << ",\"time_mmp_seed_usec\":" << r.time_mmp_seed_usec;
 
     // nested arrays

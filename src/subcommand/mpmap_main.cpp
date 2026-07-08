@@ -322,6 +322,7 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_MMP_CHAIN = 1050;
     constexpr int OPT_MMP_MAX_SEEDS = 1051;
     constexpr int OPT_SPLICE_MOTIF_SCORES = 1052;
+    constexpr int OPT_MMP_PRIMARY = 1053;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -348,6 +349,7 @@ int main_mpmap(int argc, char** argv) {
     int64_t mmp_relax_accept = 0; // 0 = off; if >0, relaxed min soft-clip length for MMP candidates
     bool mmp_chain = false;
     int64_t mmp_max_seeds = 4;
+    bool mmp_primary = false;
     int match_score = default_match;
     int mismatch_score = default_mismatch;
     int gap_open_score = default_gap_open;
@@ -599,6 +601,7 @@ int main_mpmap(int argc, char** argv) {
             {"mmp-chain", no_argument, 0, OPT_MMP_CHAIN},
             {"mmp-max-seeds", required_argument, 0, OPT_MMP_MAX_SEEDS},
             {"splice-motif-scores", required_argument, 0, OPT_SPLICE_MOTIF_SCORES},
+            {"mmp-primary", no_argument, 0, OPT_MMP_PRIMARY},
             {0, 0, 0, 0}
         };
 
@@ -1038,6 +1041,10 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_MMP_MAX_SEEDS:
                 mmp_max_seeds = parse<int64_t>(optarg);
+                break;
+
+            case OPT_MMP_PRIMARY:
+                mmp_primary = true;
                 break;
 
             case OPT_SPLICE_MOTIF_SCORES:
@@ -2107,6 +2114,7 @@ int main_mpmap(int argc, char** argv) {
         mmp_params.relax_accept = mmp_relax_accept;
         mmp_params.chain = mmp_chain;
         mmp_params.max_seeds = mmp_max_seeds;
+        mmp_params.primary = mmp_primary;
         mpmap_mmp::configure(mmp_params);
     }
 

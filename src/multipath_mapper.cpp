@@ -340,6 +340,17 @@ namespace vg {
             mpmap_trace::ScopedTimer _t(_trace.time_find_mems_usec, _tracing);
             mems = find_mems(alignment, &mem_fanouts);
         }
+        // Optional MMP primary seeding: augment the MEM pool with a whole-read sequential MMP
+        // walk BEFORE clustering, so it can change the mapping rate (unlike the splice-rescue
+        // path, which only refines already-mapped reads). Done here, before record_fanouts, so
+        // the fanout map keys on the final mems. MMP seeds have no fanouts; pad mem_fanouts to
+        // keep record_fanouts' size assertion happy (empty deques => no fanout).
+        if (mpmap_mmp::primary_enabled()) {
+            mpmap_mmp::generate_primary_seeds(gcsa, alignment, mems);
+            if (!mem_fanouts.empty() && mem_fanouts.size() < mems.size()) {
+                mem_fanouts.resize(mems.size());
+            }
+        }
         unique_ptr<match_fanouts_t> fanouts(mem_fanouts.empty() ? nullptr :
                                             new match_fanouts_t(record_fanouts(mems, mem_fanouts)));
         if (_tracing) {
@@ -2251,6 +2262,18 @@ namespace vg {
             mpmap_trace::ScopedTimer _t(_rec1.time_find_mems_usec, _tracing_p);
             mems1 = find_mems(alignment1, &mem_fanouts1);
             mems2 = find_mems(alignment2, &mem_fanouts2);
+        }
+        // Optional MMP primary seeding for both mates (see multipath_map). Pad mem_fanouts to
+        // keep record_fanouts' size assertion happy; MMP seeds have no fanouts.
+        if (mpmap_mmp::primary_enabled()) {
+            mpmap_mmp::generate_primary_seeds(gcsa, alignment1, mems1);
+            mpmap_mmp::generate_primary_seeds(gcsa, alignment2, mems2);
+            if (!mem_fanouts1.empty() && mem_fanouts1.size() < mems1.size()) {
+                mem_fanouts1.resize(mems1.size());
+            }
+            if (!mem_fanouts2.empty() && mem_fanouts2.size() < mems2.size()) {
+                mem_fanouts2.resize(mems2.size());
+            }
         }
         unique_ptr<match_fanouts_t> fanouts1(mem_fanouts1.empty() ? nullptr
                                              : new match_fanouts_t(record_fanouts(mems1, mem_fanouts1)));

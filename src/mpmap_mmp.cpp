@@ -36,6 +36,10 @@ bool enabled() {
     return g_params.enabled;
 }
 
+bool primary_enabled() {
+    return g_params.primary;
+}
+
 const MmpParams& params() {
     return g_params;
 }
@@ -252,6 +256,71 @@ void generate_mmp_seeds(gcsa::GCSA* gcsa, gcsa::LCPArray* lcp,
         emit_chain(gcsa, xindex, rc_tail.begin(), rc_tail.end(), tail_begin,
                    /*anchor_is_end=*/false, /*rc=*/true, p, hit_candidates_out, tr);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Primary seeding: a whole-read sequential MMP walk that augments the MEM pool
+// ---------------------------------------------------------------------------
+
+size_t generate_primary_seeds(gcsa::GCSA* gcsa, const Alignment& alignment,
+                              std::vector<MaximalExactMatch>& mems) {
+    if (gcsa == nullptr) {
+        return 0;
+    }
+    const MmpParams& p = g_params;
+    const std::string& seq = alignment.sequence();
+    std::string::const_iterator seq_begin = seq.begin();
+    std::string::const_iterator qe = seq.end();
+    int64_t cap = p.primary_max_seeds > 0 ? p.primary_max_seeds : 16;
+
+    mpmap_trace::SpliceSearchTrace* tr = mpmap_trace::current();
+    int64_t _sink = 0;
+    mpmap_trace::ScopedTimer _timer(tr ? tr->time_mmp_seed_usec : _sink, tr != nullptr);
+
+    size_t added = 0;
+    for (int64_t d = 0; d < cap && (qe - seq_begin) >= p.min_prefix; ++d) {
+        // maximal exact suffix ending at qe (STAR's sequential MMP, right-to-left)
+        gcsa::range_type range = gcsa::range_type(0, gcsa->size() - 1);
+        gcsa::range_type matched = range;
+        std::string::const_iterator cur = qe;
+        while (cur > seq_begin) {
+            std::string::const_iterator nc = cur - 1;
+            if (*nc == 'N') {
+                break;
+            }
+            gcsa::range_type next = gcsa->LF(range, gcsa->alpha.char2comp[(unsigned char) (*nc)]);
+            if (gcsa::Range::empty(next)) {
+                break;
+            }
+            range = next;
+            matched = next;
+            cur = nc;
+        }
+        int64_t L = qe - cur;
+        if (L < p.min_prefix || gcsa::Range::empty(matched)) {
+            // no long-enough match ending at qe (e.g. a mismatch at qe-1); skip the blocking
+            // base and re-seed, mimicking STAR's advance past a mismatch.
+            qe = qe - 1;
+            continue;
+        }
+        mems.emplace_back(cur, qe, matched);
+        MaximalExactMatch& mem = mems.back();
+        mem.match_count = gcsa->count(matched);
+        mem.queried_count = mem.match_count;
+        mem.fragment = 0;
+        mem.primary = true;
+        if (p.hit_max > 0) {
+            gcsa->locate(matched, p.hit_max, mem.nodes);
+        } else {
+            gcsa->locate(matched, mem.nodes);
+        }
+        ++added;
+        qe = cur; // next seed covers [seq_begin, cur)
+    }
+    if (tr != nullptr) {
+        tr->n_mmp_primary_seeds += (int64_t) added;
+    }
+    return added;
 }
 
 } // namespace mpmap_mmp

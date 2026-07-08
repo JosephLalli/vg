@@ -59,6 +59,11 @@ struct MmpParams {
                                                  // accepted splices). 0 = no relaxation.
     bool chain = false;                          // sequential MMP chaining (STAR-style walk)
     int64_t max_seeds = 4;                       // max seeds per tail when chaining
+    bool primary = false;                        // use MMP as a PRIMARY seeding source: a
+                                                 // whole-read sequential MMP walk whose seeds
+                                                 // augment the MEM pool BEFORE clustering (can
+                                                 // change the mapping rate). Default off.
+    int64_t primary_max_seeds = 16;              // cap on seeds per read for the primary walk
 };
 
 /// Set the configuration once, single-threaded, from mpmap_main (before the parallel
@@ -67,6 +72,16 @@ void configure(const MmpParams& params);
 
 /// True if the MMP generator is enabled. One boolean load; safe on the hot path.
 bool enabled();
+
+/// True if MMP is configured as a primary seeding source (--mmp-primary).
+bool primary_enabled();
+
+/// Whole-read sequential MMP walk (STAR-style): append breakpoint-chained exact-match seeds,
+/// with located graph hits, to `mems` so they augment the MEM pool before clustering. Unlike
+/// the splice-rescue generator this produces MaximalExactMatch objects by value into `mems`
+/// (which owns them). Used only when primary seeding is enabled. Returns the number appended.
+size_t generate_primary_seeds(gcsa::GCSA* gcsa, const Alignment& alignment,
+                              std::vector<MaximalExactMatch>& mems);
 
 /// The active configuration (valid after configure()).
 const MmpParams& params();

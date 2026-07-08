@@ -19,6 +19,7 @@
 #include "../algorithms/pad_band.hpp"
 #include "../multipath_mapper.hpp"
 #include "../mpmap_trace.hpp"
+#include "../mpmap_mmp.hpp"
 #include "../mem_accelerator.hpp"
 #include "../surjector.hpp"
 #include "../multipath_alignment_emitter.hpp"
@@ -274,6 +275,12 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_LINEAR_INDEX = 1041;
     constexpr int OPT_TRACE_SPLICE_SEARCH = 1042;
     constexpr int OPT_TRACE_TRUTH_JUNCTIONS = 1043;
+    constexpr int OPT_MMP_SEED = 1044;
+    constexpr int OPT_MMP_MIN_PREFIX = 1045;
+    constexpr int OPT_MMP_MAX_INTRON = 1046;
+    constexpr int OPT_MMP_HIT_MAX = 1047;
+    constexpr int OPT_MMP_STRAND_MODE = 1048;
+    constexpr int OPT_MMP_RELAX_ACCEPT = 1049;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -290,6 +297,13 @@ int main_mpmap(int argc, char** argv) {
     string intron_distr_name;
     string trace_splice_search_name;
     string trace_truth_junctions_name;
+    // Experimental STAR-style MMP seed generator (hidden/advanced; see mpmap_mmp.hpp).
+    bool mmp_seed_enabled = false;
+    int64_t mmp_min_prefix = 12;
+    int64_t mmp_max_intron = (int64_t(1) << 18);
+    int64_t mmp_hit_max = 16;
+    int mmp_strand_mode = 0; // 0 = native, 1 = rc, 2 = both
+    int64_t mmp_relax_accept = 0; // 0 = off; if >0, relaxed min soft-clip length for MMP candidates
     int match_score = default_match;
     int mismatch_score = default_mismatch;
     int gap_open_score = default_gap_open;
@@ -532,6 +546,12 @@ int main_mpmap(int argc, char** argv) {
             {"no-output", no_argument, 0, OPT_NO_OUTPUT},
             {"trace-splice-search", required_argument, 0, OPT_TRACE_SPLICE_SEARCH},
             {"trace-truth-junctions", required_argument, 0, OPT_TRACE_TRUTH_JUNCTIONS},
+            {"mmp-seed", no_argument, 0, OPT_MMP_SEED},
+            {"mmp-min-prefix", required_argument, 0, OPT_MMP_MIN_PREFIX},
+            {"mmp-max-intron", required_argument, 0, OPT_MMP_MAX_INTRON},
+            {"mmp-hit-max", required_argument, 0, OPT_MMP_HIT_MAX},
+            {"mmp-strand-mode", required_argument, 0, OPT_MMP_STRAND_MODE},
+            {"mmp-relax-accept", required_argument, 0, OPT_MMP_RELAX_ACCEPT},
             {0, 0, 0, 0}
         };
 
@@ -943,6 +963,42 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_TRACE_TRUTH_JUNCTIONS:
                 trace_truth_junctions_name = require_exists(logger, optarg);
+                break;
+
+            case OPT_MMP_SEED:
+                mmp_seed_enabled = true;
+                break;
+
+            case OPT_MMP_MIN_PREFIX:
+                mmp_min_prefix = parse<int64_t>(optarg);
+                break;
+
+            case OPT_MMP_MAX_INTRON:
+                mmp_max_intron = parse<int64_t>(optarg);
+                break;
+
+            case OPT_MMP_HIT_MAX:
+                mmp_hit_max = parse<int64_t>(optarg);
+                break;
+
+            case OPT_MMP_RELAX_ACCEPT:
+                mmp_relax_accept = parse<int64_t>(optarg);
+                break;
+
+            case OPT_MMP_STRAND_MODE:
+                {
+                    string mode = optarg;
+                    if (mode == "native") {
+                        mmp_strand_mode = 0;
+                    } else if (mode == "rc") {
+                        mmp_strand_mode = 1;
+                    } else if (mode == "both") {
+                        mmp_strand_mode = 2;
+                    } else {
+                        logger.error() << "--mmp-strand-mode must be one of {native, rc, both}" << endl;
+                        exit(1);
+                    }
+                }
                 break;
 
             case 'h':
@@ -1973,6 +2029,20 @@ int main_mpmap(int argc, char** argv) {
             mpmap_trace::open_truth(trace_truth_junctions_name);
         }
         mpmap_trace::open(trace_splice_search_name);
+    }
+
+    // Experimental STAR-style MMP seed generator: configure once, before the parallel
+    // mapping loop. Disabled unless --mmp-seed was given, so default behavior is unchanged.
+    {
+        mpmap_mmp::MmpParams mmp_params;
+        mmp_params.enabled = mmp_seed_enabled;
+        mmp_params.min_prefix = mmp_min_prefix;
+        mmp_params.overlap_tol = max_softclip_overlap;
+        mmp_params.max_intron = mmp_max_intron;
+        mmp_params.hit_max = mmp_hit_max;
+        mmp_params.strand_mode = mmp_strand_mode;
+        mmp_params.relax_accept = mmp_relax_accept;
+        mpmap_mmp::configure(mmp_params);
     }
 
     // a buffer to hold read pairs that can't be unambiguously mapped before the fragment length distribution

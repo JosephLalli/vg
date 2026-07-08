@@ -192,6 +192,15 @@ struct SpliceSearchTrace {
     int64_t time_total_usec = 0;
     int64_t elapsed_usec_total = 0; // alias of time_total_usec, for convenience
 
+    // ---- experimental STAR-style MMP seed generator (Q1/Q5; --mmp-seed) ----
+    // Populated only when the MMP generator is enabled; all zero otherwise.
+    int64_t n_mmp_seeds_generated = 0;   // breakpoint-pinned MMP seeds surfaced this read
+    int64_t n_mmp_seed_hits = 0;         // total located graph hits those seeds added
+    int64_t n_mmp_seeds_new = 0;         // MMP seeds NOT already surfaced by the raw-MEM path
+    int64_t n_mmp_seeds_kept_short = 0;  // MMP seeds below min_softclip_length_for_splice
+                                         // (the length the raw-MEM path drops -> the recovery target)
+    int64_t time_mmp_seed_usec = 0;
+
     // ---- placement + nested detail ----
     std::vector<TracePosition> final_positions; // primary alignment, for truth join
     std::vector<SpliceAnchorTrace> anchors;

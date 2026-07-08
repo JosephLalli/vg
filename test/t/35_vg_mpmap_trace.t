@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH # for vg
 
-plan tests 16
+plan tests 20
 
 # Build a tiny graph + GCSA index (reuse the small xy fixtures used by 33_vg_mpmap.t).
 vg construct -m 1000 -a -r small/xy.fa -v small/xy2.vcf.gz >tr.vg
@@ -60,4 +60,14 @@ is "$(grep '"record_type":"read"' trs.pe.jsonl | jq -s 'all(.[]; .is_paired)')" 
 is "$(grep '"record_type":"read"' trs.pe.jsonl | jq -s 'all(.[]; (.time_find_mems_usec + .time_cluster_usec + .time_query_cluster_graphs_usec) > 0)')" "true" "paired records carry non-zero pre-clustering phase timers"
 is "$(grep '"record_type":"read"' trs.pe.jsonl | jq -s 'all(.[]; has("do_spliced_alignment"))')" "true" "paired records carry the splice-search outcome fields"
 
-rm -f trs.vg trs.xg trs.gcsa trs.gcsa.lcp trs.dist trs.fq trs.gamp trs.jsonl trs.pe.fq trs.pe.gamp trs.pe.jsonl
+# --- experimental STAR-style MMP seed generator (--mmp-seed): schema v2 + fields + isolation --
+rm -f trs.mmp.jsonl trs.mmp.gamp
+vg mpmap -x trs.xg -d trs.dist -g trs.gcsa -B -n rna -f trs.fq --mmp-seed --trace-splice-search trs.mmp.jsonl -t 1 >trs.mmp.gamp 2>/dev/null
+MREC=$(grep '"record_type":"read"' trs.mmp.jsonl | head -n1)
+
+is "$(head -n1 trs.mmp.jsonl | jq -r '.schema_version')" "2" "trace schema is version 2 (adds MMP seed fields)"
+is "$(echo "$MREC" | jq 'has("n_mmp_seeds_generated") and has("n_mmp_seeds_new") and has("n_mmp_seeds_kept_short") and has("time_mmp_seed_usec")')" "true" "read record carries the MMP seed metrics with --mmp-seed"
+is "$(echo "$SREC" | jq '.n_mmp_seeds_generated == 0 and .n_mmp_seed_hits == 0')" "true" "MMP counters are zero when --mmp-seed is not given (default-off isolation)"
+is "$(echo "$MREC" | jq '.do_spliced_alignment')" "true" "spliced alignment still runs with --mmp-seed enabled"
+
+rm -f trs.vg trs.xg trs.gcsa trs.gcsa.lcp trs.dist trs.fq trs.gamp trs.jsonl trs.pe.fq trs.pe.gamp trs.pe.jsonl trs.mmp.jsonl trs.mmp.gamp

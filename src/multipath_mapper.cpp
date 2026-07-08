@@ -25,6 +25,7 @@
 #include "multipath_mapper.hpp"
 
 #include "mpmap_trace.hpp"
+#include "mpmap_mmp.hpp"
 #include "multipath_alignment_graph.hpp"
 #include "kmp.hpp"
 #include "hash_map.hpp"
@@ -319,6 +320,13 @@ namespace vg {
             _trace.max_softclip_overlap = max_softclip_overlap;
             _trace_guard.reset(new mpmap_trace::TraceGuard(&_trace));
             _trace_total.reset(new mpmap_trace::ScopedTimer(_trace.time_total_usec, true));
+        }
+
+        // Reset the MMP synthesized-seed store for this read: bounds the thread_local
+        // deque and prevents seed pointers from a previous read from lingering. No-op
+        // (one boolean branch) when the MMP generator is disabled.
+        if (mpmap_mmp::enabled()) {
+            mpmap_mmp::reset_read_store();
         }
 
 #ifdef debug_multipath_mapper
@@ -2230,6 +2238,12 @@ namespace vg {
             _ptotal.reset(new mpmap_trace::ScopedTimer(_rec1.time_total_usec, true));
         }
 
+        // Reset the MMP synthesized-seed store for this pair (see multipath_map). No-op
+        // when the MMP generator is disabled.
+        if (mpmap_mmp::enabled()) {
+            mpmap_mmp::reset_read_store();
+        }
+
         // the fragment length distribution has been estimated, so we can do full-fledged paired mode
         vector<deque<pair<string::const_iterator, char>>> mem_fanouts1, mem_fanouts2;
         vector<MaximalExactMatch> mems1, mems2;
@@ -3544,9 +3558,18 @@ namespace vg {
             // TODO: repetitive with identify
             // check if the fully realized alignment still looks approx disjoint with the primary
             auto interval = aligned_interval(candidate);
+            // M7: for MMP-sourced candidates, optionally apply a relaxed minimum soft-clip
+            // length so short breakpoint-pinned overhangs can be accepted (--mmp-relax-accept).
+            // Raw candidates and any run without the relaxation keep min_softclip_length_for_splice.
+            int64_t eff_min_softclip = min_softclip_length_for_splice;
+            if (mpmap_mmp::enabled() && mpmap_mmp::params().relax_accept > 0
+                && get<2>(candidate_id) != nullptr
+                && mpmap_mmp::is_mmp_seed(get<2>(candidate_id))) {
+                eff_min_softclip = mpmap_mmp::params().relax_accept;
+            }
             if (searching_left) {
                 if (interval.second >= primary_interval.first + 2 * max_softclip_overlap ||
-                    min<int64_t>(interval.second, primary_interval.first) - interval.first < min_softclip_length_for_splice) {
+                    min<int64_t>(interval.second, primary_interval.first) - interval.first < eff_min_softclip) {
 #ifdef debug_multipath_mapper
                     cerr << "rejecting candidate because of overlap" << endl;
                     cerr << "\tprimary interval: " << primary_interval.first << " " << primary_interval.second << endl;
@@ -3557,7 +3580,7 @@ namespace vg {
             }
             else {
                 if (interval.first < primary_interval.second - 2 * max_softclip_overlap ||
-                    interval.second - max<int64_t>(interval.first, primary_interval.second) < min_softclip_length_for_splice) {
+                    interval.second - max<int64_t>(interval.first, primary_interval.second) < eff_min_softclip) {
 #ifdef debug_multipath_mapper
                     cerr << "rejecting candidate because of overlap" << endl;
                     cerr << "\tprimary interval: " << primary_interval.first << " " << primary_interval.second << endl;
@@ -4030,6 +4053,15 @@ namespace vg {
                     }
                 }
             }
+        }
+
+        // Experimental STAR-style MMP seed generation (off by default; see mpmap_mmp.hpp).
+        // When enabled, appends breakpoint-pinned seeds for this soft-clip tail alongside
+        // the raw-MEM hits above, feeding the same downstream splice-rescue scoring.
+        if (mpmap_mmp::enabled()) {
+            mpmap_mmp::generate_mmp_seeds(gcsa, lcp, accelerator, distance_index, xindex,
+                                          alignment, primary_interval, search_left,
+                                          hit_candidates_out);
         }
 #ifdef debug_multipath_mapper
         cerr << "found unclustered hit candidates:" << endl;

@@ -238,7 +238,13 @@ void write(const SpliceSearchTrace& r) {
       << ",\"time_splice_rescue_usec\":" << r.time_splice_rescue_usec
       << ",\"time_proactive_proxy_usec\":" << r.time_proactive_proxy_usec
       << ",\"time_total_usec\":" << r.time_total_usec
-      << ",\"elapsed_usec_total\":" << r.elapsed_usec_total;
+      << ",\"elapsed_usec_total\":" << r.elapsed_usec_total
+      // experimental MMP seed generator
+      << ",\"n_mmp_seeds_generated\":" << r.n_mmp_seeds_generated
+      << ",\"n_mmp_seed_hits\":" << r.n_mmp_seed_hits
+      << ",\"n_mmp_seeds_new\":" << r.n_mmp_seeds_new
+      << ",\"n_mmp_seeds_kept_short\":" << r.n_mmp_seeds_kept_short
+      << ",\"time_mmp_seed_usec\":" << r.time_mmp_seed_usec;
 
     // nested arrays
     o << ",\"final_positions\":"; emit_positions(o, r.final_positions);
@@ -287,7 +293,7 @@ void open(const std::string& path) {
     }
     // Leading header/schema record so the file is self-describing.
     g_out << "{\"record_type\":\"header\",\"schema\":\"mpmap_splice_search_trace\","
-          << "\"schema_version\":1,"
+          << "\"schema_version\":2,"
           << "\"note\":\"one record per read or mate; for paired reads the "
              "splice-search fields describe the joint pair-level splice search and "
              "may be duplicated across mates. Line order is thread-interleaved; sort "

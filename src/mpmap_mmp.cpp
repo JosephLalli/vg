@@ -102,6 +102,10 @@ static int64_t run_mmp(gcsa::GCSA* gcsa, handlegraph::PathPositionHandleGraph* x
     std::string::const_iterator cur = q_end;
     while (cur > q_begin) {
         std::string::const_iterator nc = cur - 1;
+        if ((int64_t)(q_end - nc) > (int64_t) gcsa->order()) {
+            break; // do not extend past the GCSA2 index order: beyond it the match is not
+                   // verifiable and could follow a walk the branching graph does not contain
+        }
         if (*nc == 'N') {
             break;
         }
@@ -289,6 +293,9 @@ size_t generate_primary_seeds(gcsa::GCSA* gcsa, const Alignment& alignment,
         std::string::const_iterator cur = qe;
         while (cur > seq_begin) {
             std::string::const_iterator nc = cur - 1;
+            if ((int64_t)(qe - nc) > (int64_t) gcsa->order()) {
+                break; // do not extend past the GCSA2 index order (see run_mmp)
+            }
             if (*nc == 'N') {
                 break;
             }

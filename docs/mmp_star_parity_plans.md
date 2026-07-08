@@ -1,5 +1,19 @@
 # MMP -> STAR Parity: Follow-up Implementation Plans
 
+## Benchmark graph (important)
+
+Performance metrics (mapping rate, seed counts, runtime) MUST be measured on the multipath
+PANGENOME graph `panSC/tests/fixtures/mhc/sampleA.spliced.{xg,gcsa}` (466 haplotypes, 353,766
+nodes / 488,650 edges) with a regenerated v4 distance index -- that is where MMP's whole-graph
+(haplotype/variant) seed search is actually exercised. The linear `nosplice` graph is a
+single-path reference used ONLY as a novel-junction-discovery control; on it "whole graph" is
+the reference, so it is NOT valid for MMP performance numbers. The numbers below are on the
+pangenome unless explicitly labelled "de-novo control".
+
+Also note: the whole-read MMP walk caps extension at `gcsa->order()` (like `find_mems`) so it
+cannot follow a walk the branching graph does not contain -- required for correctness on a
+pangenome GCSA.
+
 ## Implementation status (2026-07-08, branch `mmp-splice-seeding`)
 
 All three plans are IMPLEMENTED, flag-gated, default-off (default mapping output
@@ -27,19 +41,27 @@ byte-identical), and verified on the de-novo linear MHC graph. Tests: `35_vg_mpm
   (unlike the splice-rescue path, which only refines already-mapped reads):
     - `--mmp-augment`: MMP seeds are APPENDED to the MEM pool (MEM + MMP). Pads `mem_fanouts`
       to satisfy `record_fanouts`' size assert (MMP seeds have no fanouts). Can only add
-      mappings. 200k de-novo: mapped 32,947 -> 32,985 (+38), spliced 2,783 -> 3,276 (+17.7%),
-      runtime +9.9%.
+      mappings. 200k PANGENOME: mapped 34,006 -> 34,048 (+42), spliced 2,241 -> 2,706, runtime
+      +14% (1,020,216 whole-read seeds).
     - `--mmp-primary`: MMP seeds REPLACE the MEM pool -- `find_mems` is skipped and MMP is the
-      sole seeder (pure MMP seeding; tests MMP standalone, may map fewer than MEMs).
+      sole seeder. 200k PANGENOME: mapped 34,006 -> 31,844 (-6.4%) but 5x faster (9.7s vs 49.7s,
+      no find_mems) -- pure MMP is a leaner, sparser seeder.
   Trace field `n_mmp_primary_seeds`. Default-off byte-identical.
 
-Large-scale validation (200,000 de-novo reads, linear MHC graph, truth junctions):
-baseline vs `--mmp-seed --mmp-strand-mode both --mmp-chain`: spliced 2,783 -> 2,953
-(**+170, +6.1%**; RC right tail 103,374 seeds + chaining 162,817 seeds), runtime +3.4%
-(31.0s -> 32.1s, MMP work 2.2s). Correctness at scale: annotated-junction detection
-PRESERVED (368 -> 368) and genuine-geometry 97.9% -> 98.0% -- the +170 extra splices are
-valid structural splits at NOVEL (non-annotated) positions. No crash; all three features
-compose. Tests 35_vg_mpmap_trace.t 25/25, 33_vg_mpmap.t 25/25, default-off byte-identical.
+### Performance (200,000 reads, PANGENOME sampleA.spliced, 466-hap)
+baseline (MEM) mapped 34,006 / spliced 2,241 / 49.7s. `--mmp-augment` mapped 34,048 (+42) /
+spliced 2,706 / 56.7s. `--mmp-primary` mapped 31,844 (-6.4%) / 749 / 9.7s. `--mmp-seed
+--mmp-strand-mode both --mmp-chain` (splice rescue) mapped 34,006 (unchanged: rescue only
+refines mapped reads) / spliced 2,383 (+142) / 69.8s. Tests 35 (28/28) + 33 (25/25),
+default-off byte-identical.
+
+### Novel-junction-discovery CONTROL (de-novo linear graph; NOT a performance benchmark)
+On a splice-EDGE-FREE linear MHC graph (forces de-novo junction discovery), 200,000 reads,
+truth junctions: baseline vs `--mmp-seed --mmp-strand-mode both --mmp-chain`: spliced
+2,783 -> 2,953 (+170), annotated-junction detection PRESERVED (368 -> 368), genuine-geometry
+97.9% -> 98.0% -- the extra splices are valid structural splits at NOVEL positions. This uses
+the linear graph deliberately as a control (junctions absent from the graph); the linear graph
+must NOT be used for the mapping-rate / performance numbers above.
 
 
 

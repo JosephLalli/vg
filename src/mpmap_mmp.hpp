@@ -71,10 +71,8 @@ struct MmpParams {
     int64_t start_lmax = 50;                      // max spacing between seed-search start points
     double start_lmax_over_lread = 1.0;           // spacing cap as a fraction of read length
     int64_t seed_per_read_max = 1000;             // hard cap on primary seeds per read (STAR seedPerReadNmax)
-    // Mismatch handling (item 3): graph seed extension is off by default (explosion risk).
-    bool extend = false;                          // --mmp-extend: locate-then-graph-extend
-    int64_t extend_max_mismatch = 1;              // bound on mismatches during extension
-    int64_t extend_max_length = 20;               // bound on bases added per extension
+    // Mismatch/gap handling is delegated to multipath_align (STAR's extendAlign, done natively
+    // at the seed's true locus), so no seed-level extension parameter is needed.
 };
 
 /// Set the configuration once, single-threaded, from mpmap_main (before the parallel

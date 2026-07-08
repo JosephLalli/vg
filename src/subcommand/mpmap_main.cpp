@@ -328,9 +328,6 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_MMP_START_LMAX = 1055;
     constexpr int OPT_MMP_START_LMAX_OVER_LREAD = 1056;
     constexpr int OPT_MMP_SEED_PER_READ_MAX = 1057;
-    constexpr int OPT_MMP_EXTEND = 1058;
-    constexpr int OPT_MMP_EXTEND_MAX_MISMATCH = 1059;
-    constexpr int OPT_MMP_EXTEND_MAX_LENGTH = 1060;
     constexpr int OPT_SJ_OUT = 1061;
     constexpr int OPT_SJDB_SCORE = 1062;
     string matrix_file_name;
@@ -366,9 +363,6 @@ int main_mpmap(int argc, char** argv) {
     int64_t mmp_start_lmax = 50;
     double mmp_start_lmax_over_lread = 1.0;
     int64_t mmp_seed_per_read_max = 1000;
-    bool mmp_extend = false;
-    int64_t mmp_extend_max_mismatch = 1;
-    int64_t mmp_extend_max_length = 20;
     int match_score = default_match;
     int mismatch_score = default_mismatch;
     int gap_open_score = default_gap_open;
@@ -627,9 +621,6 @@ int main_mpmap(int argc, char** argv) {
             {"mmp-start-lmax", required_argument, 0, OPT_MMP_START_LMAX},
             {"mmp-start-lmax-over-lread", required_argument, 0, OPT_MMP_START_LMAX_OVER_LREAD},
             {"mmp-seed-per-read-max", required_argument, 0, OPT_MMP_SEED_PER_READ_MAX},
-            {"mmp-extend", no_argument, 0, OPT_MMP_EXTEND},
-            {"mmp-extend-max-mismatch", required_argument, 0, OPT_MMP_EXTEND_MAX_MISMATCH},
-            {"mmp-extend-max-length", required_argument, 0, OPT_MMP_EXTEND_MAX_LENGTH},
             {0, 0, 0, 0}
         };
 
@@ -1089,18 +1080,6 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_MMP_SEED_PER_READ_MAX:
                 mmp_seed_per_read_max = parse<int64_t>(optarg);
-                break;
-
-            case OPT_MMP_EXTEND:
-                mmp_extend = true;
-                break;
-
-            case OPT_MMP_EXTEND_MAX_MISMATCH:
-                mmp_extend_max_mismatch = parse<int64_t>(optarg);
-                break;
-
-            case OPT_MMP_EXTEND_MAX_LENGTH:
-                mmp_extend_max_length = parse<int64_t>(optarg);
                 break;
 
             case OPT_SPLICE_MOTIF_SCORES:
@@ -2187,9 +2166,6 @@ int main_mpmap(int argc, char** argv) {
         mmp_params.start_lmax = mmp_start_lmax;
         mmp_params.start_lmax_over_lread = mmp_start_lmax_over_lread;
         mmp_params.seed_per_read_max = mmp_seed_per_read_max;
-        mmp_params.extend = mmp_extend;
-        mmp_params.extend_max_mismatch = mmp_extend_max_mismatch;
-        mmp_params.extend_max_length = mmp_extend_max_length;
         mpmap_mmp::configure(mmp_params);
     }
 

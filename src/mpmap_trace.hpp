@@ -204,8 +204,6 @@ struct SpliceSearchTrace {
     int64_t n_mmp_primary_seeds = 0;     // whole-read MMP seeds added to the MEM pool (--mmp-primary)
     int64_t n_mmp_seed_starts = 0;       // multi-start anchors used by the whole-read walk (item 2)
     int64_t n_mmp_reseeds = 0;           // re-seeds across a mismatch/break in the whole-read walk (item 3)
-    int64_t n_mmp_extended = 0;          // seeds lengthened by graph mismatch extension (--mmp-extend)
-    int64_t time_mmp_extend_usec = 0;    // time spent in graph mismatch extension
     int64_t time_mmp_seed_usec = 0;
 
     // ---- placement + nested detail ----

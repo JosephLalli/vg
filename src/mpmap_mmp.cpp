@@ -297,17 +297,22 @@ size_t generate_primary_seeds(gcsa::GCSA* gcsa, const Alignment& alignment,
 
     std::unordered_set<int64_t> seen; // dedup by read interval (rb*(L+1)+re) across anchors
     size_t added = 0;
-    int64_t reseeds = 0, starts = 0, extended = 0;
+    int64_t reseeds = 0, starts = 0;
     for (int64_t anchor = L; anchor >= p.min_prefix && (int64_t) added < total_cap; anchor -= step) {
         ++starts;
         std::string::const_iterator qe = seq_begin + anchor;
         for (int64_t d = 0; d < per_chain && (qe - seq_begin) >= p.min_prefix
                             && (int64_t) added < total_cap; ++d) {
             // maximal exact suffix ending at qe (sequential MMP, right-to-left)
+            // maximal EXACT suffix ending at qe. Mismatches/gaps are NOT handled here: seeds
+            // stay exact and multipath_align does the mismatch/gap-tolerant extension at the
+            // seed's true locus (STAR's extendAlign, done natively by the aligner). A prior
+            // seed-level "substitute the read base and re-query" extension was removed -- it
+            // searched for a sequence the read does not contain, fabricating false anchors on
+            // paralogs and reducing mapped reads.
             gcsa::range_type range = gcsa::range_type(0, gcsa->size() - 1);
             gcsa::range_type matched = range;
             std::string::const_iterator cur = qe;
-            int64_t mm = 0; // mismatches spent extending this seed (item 3, --mmp-extend)
             while (cur > seq_begin) {
                 std::string::const_iterator nc = cur - 1;
                 if ((int64_t)(qe - nc) > (int64_t) gcsa->order()) {
@@ -318,41 +323,7 @@ size_t generate_primary_seeds(gcsa::GCSA* gcsa, const Alignment& alignment,
                 }
                 gcsa::range_type next = gcsa->LF(range, gcsa->alpha.char2comp[(unsigned char) (*nc)]);
                 if (gcsa::Range::empty(next)) {
-                    // Graph mismatch extension (--mmp-extend, item 3). GREEDY SINGLE-PATH: try
-                    // the other 3 bases, keep only the LARGEST-support continuation, spend one
-                    // mismatch. One O(1) 3-way probe per mismatch, then a single path continues
-                    // -- strictly linear, so it CANNOT branch-explode (the risk the plan warns
-                    // about). Bounded by extend_max_mismatch and extend_max_length.
-                    if (!p.extend || mm >= p.extend_max_mismatch
-                        || (int64_t)(qe - nc) > p.extend_max_length + p.min_prefix) {
-                        break;
-                    }
-                    auto read_comp = gcsa->alpha.char2comp[(unsigned char) (*nc)];
-                    gcsa::range_type best;
-                    bool found = false;
-                    size_t best_sz = 0;
-                    const char bases[4] = {'A', 'C', 'G', 'T'};
-                    for (int b = 0; b < 4; ++b) {
-                        auto comp = gcsa->alpha.char2comp[(unsigned char) bases[b]];
-                        if (comp == read_comp) {
-                            continue;
-                        }
-                        gcsa::range_type alt = gcsa->LF(range, comp);
-                        if (!gcsa::Range::empty(alt)) {
-                            size_t sz = alt.second - alt.first;
-                            if (!found || sz > best_sz) {
-                                best = alt;
-                                best_sz = sz;
-                                found = true;
-                            }
-                        }
-                    }
-                    if (!found) {
-                        break;
-                    }
-                    next = best;
-                    ++mm;
-                    ++extended;
+                    break;
                 }
                 range = next;
                 matched = next;
@@ -388,7 +359,6 @@ size_t generate_primary_seeds(gcsa::GCSA* gcsa, const Alignment& alignment,
         tr->n_mmp_primary_seeds += (int64_t) added;
         tr->n_mmp_seed_starts += starts;
         tr->n_mmp_reseeds += reseeds;
-        tr->n_mmp_extended += extended;
     }
     return added;
 }

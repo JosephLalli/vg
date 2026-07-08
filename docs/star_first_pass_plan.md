@@ -26,14 +26,17 @@ Benchmarks on the PANGENOME (sampleA.spliced, 466-hap).
   `--mmp-start-lmax-over-lread`, `--mmp-seed-per-read-max`. Closes the sensitivity gap:
   `--mmp-primary` mapped 3,243 (single-start) -> 3,305 (lmax 50) -> 3,407 (lmax 12) vs 3,461 MEM
   baseline on 20k; seeds/read 5.1 -> 11.7. Trace `n_mmp_seed_starts`.
-- **Item 3 (mismatch handling) -- DONE (default safe; --mmp-extend benchmarked, kept OFF).**
-  Default: clean re-seed across a break (exact, no branching). Optional `--mmp-extend` does a
-  greedy single-path GCSA continuation (bounded by `--mmp-extend-max-mismatch` /
-  `--mmp-extend-max-length`). BENCHMARK: it does NOT explode (4.8s vs 6.9s -- the greedy guard
-  works) but it DEGRADES mapping (3,407 -> 2,367) because substituting a base and re-looking-up
-  finds a CHANGED sequence, mis-anchoring reads. So it stays OFF; the correct approach
-  (locate-then-extend at the true locus with GaplessExtender, allowing SCORED mismatches) is the
-  reserved refinement. Trace `n_mmp_reseeds`, `n_mmp_extended`.
+- **Item 3 (mismatch handling) -- DONE (re-seed only; seed-level extension removed).**
+  Seeds stay EXACT; mismatches are handled by a clean re-seed across the break (STAR's re-seed).
+  Mismatch/gap-tolerant EXTENSION is delegated to `multipath_align`, which already extends seeds
+  into scored alignments allowing mismatches and gaps at the seed's true locus -- this IS STAR's
+  extendAlign, done natively by the aligner, so a seed-level extension is redundant. A prior
+  `--mmp-extend` that "substituted the read base and re-queried the index" was implemented and
+  benchmarked: it did not explode (the greedy single-path guard worked) but it DEGRADED mapping
+  (3,407 -> 2,367) because it searched for a sequence the read does not contain, fabricating false
+  anchors on paralogs (seeds/read rose 11.7 -> 16.1 while mapped fell). It was the wrong operation
+  -- STAR extends a LOCATED alignment keeping the read and scoring mismatches, never re-querying
+  the index -- so it was REMOVED. Trace `n_mmp_reseeds`.
 - **Item 6 (annotated-junction sjdb) -- DONE (partial, documented).** `--sjdb-score` adds a bonus
   to a spliced alignment's score when the junction reuses an existing graph edge (annotated); the
   annotated flag is computed by an edge-adjacency check. Caveat: the rescue path (where the hook

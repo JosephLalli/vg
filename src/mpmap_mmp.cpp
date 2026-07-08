@@ -13,6 +13,7 @@
 #include "mpmap_mmp.hpp"
 #include "mpmap_trace.hpp"  // measure the generator on the same trace record
 #include "position.hpp"     // make_pos_t
+#include "handle.hpp"       // PathPositionHandleGraph get_handle / get_length (RC relocation)
 #include <vg/vg.pb.h>       // Alignment (full definition, for .sequence())
 
 #include <deque>
@@ -66,6 +67,135 @@ bool is_mmp_seed(const MaximalExactMatch* mem) {
 // Seed generation
 // ---------------------------------------------------------------------------
 
+// Run one maximal-mappable backward-search over the query chars [q_begin, q_end) and, if
+// it yields a match >= min_prefix, synthesize a seed and emit its located hits into `out`.
+// Returns the matched length L (0 if nothing emitted).
+//
+// The query is either the forward read tail (rc=false) or its reverse complement
+// (rc=true). The seed's FORWARD read interval is anchored at `anchor`:
+//   - anchor_is_end=true  : read interval is [anchor - L, anchor)  (seed's right end fixed;
+//                           left tail -> junction-pinned, right tail -> distal-pinned).
+//   - anchor_is_end=false : read interval is [anchor, anchor + L)  (seed's left/breakpoint
+//                           end fixed; used for the RC right tail).
+// For rc=true the located positions are relocated onto the read's strand with
+// reverse_base_pos (sub-option a); the exact offset within a multi-node match is recovered
+// by the downstream subgraph re-alignment in query_cluster_graphs.
+static int64_t run_mmp(gcsa::GCSA* gcsa, handlegraph::PathPositionHandleGraph* xindex,
+                       std::string::const_iterator q_begin, std::string::const_iterator q_end,
+                       std::string::const_iterator anchor, bool anchor_is_end, bool rc,
+                       const MmpParams& p,
+                       std::vector<std::pair<const MaximalExactMatch*, pos_t>>& out,
+                       mpmap_trace::SpliceSearchTrace* tr) {
+    if (q_end - q_begin < p.min_prefix) {
+        return 0;
+    }
+    gcsa::range_type range = gcsa::range_type(0, gcsa->size() - 1);
+    gcsa::range_type matched = range;
+    std::string::const_iterator cur = q_end;
+    while (cur > q_begin) {
+        std::string::const_iterator nc = cur - 1;
+        if (*nc == 'N') {
+            break;
+        }
+        gcsa::range_type next = gcsa->LF(range, gcsa->alpha.char2comp[(unsigned char) (*nc)]);
+        if (gcsa::Range::empty(next)) {
+            break;
+        }
+        range = next;
+        matched = next;
+        cur = nc;
+    }
+    int64_t L = q_end - cur;
+    if (L < p.min_prefix || gcsa::Range::empty(matched)) {
+        return 0;
+    }
+
+    std::string::const_iterator rb, re;
+    if (anchor_is_end) {
+        re = anchor;
+        rb = re - L;
+    } else {
+        rb = anchor;
+        re = rb + L;
+    }
+
+    g_mem_store.emplace_back(rb, re, matched);
+    MaximalExactMatch& mem = g_mem_store.back();
+    g_mem_ptrs.insert(&mem);
+    mem.match_count = gcsa->count(matched);
+    mem.queried_count = mem.match_count;
+    mem.fragment = 0;
+    mem.primary = true;
+    if (p.hit_max > 0) {
+        gcsa->locate(matched, p.hit_max, mem.nodes);
+    } else {
+        gcsa->locate(matched, mem.nodes);
+    }
+    const MaximalExactMatch* mp = &mem;
+
+    int64_t new_hits = 0;
+    for (gcsa::node_type node : mem.nodes) {
+        pos_t pos = make_pos_t(node);
+        if (rc) {
+            size_t nlen = xindex->get_length(xindex->get_handle(id(pos)));
+            pos = reverse_base_pos(pos, nlen);
+        }
+        bool dup = false;
+        for (const auto& hc : out) {
+            if (hc.second == pos && hc.first->begin == mp->begin && hc.first->end == mp->end) {
+                dup = true;
+                break;
+            }
+        }
+        if (!dup) {
+            out.emplace_back(mp, pos);
+            ++new_hits;
+        }
+    }
+    if (tr != nullptr) {
+        tr->n_mmp_seeds_generated += 1;
+        tr->n_mmp_seed_hits += (int64_t) mem.nodes.size();
+        if (new_hits > 0) {
+            tr->n_mmp_seeds_new += 1;
+        }
+        if (L < tr->min_softclip_length_for_splice) {
+            tr->n_mmp_seeds_kept_short += 1;
+        }
+        if (rc) {
+            tr->n_mmp_rc_seeds += 1;
+        }
+    }
+    return L;
+}
+
+// Emit a chain of sequential MMP seeds over the query [q_begin, q_end): the first seed is
+// the maximal suffix ending at q_end; each subsequent seed re-seeds over the query prefix
+// that remains after removing the matched suffix (STAR's sequential MMP walk). With
+// chaining disabled this emits a single seed (identical to the pre-chain behavior). The
+// forward read anchor advances by the matched length each step (toward the read start for
+// forward tails; away from the breakpoint for the RC right tail).
+static void emit_chain(gcsa::GCSA* gcsa, handlegraph::PathPositionHandleGraph* xindex,
+                       std::string::const_iterator q_begin, std::string::const_iterator q_end,
+                       std::string::const_iterator anchor, bool anchor_is_end, bool rc,
+                       const MmpParams& p,
+                       std::vector<std::pair<const MaximalExactMatch*, pos_t>>& out,
+                       mpmap_trace::SpliceSearchTrace* tr) {
+    int64_t max_seeds = p.chain ? (p.max_seeds > 0 ? p.max_seeds : 1) : 1;
+    std::string::const_iterator qe = q_end;
+    std::string::const_iterator anc = anchor;
+    for (int64_t depth = 0; depth < max_seeds && (qe - q_begin) >= p.min_prefix; ++depth) {
+        int64_t L = run_mmp(gcsa, xindex, q_begin, qe, anc, anchor_is_end, rc, p, out, tr);
+        if (L == 0) {
+            break;
+        }
+        if (depth > 0 && tr != nullptr) {
+            tr->n_mmp_chain_seeds += 1; // seeds beyond the first
+        }
+        qe = qe - L;
+        anc = anchor_is_end ? (anc - L) : (anc + L);
+    }
+}
+
 void generate_mmp_seeds(gcsa::GCSA* gcsa, gcsa::LCPArray* lcp,
                         MEMAccelerator* accelerator,
                         SnarlDistanceIndex* distance_index,
@@ -75,56 +205,19 @@ void generate_mmp_seeds(gcsa::GCSA* gcsa, gcsa::LCPArray* lcp,
                         bool search_left,
                         std::vector<std::pair<const MaximalExactMatch*, pos_t>>& hit_candidates_out) {
     // Distance pruning is deferred to the downstream test_splice_candidates (which already
-    // prunes donor->acceptor pairs by minimum_distance), so the anchor position / distance
-    // index / graph are not needed to SURFACE the seed. lcp/accelerator are unused: we run
-    // a plain backward search from the full range (accelerate_mem_query only accelerates
-    // from the read start and is a BaseMapper method a free function cannot call).
+    // prunes donor->acceptor pairs by minimum_distance), so the distance index is not needed
+    // to SURFACE the seed. lcp/accelerator are unused: run_mmp does a plain backward search
+    // from the full range (accelerate_mem_query only accelerates from the read start and is
+    // a BaseMapper method a free function cannot call). xindex IS used for RC relocation.
     (void) lcp;
     (void) accelerator;
     (void) distance_index;
-    (void) xindex;
     if (gcsa == nullptr) {
         return;
     }
     const MmpParams& p = g_params;
-    if (p.strand_mode == 1) {
-        // "rc"-only mode is reserved for a future breakpoint-pinned right-tail path; the
-        // shipped right tail below is a forward (distal-pinned) search, so treat rc-only
-        // as "skip" to keep the flag meaning honest.
-        if (!search_left) {
-            return;
-        }
-    }
-
-    // GCSA2 is backward-search only, so both tails are found as the maximal exact SUFFIX
-    // ending at `curr_end`, extending left toward `tail_begin`. make_pos_t on the located
-    // node gives the position of the seed's first (leftmost) base on the correct strand,
-    // so no manual strand math is needed.
-    //  - LEFT tail  [0, primary_interval.first): the suffix ends AT the breakpoint, so the
-    //    seed is pinned at the junction (the acceptor-exon seed) -- STAR's re-seed.
-    //  - RIGHT tail [primary_interval.second, read_len): the suffix ends at read_end
-    //    (distal-pinned). A breakpoint-pinned right seed would need reverse-complement
-    //    querying with multi-node position relocation (locate returns only the match start);
-    //    that refinement is documented and reserved behind --mmp-strand-mode.
     const std::string& seq = alignment.sequence();
     std::string::const_iterator seq_begin = seq.begin();
-    std::string::const_iterator curr_end;
-    std::string::const_iterator tail_begin;
-    if (search_left) {
-        int64_t break_off = primary_interval.first;
-        if (break_off < p.min_prefix) {
-            return; // left tail shorter than the minimum seed we would keep
-        }
-        curr_end = seq_begin + break_off;
-        tail_begin = seq_begin;
-    } else {
-        int64_t tail_len = (int64_t) seq.size() - primary_interval.second;
-        if (tail_len < p.min_prefix) {
-            return; // right tail shorter than the minimum seed we would keep
-        }
-        curr_end = seq.end();
-        tail_begin = seq_begin + primary_interval.second;
-    }
 
     // Measure the generator on the current read's trace record (if tracing is active).
     mpmap_trace::SpliceSearchTrace* tr = mpmap_trace::current();
@@ -132,74 +225,32 @@ void generate_mmp_seeds(gcsa::GCSA* gcsa, gcsa::LCPArray* lcp,
     mpmap_trace::ScopedTimer _seed_timer(tr ? tr->time_mmp_seed_usec : _timer_sink,
                                          tr != nullptr);
 
-    gcsa::range_type range = gcsa::range_type(0, gcsa->size() - 1); // full BWT range
-    gcsa::range_type matched_range = range;
-    std::string::const_iterator cur = curr_end; // shrinks left as the exact match extends
-
-    while (cur > tail_begin) {
-        std::string::const_iterator next_char = cur - 1;
-        if (*next_char == 'N') {
-            break; // N is non-informative; do not extend through it
-        }
-        gcsa::range_type next = gcsa->LF(range, gcsa->alpha.char2comp[(unsigned char) (*next_char)]);
-        if (gcsa::Range::empty(next)) {
-            break; // cannot extend further: the match so far is maximal
-        }
-        range = next;
-        matched_range = next;
-        cur = next_char;
-    }
-
-    int64_t mmp_len = curr_end - cur;
-    if (mmp_len < p.min_prefix || gcsa::Range::empty(matched_range)) {
+    if (search_left) {
+        // LEFT tail [0, primary_interval.first): forward backward-search whose suffix ends
+        // AT the breakpoint, so the seed is junction-pinned (STAR's re-seed). make_pos_t
+        // gives the seed's begin position directly, both strands, no relocation.
+        std::string::const_iterator brk = seq_begin + primary_interval.first;
+        emit_chain(gcsa, xindex, seq_begin, brk, brk, /*anchor_is_end=*/true, /*rc=*/false,
+                   p, hit_candidates_out, tr);
         return;
     }
 
-    // Synthesize the seed in the pointer-stable store; locate its (capped) graph hits.
-    g_mem_store.emplace_back(cur, curr_end, matched_range);
-    MaximalExactMatch& mem = g_mem_store.back();
-    g_mem_ptrs.insert(&mem);  // mark as MMP-sourced for the M7 acceptance relaxation
-    mem.match_count = gcsa->count(matched_range);
-    mem.queried_count = mem.match_count;
-    mem.fragment = 0;
-    mem.primary = true;
-    if (p.hit_max > 0) {
-        gcsa->locate(matched_range, p.hit_max, mem.nodes);
-    } else {
-        gcsa->locate(matched_range, mem.nodes);
+    // RIGHT tail [primary_interval.second, read_len). --mmp-strand-mode selects the method:
+    //   0 native -> forward backward-search (distal-pinned: suffix ends at read_end)
+    //   1 rc     -> reverse-complement (breakpoint-pinned; positions relocated, sub-option a)
+    //   2 both   -> emit both
+    std::string::const_iterator tail_begin = seq_begin + primary_interval.second;
+    if (p.strand_mode == 0 || p.strand_mode == 2) {
+        emit_chain(gcsa, xindex, tail_begin, seq.end(), seq.end(), /*anchor_is_end=*/true,
+                   /*rc=*/false, p, hit_candidates_out, tr);
     }
-    const MaximalExactMatch* mem_ptr = &mem;
-
-    int64_t new_hits = 0;
-    for (gcsa::node_type gcsa_node : mem.nodes) {
-        pos_t pos = make_pos_t(gcsa_node);
-        // Semantic dedup: skip a seed that duplicates a hit already surfaced (by the
-        // raw-MEM path or an earlier MMP call) for the same read interval + graph position.
-        bool dup = false;
-        for (const auto& hc : hit_candidates_out) {
-            if (hc.second == pos && hc.first->begin == mem_ptr->begin
-                && hc.first->end == mem_ptr->end) {
-                dup = true;
-                break;
-            }
-        }
-        if (!dup) {
-            hit_candidates_out.emplace_back(mem_ptr, pos);
-            ++new_hits;
-        }
-    }
-
-    if (tr != nullptr) {
-        tr->n_mmp_seeds_generated += 1;
-        tr->n_mmp_seed_hits += (int64_t) mem.nodes.size();
-        if (new_hits > 0) {
-            // this seed surfaced a graph placement the raw-MEM path did not
-            tr->n_mmp_seeds_new += 1;
-        }
-        if (mmp_len < tr->min_softclip_length_for_splice) {
-            // a seed shorter than the length the raw-MEM path drops: the recovery target
-            tr->n_mmp_seeds_kept_short += 1;
-        }
+    if (p.strand_mode == 1 || p.strand_mode == 2) {
+        // Reverse-complement the tail so a backward search is breakpoint-pinned; the seed's
+        // forward read interval begins at the breakpoint (tail_begin). rc_tail is a temporary
+        // -- the synthesized MEM references the forward read iterators, not rc_tail.
+        std::string rc_tail = reverse_complement(std::string(tail_begin, seq.end()));
+        emit_chain(gcsa, xindex, rc_tail.begin(), rc_tail.end(), tail_begin,
+                   /*anchor_is_end=*/false, /*rc=*/true, p, hit_candidates_out, tr);
     }
 }
 

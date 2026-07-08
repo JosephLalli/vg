@@ -46,6 +46,44 @@ using namespace std;
 using namespace vg;
 using namespace vg::subcommand;
 
+// Parse a splice-motif scores file: each non-comment line is
+//   5'-dinucleotide 3'-dinucleotide frequency   (e.g. "GT AG 0.9924")
+// Lets the motif set / penalty tiers be calibrated (e.g. to STAR) and non-canonical
+// junctions be supported by listing their motifs. Frequencies may sum to < 1.
+vector<tuple<string, string, double>> parse_splice_motif_file(const Logger& logger, ifstream& strm) {
+    vector<tuple<string, string, double>> motifs;
+    string line;
+    while (getline(strm, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        istringstream ss(line);
+        string donor, acceptor;
+        double freq;
+        if (!(ss >> donor >> acceptor >> freq)) {
+            logger.error() << "Could not parse splice motif scores file line: " << line << endl;
+            exit(1);
+        }
+        motifs.emplace_back(donor, acceptor, freq);
+    }
+    if (motifs.empty()) {
+        logger.error() << "Splice motif scores file contained no motifs" << endl;
+        exit(1);
+    }
+    // SpliceStats requires the motif frequencies to sum to <= 1.0; a sum > 1.0 otherwise
+    // silently produces degenerate scores that reject every splice. Fail loudly instead.
+    double total = 0.0;
+    for (const auto& m : motifs) {
+        total += get<2>(m);
+    }
+    if (total > 1.0 + 1e-9) {
+        logger.error() << "Splice motif frequencies sum to " << total
+                       << " (> 1.0); they must sum to <= 1.0" << endl;
+        exit(1);
+    }
+    return motifs;
+}
+
 pair<vector<double>, vector<pair<double, double>>> parse_intron_distr_file(const Logger& logger, ifstream& strm) {
     
     auto bail = [&]() {
@@ -281,6 +319,9 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_MMP_HIT_MAX = 1047;
     constexpr int OPT_MMP_STRAND_MODE = 1048;
     constexpr int OPT_MMP_RELAX_ACCEPT = 1049;
+    constexpr int OPT_MMP_CHAIN = 1050;
+    constexpr int OPT_MMP_MAX_SEEDS = 1051;
+    constexpr int OPT_SPLICE_MOTIF_SCORES = 1052;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -295,6 +336,7 @@ int main_mpmap(int argc, char** argv) {
     string ref_paths_name;
     std::unordered_set<std::string> reference_assembly_names;
     string intron_distr_name;
+    string splice_motif_scores_name;
     string trace_splice_search_name;
     string trace_truth_junctions_name;
     // Experimental STAR-style MMP seed generator (hidden/advanced; see mpmap_mmp.hpp).
@@ -304,6 +346,8 @@ int main_mpmap(int argc, char** argv) {
     int64_t mmp_hit_max = 16;
     int mmp_strand_mode = 0; // 0 = native, 1 = rc, 2 = both
     int64_t mmp_relax_accept = 0; // 0 = off; if >0, relaxed min soft-clip length for MMP candidates
+    bool mmp_chain = false;
+    int64_t mmp_max_seeds = 4;
     int match_score = default_match;
     int mismatch_score = default_mismatch;
     int gap_open_score = default_gap_open;
@@ -552,6 +596,9 @@ int main_mpmap(int argc, char** argv) {
             {"mmp-hit-max", required_argument, 0, OPT_MMP_HIT_MAX},
             {"mmp-strand-mode", required_argument, 0, OPT_MMP_STRAND_MODE},
             {"mmp-relax-accept", required_argument, 0, OPT_MMP_RELAX_ACCEPT},
+            {"mmp-chain", no_argument, 0, OPT_MMP_CHAIN},
+            {"mmp-max-seeds", required_argument, 0, OPT_MMP_MAX_SEEDS},
+            {"splice-motif-scores", required_argument, 0, OPT_SPLICE_MOTIF_SCORES},
             {0, 0, 0, 0}
         };
 
@@ -983,6 +1030,18 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_MMP_RELAX_ACCEPT:
                 mmp_relax_accept = parse<int64_t>(optarg);
+                break;
+
+            case OPT_MMP_CHAIN:
+                mmp_chain = true;
+                break;
+
+            case OPT_MMP_MAX_SEEDS:
+                mmp_max_seeds = parse<int64_t>(optarg);
+                break;
+
+            case OPT_SPLICE_MOTIF_SCORES:
+                splice_motif_scores_name = require_exists(logger, optarg);
                 break;
 
             case OPT_MMP_STRAND_MODE:
@@ -1946,6 +2005,10 @@ int main_mpmap(int argc, char** argv) {
     if (!intron_distr_name.empty()) {
         multipath_mapper.set_intron_length_distribution(intron_mixture_weights, intron_component_params);
     }
+    if (!splice_motif_scores_name.empty()) {
+        ifstream motif_strm(splice_motif_scores_name);
+        multipath_mapper.set_splice_motifs(parse_splice_motif_file(logger, motif_strm));
+    }
     multipath_mapper.set_read_1_adapter(read_1_adapter);
     multipath_mapper.set_read_2_adapter(read_2_adapter);
 
@@ -2042,6 +2105,8 @@ int main_mpmap(int argc, char** argv) {
         mmp_params.hit_max = mmp_hit_max;
         mmp_params.strand_mode = mmp_strand_mode;
         mmp_params.relax_accept = mmp_relax_accept;
+        mmp_params.chain = mmp_chain;
+        mmp_params.max_seeds = mmp_max_seeds;
         mpmap_mmp::configure(mmp_params);
     }
 

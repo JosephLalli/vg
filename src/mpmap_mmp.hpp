@@ -57,6 +57,8 @@ struct MmpParams {
                                                  // to MMP-sourced splice candidates at acceptance
                                                  // (M7: converts short-overhang visibility into
                                                  // accepted splices). 0 = no relaxation.
+    bool chain = false;                          // sequential MMP chaining (STAR-style walk)
+    int64_t max_seeds = 4;                       // max seeds per tail when chaining
 };
 
 /// Set the configuration once, single-threaded, from mpmap_main (before the parallel

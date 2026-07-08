@@ -7924,6 +7924,10 @@ namespace vg {
         splice_stats.update_intron_length_distribution(intron_mixture_weights, intron_component_params, *get_aligner());
     }
 
+    void MultipathMapper::set_splice_motifs(const vector<tuple<string, string, double>>& motifs) {
+        splice_stats.update_motifs(motifs, *get_aligner());
+    }
+
     void MultipathMapper::set_max_merge_supression_length() {
         max_tail_merge_supress_length = ceil(double(get_regular_aligner()->scorer->match) / double(get_regular_aligner()->scorer->mismatch));
     }

@@ -2,6 +2,9 @@
 
 ## Implementation Status (2026-07-07, branch `mmp-splice-seeding`)
 
+Follow-up plans to close the remaining gaps to STAR (sequential chaining, motif scoring,
+reverse-complement right tail): see `mmp_star_parity_plans.md`.
+
 - **M1 Module + flag scaffold — DONE.** New TU `src/mpmap_mmp.{hpp,cpp}` (config gate,
   pointer-stable `thread_local deque` seed store, generator). Five hidden flags in
   `mpmap_main.cpp` (`--mmp-seed`, `--mmp-min-prefix`, `--mmp-max-intron`, `--mmp-hit-max`,

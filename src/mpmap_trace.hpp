@@ -199,6 +199,8 @@ struct SpliceSearchTrace {
     int64_t n_mmp_seeds_new = 0;         // MMP seeds NOT already surfaced by the raw-MEM path
     int64_t n_mmp_seeds_kept_short = 0;  // MMP seeds below min_softclip_length_for_splice
                                          // (the length the raw-MEM path drops -> the recovery target)
+    int64_t n_mmp_rc_seeds = 0;          // reverse-complement (breakpoint-pinned) right-tail seeds
+    int64_t n_mmp_chain_seeds = 0;       // seeds beyond the first in a sequential MMP chain
     int64_t time_mmp_seed_usec = 0;
 
     // ---- placement + nested detail ----

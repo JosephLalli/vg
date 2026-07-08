@@ -93,7 +93,12 @@ namespace vg {
         /// Use a non-default intron length distribution
         void set_intron_length_distribution(const vector<double>& intron_mixture_weights,
                                             const vector<pair<double, double>>& intron_component_params);
-        
+
+        /// Use a non-default splice-motif table: triples of (5' dinucleotide, 3' dinucleotide,
+        /// frequency). Lets the motif set / penalty tiers be calibrated (e.g. to STAR) and adds
+        /// support for non-canonical junctions by supplying their motifs.
+        void set_splice_motifs(const vector<tuple<string, string, double>>& motifs);
+
         /// Decide how long of a tail alignment we want before we allow its subpath to be merged
         void set_max_merge_supression_length();
         

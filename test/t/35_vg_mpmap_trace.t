@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH # for vg
 
-plan tests 20
+plan tests 25
 
 # Build a tiny graph + GCSA index (reuse the small xy fixtures used by 33_vg_mpmap.t).
 vg construct -m 1000 -a -r small/xy.fa -v small/xy2.vcf.gz >tr.vg
@@ -70,4 +70,18 @@ is "$(echo "$MREC" | jq 'has("n_mmp_seeds_generated") and has("n_mmp_seeds_new")
 is "$(echo "$SREC" | jq '.n_mmp_seeds_generated == 0 and .n_mmp_seed_hits == 0')" "true" "MMP counters are zero when --mmp-seed is not given (default-off isolation)"
 is "$(echo "$MREC" | jq '.do_spliced_alignment')" "true" "spliced alignment still runs with --mmp-seed enabled"
 
-rm -f trs.vg trs.xg trs.gcsa trs.gcsa.lcp trs.dist trs.fq trs.gamp trs.jsonl trs.pe.fq trs.pe.gamp trs.pe.jsonl trs.mmp.jsonl trs.mmp.gamp
+# --- C (RC right tail), A (sequential chaining), B (configurable motif scoring) ---
+is "$(echo "$MREC" | jq 'has("n_mmp_rc_seeds") and has("n_mmp_chain_seeds")')" "true" "read record carries RC and chain seed metrics"
+
+vg mpmap -x trs.xg -d trs.dist -g trs.gcsa -B -n rna -f trs.fq --mmp-seed --mmp-strand-mode both -t 1 >trs.both.gamp 2>/dev/null
+is "$?" "0" "vg mpmap runs with --mmp-strand-mode both (reverse-complement right-tail path)"
+
+vg mpmap -x trs.xg -d trs.dist -g trs.gcsa -B -n rna -f trs.fq --mmp-seed --mmp-chain --mmp-max-seeds 4 -t 1 >trs.chain.gamp 2>/dev/null
+is "$?" "0" "vg mpmap runs with --mmp-chain (sequential MMP chaining)"
+
+printf 'GT AG 0.9924\nGC AG 0.0069\nAT AC 0.0005\n' >trs.motifs.tsv
+vg mpmap -x trs.xg -d trs.dist -g trs.gcsa -B -n rna -f trs.fq --splice-motif-scores trs.motifs.tsv --trace-splice-search trs.motif.jsonl -t 1 >trs.motif.gamp 2>/dev/null
+is "$?" "0" "vg mpmap runs with --splice-motif-scores (configurable splice-motif table)"
+is "$(grep '"record_type":"read"' trs.motif.jsonl | head -n1 | jq '.do_spliced_alignment')" "true" "spliced alignment runs with a custom splice-motif table"
+
+rm -f trs.vg trs.xg trs.gcsa trs.gcsa.lcp trs.dist trs.fq trs.gamp trs.jsonl trs.pe.fq trs.pe.gamp trs.pe.jsonl trs.mmp.jsonl trs.mmp.gamp trs.both.gamp trs.chain.gamp trs.motifs.tsv trs.motif.jsonl trs.motif.gamp

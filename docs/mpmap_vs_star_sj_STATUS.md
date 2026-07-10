@@ -47,47 +47,62 @@ sequence into fresh nodes with no junction edges. Testing is on chr20.
   `design_pc.py`, `motif_curated.txt`, `sj_lin_*.tsv`. (Job scratch is ephemeral; the numbers below
   are the durable record.)
 
-## Current standing (2026-07-10, measured on `refpath`)
-Default config = MEM + relaxed-budget curated motifs (the recall-win config). `+splice-pairs` =
-adding experimental `--mmp-splice-pairs`.
-| Metric                        | mpmap (default) | mpmap (+splice-pairs) | STAR    | Goal status |
-|-------------------------------|-----------------|-----------------------|---------|-------------|
-| Mapping accuracy (≤100 bp)    | 93%             | 93%                   | ≈93%    | **MET**     |
-| Canonical SJ recall           | 12/15           | 12/15                 | 12/15   | **MET (tie)** |
-| Non-canonical SJ recall       | **14/30**       | 10/30                 | 10/30   | **MET (exceeds/tie)** |
-| Non-canonical SJ precision    | **2%** (20/1081) | **4%** (11/307)      | ~91%    | **NOT MET** |
-| MEM vs MMP (any metric)       | identical       | identical             | —       | seeding is not a lever |
+## Current standing (2026-07-10, `refpath`, donor-coordinate fix applied)
+The precision diagnostic (STEP 0) removed **two measurement artifacts** — a benchmark repeat
+confounder and a `--sj-out` donor-coordinate bug (both under **What is done**) — so the table below
+supersedes the earlier one. All cells are the same 3,600-read subset run through both tools; mpmap =
+MEM + relaxed-budget curated motifs. Authoritative substrate is the **clean genome-unique control**.
 
-`--mmp-splice-pairs` trades recall (14→10/30) for a negligible precision gain (2→4%) by cutting
-total junctions (1272→481) — the same pattern seen on the diagnostic graph; it is not a fix.
+| Metric                        | mpmap        | STAR         | Goal status |
+|-------------------------------|--------------|--------------|-------------|
+| Mapping accuracy (≤100 bp)    | 93%          | ≈93%         | **MET**     |
+| Canonical SJ recall           | 14/15        | 12/15        | **MET**     |
+| Non-canonical SJ recall       | 23/30        | 24/30        | **MET (~tie)** |
+| Non-canonical SJ precision    | **47%** (28/60) | 100% (24/24) | **NOT MET (residual)** |
+| MEM vs MMP (any metric)       | identical    | —            | seeding is not a lever |
+
+Repeat-heavy control (fixed binary), for reference: mpmap 20/30 recall, **2%** (22/891) precision;
+STAR 10/30, 91%. The low precision there is genuine repeat-mismap false junctions (reads' Alu/LINE
+halves anchoring elsewhere), not the algorithm — so the clean control is authoritative. Note the
+earlier "mpmap non-canonical recall 14/30 **exceeds** STAR 10/30" was a repeat-heavy-benchmark
+artifact; on clean data it is a near-tie (23 vs 24).
 
 ## What is done
-- **Relaxed splice-motif frequency budget** (committed `9baee7e`): treat per-motif frequencies as
-  independent log-odds priors (sum may exceed 1), so a motif file keeps GT-AG dominant while
-  admitting non-canonical motifs at a flat prior. Non-canonical recall **0/30 → 14/30 on `refpath`**
-  (17/30 on the diagnostic graph), both exceeding STAR's 10/30. The **recall half of the goal
-  (canonical + non-canonical) is MET.**
-- **`--sj-out max_overhang` populated** (was a hardcoded 0).
-- **`--mmp-splice-pairs`** experimental precision levers (partner-source restriction, stitch-
-  mismatch cap, partner-seed uniqueness, partner-alignment-mismatch cap). All default-off
-  byte-identical; **none recover precision.**
+- **Genome-unique positive control** (STEP 0, `design_pcU.py`): jellyfish k=50 canonical k-mer
+  uniqueness screen (98.6% of chr20 50-mers are unique) requiring every exon-flank 50-mer to occur
+  exactly once in CHM13 chr20 and every junction-spanning 50-mer zero times. Removes the repeat
+  confounder — ~92% of the pre-fix false non-canonical junctions were repeat-driven mismaps.
+- **`--sj-out` donor coordinate fix** (`multipath_mapper.cpp`): the donor was recorded at the START
+  of the last donor-side connecting-alignment block (`dp.offset()`) instead of the splice point (its
+  END). This shifted the reported donor ~-16 bp (sequence-independent: canonical GT-AG junctions,
+  which mpmap places correctly, all landed at -16 while STAR nailed them) and — because the block
+  length varied per read — split each true junction into ~7 phantom records. It corrupted **both**
+  precision (phantom false positives) and recall (true detections fell outside the ±15 scoring
+  window). Fixed to `dp.offset() + mapping_from_length(dm)`; donor offset now 0. Tests `33`+`35`
+  pass (56/56); only the `--sj-out` donor column changes, default-off byte-identical.
+- **Relaxed splice-motif frequency budget** (committed `9baee7e`): per-motif frequencies as
+  independent log-odds priors (sum may exceed 1). Non-canonical recall **0/30 → 23/30** on the clean
+  control, ~tying STAR's 24/30. The **recall half of the goal is MET.**
+- **`--sj-out max_overhang` populated**; **`--mmp-splice-pairs`** experimental precision levers
+  (all default-off byte-identical; none recover precision).
 
-## What is open — non-canonical PRECISION
-The only unmet metric. Four distinct levers plus overhang/read-count/multi-read filters all
-failed. Root-cause characterization (2026-07-10):
-1. **Benchmark confounder:** the designer exons are random CHM13 fragments containing repeats;
-   **73% of mpmap's false junctions are genome-wide, unique-read splices** from those repeats
-   (reads' Alu/LINE halves match elsewhere). A repeat-free control is needed to know the true gap.
-2. **Architectural difference:** STAR scores the whole read to its single best genomic window and
-   reports junctions only from there; mpmap's splice rescue anchors one exon and accepts a
-   locally-optimal soft-clip-tail partner. This is the leading hypothesis for the real gap.
+## What is open — non-canonical PRECISION (residual)
+The only unmet metric, now much smaller: mpmap 47% vs STAR 100% on the clean control. The residual
+false calls are **low-support (median 1 read) ±1-3 bp positional/motif duplicates of TRUE
+junctions** — 30/32 within 200 bp of a true site, 24/32 share both endpoints with a true junction
+but carry a shifted wrong-motif label. Filter behavior: a distance-collapse (STAR
+`outSJfilterDistToOtherSJmin` analogue, keep highest-support within W) lifts precision **47%→63%**
+at W≥8 but costs recall **23→19**; overhang and unique-read filters do not separate true from false
+(both mostly singletons, both high overhang). The residual gap is the **whole-read best-window**
+architectural difference: STAR reports one splice per read cluster; mpmap's splice rescue reports
+per-read positional/motif variants.
 
-## Next step
-`star_vs_mpmap_sj_precision_diagnostic_plan.md`: (0) rebuild a genome-unique control to remove the
-repeat confounder, then (1) a read-level head-to-head — for each mpmap false junction, classify how
-STAR suppressed the same reads (no-splice / spliced-true / multimapping / filtered). The resulting
-histogram decides whether the fix is a benchmark artifact, a portable `outSJfilter`, multimapping-
-aware reporting, or the whole-read best-window re-architecture. Only then do we implement.
+## Next step — STEP 1 (mechanism confirmation, in progress)
+`star_vs_mpmap_sj_precision_diagnostic_plan.md` STEP 1: add per-read `--sj-out` instrumentation
+(junction → supporting read names + per-read chosen vs best-alternative splice score), then a
+read-level STAR-vs-mpmap diff — for each mpmap false junction, classify how STAR handled the same
+reads (no-splice / spliced-true / multimapping / filtered). Confirms whole-read best-window before
+implementing it (or the portable distance-collapse filter).
 
 ## Flag & feature inventory (verified against `src/subcommand/mpmap_main.cpp`, 2026-07-10)
 All flags below are default-off; default mapping/splice output is byte-identical when unused.

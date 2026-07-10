@@ -145,10 +145,14 @@ void SpliceStats::init(const vector<tuple<string, string, double>>& motifs,
         }
         total_frequency += get<2>(record);
     }
-    // a little slop for numerical imprecision
+    // Frequencies need not sum to 1. When they exceed 1 we treat each per-motif
+    // value (still individually in [0,1], checked above) as an independent motif
+    // prior that is converted to a per-motif log-odds penalty below, rather than a
+    // normalized distribution. This lets a caller admit many non-canonical motifs
+    // at STAR-like priors without the shared-budget dilution that would otherwise
+    // push each below the splice-acceptance threshold. Warn once so it is not silent.
     if (total_frequency > 1.000001) {
-        cerr << "error:[SpliceStats] Frequency of splice motifs sum to " << total_frequency << ". Must be a number between 0 and 1." << endl;
-        exit(1);
+        cerr << "warning:[SpliceStats] Splice motif frequencies sum to " << total_frequency << " (> 1); treating them as independent per-motif priors, not a normalized distribution." << endl;
     }
     
     // in case we're resetting

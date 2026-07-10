@@ -44,6 +44,10 @@ bool primary_enabled() {
     return g_params.primary;
 }
 
+bool splice_pairs_enabled() {
+    return g_params.splice_pairs;
+}
+
 const MmpParams& params() {
     return g_params;
 }

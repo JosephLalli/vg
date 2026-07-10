@@ -2846,6 +2846,7 @@ namespace vg {
             pos_t search_pos;
             int64_t clip_length;
             int32_t untrimmed_score;
+            int64_t aln_mismatches = 0;  // substitution bases in this side's optimal alignment
         };
         
         /*
@@ -2872,7 +2873,11 @@ namespace vg {
                   estimated_intron_length(-1),
                   intron_score(0),
                   motif_idx(motif_idx),
-                  untrimmed_score(left.untrimmed_score + right.untrimmed_score)
+                  untrimmed_score(left.untrimmed_score + right.untrimmed_score),
+                  // the candidate (non-anchor) side is the potential paralog partner; count its
+                  // substitutions only (anchor is the primary alignment, whose read-error
+                  // mismatches over the full read are irrelevant to partner quality)
+                  partner_mismatches(left.candidate_idx < 0 ? right.aln_mismatches : left.aln_mismatches)
             {
                 // memoize the best score
                 max_score = pre_align_max_score(aligner, splice_stats, opt);
@@ -2887,6 +2892,7 @@ namespace vg {
             size_t right_candidate_idx;
             int32_t max_score;
             int32_t untrimmed_score;
+            int64_t partner_mismatches;  // substitutions in the anchor+candidate alignments
             size_t motif_idx;
             // intron stats start uninitialized until measuring length
             int32_t intron_score;
@@ -3175,7 +3181,14 @@ namespace vg {
         anchor_prejoin_sides.front().search_pos = get<0>(anchor_pos);
         anchor_prejoin_sides.front().clip_length = get<1>(anchor_pos);
         anchor_prejoin_sides.front().untrimmed_score = opt.score() - get<2>(anchor_pos);
-        
+        for (const auto& m : opt.path().mapping()) {
+            for (const auto& e : m.edit()) {
+                if (e.from_length() == e.to_length() && !e.sequence().empty()) {
+                    anchor_prejoin_sides.front().aln_mismatches += e.to_length();
+                }
+            }
+        }
+
 #ifdef debug_multipath_mapper
         cerr << "anchor stats:" << endl;
         cerr << "\tsearch pos " << anchor_prejoin_sides.front().search_pos << endl;
@@ -3224,7 +3237,14 @@ namespace vg {
             candidate_side.search_pos = get<0>(candidate_pos);
             candidate_side.clip_length = get<1>(candidate_pos);
             candidate_side.untrimmed_score = candidate_opt.score() - get<2>(candidate_pos);
-            
+            for (const auto& m : candidate_opt.path().mapping()) {
+                for (const auto& e : m.edit()) {
+                    if (e.from_length() == e.to_length() && !e.sequence().empty()) {
+                        candidate_side.aln_mismatches += e.to_length();
+                    }
+                }
+            }
+
 #ifdef debug_multipath_mapper
             cerr << "candidate stats:" << endl;
             cerr << "\tsearch pos " << candidate_side.search_pos << endl;
@@ -3455,12 +3475,27 @@ namespace vg {
             
             // the total score of extending the anchor by the candidate
             int32_t net_score = join.post_align_net_score(splice_stats, opt);
-            
+
 #ifdef debug_multipath_mapper
             cerr << "next candidate spliced alignment with score bound " << join.max_score << " has net score " << net_score << " after realigning read interval " << connect_begin << ":" << (connect_begin + connect_len) << ", must get " << no_splice_log_odds << " for significance"  << endl;
 #endif
-            
-            if (net_score > no_splice_log_odds) {
+
+            // STAR-style precision constraint (lever 2, mirrors alignSJstitchMismatchNmax for
+            // non-canonical): a non-canonical splice whose partner (candidate) exon alignment
+            // carries multiple substitutions is splicing into a paralog/repeat, not a real
+            // junction. Allow up to 1 substitution (read error); reject 2+. Canonical /
+            // semi-canonical (GT-AG / GC-AG / AT-AC) are exempt (STAR allows them unlimited
+            // mismatches). Gated on --mmp-splice-pairs so default behavior is unchanged.
+            bool passes_noncanon_mismatch = true;
+            if (mpmap_mmp::splice_pairs_enabled()) {
+                string jmotif = splice_stats.unoriented_motif(join.motif_idx, false)
+                              + splice_stats.unoriented_motif(join.motif_idx, true);
+                if (jmotif != "GTAG" && jmotif != "GCAG" && jmotif != "ATAC") {
+                    passes_noncanon_mismatch = (join.partner_mismatches <= 1);
+                }
+            }
+
+            if (net_score > no_splice_log_odds && passes_noncanon_mismatch) {
                 // this is a statistically significant spliced alignment
                 
                 // find which mapping is immediately after the splice
@@ -3546,9 +3581,15 @@ namespace vg {
             // canonical (unoriented) donor+acceptor label, e.g. "GTAG" (get<0>=donor, get<1>=acceptor)
             string sj_motif = splice_stats.unoriented_motif(best_join->motif_idx, false)
                             + splice_stats.unoriented_motif(best_join->motif_idx, true);
+            // STAR-style overhang: the shorter aligned read block flanking the junction
+            // (mirrors STAR's --outSJfilterOverhangMin). The read is partitioned at the splice
+            // into a donor-side block (left_clip_length) and an acceptor-side block
+            // (right_clip_length); these sum to the read length, so their min is the length of
+            // the shorter flanking block. A spurious splice has a short block on one side.
+            int64_t sj_overhang = min(best_join->left_clip_length, best_join->right_clip_length);
             mpmap_sj::record(id(sj_donor), offset(sj_donor), is_rev(sj_donor),
                              id(sj_acceptor), offset(sj_acceptor), is_rev(sj_acceptor),
-                             sj_motif, sj_annotated, 0, *anchor_multiplicity_out);
+                             sj_motif, sj_annotated, sj_overhang, *anchor_multiplicity_out);
         }
         
 #ifdef debug_multipath_mapper
@@ -3998,8 +4039,13 @@ namespace vg {
         cerr << "looking for unaligned splice candidates" << endl;
 #endif
         
-        for (size_t i = 0; i < cluster_graphs.size(); ++i) {
-            
+        // Seed-pair-driven mode (--mmp-splice-pairs): restrict splice partners to breakpoint-pinned
+        // MMP seed hits (generated below), skipping the raw cluster and MEM-hit candidate pools.
+        // Those pools are the source of the motif-density-driven spurious non-canonical junctions
+        // that read-level filters cannot separate; a seed-forced partner mirrors STAR's precision.
+        bool only_seed_partners = mpmap_mmp::splice_pairs_enabled();
+        for (size_t i = 0; !only_seed_partners && i < cluster_graphs.size(); ++i) {
+
             if (clusters_already_used.count(i) || get<1>(cluster_graphs[i]).first.empty()) {
                 continue;
             }
@@ -4087,11 +4133,11 @@ namespace vg {
         }
         
         // TODO: tie in mem fanouts?
-        
-        for (size_t i = 0; i < mems.size(); ++i) {
-            
+
+        for (size_t i = 0; !only_seed_partners && i < mems.size(); ++i) {
+
             const auto& mem = mems[i];
-            
+
             if (mem.length() < min_softclip_length_for_splice) {
                 continue;
             }
@@ -4132,6 +4178,26 @@ namespace vg {
             mpmap_mmp::generate_mmp_seeds(gcsa, lcp, accelerator, distance_index, xindex,
                                           alignment, primary_interval, search_left,
                                           hit_candidates_out);
+        }
+
+        // Seed-pair mode (lever 1: partner uniqueness): drop multi-mapping partner seeds. A tail
+        // seed that locates to several graph positions is a paralog/repeat; splicing to it produces
+        // the clean paralog-partner false junctions that no downstream filter separates. STAR
+        // sidesteps this by scoring the whole read to its single best window, which loses to a
+        // paralog; requiring a (near-)unique partner seed approximates that at the candidate level.
+        if (only_seed_partners && !hit_candidates_out.empty()) {
+            std::unordered_map<const MaximalExactMatch*, int> partner_hit_count;
+            for (const auto& hc : hit_candidates_out) {
+                ++partner_hit_count[hc.first];
+            }
+            vector<pair<const MaximalExactMatch*, pos_t>> unique_partners;
+            unique_partners.reserve(hit_candidates_out.size());
+            for (const auto& hc : hit_candidates_out) {
+                if (partner_hit_count[hc.first] <= 1) {  // require a uniquely-locating partner seed
+                    unique_partners.push_back(hc);
+                }
+            }
+            hit_candidates_out = std::move(unique_partners);
         }
 #ifdef debug_multipath_mapper
         cerr << "found unclustered hit candidates:" << endl;

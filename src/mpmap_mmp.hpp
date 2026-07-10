@@ -77,6 +77,12 @@ struct MmpParams {
     int64_t seed_per_read_max = 1000;             // hard cap on primary seeds per read (STAR seedPerReadNmax)
     // Mismatch/gap handling is delegated to multipath_align (STAR's extendAlign, done natively
     // at the seed's true locus), so no seed-level extension parameter is needed.
+    // Seed-pair-driven splice candidate generation: propose a splice ONLY where the read's own
+    // split seeds (anchor + a located MMP partner seed) force it, rather than pairing motif
+    // positions against the raw cluster candidate pool. Restricting splice partners to seed
+    // hits removes the motif-density-driven spurious non-canonical junctions that read-level
+    // filters cannot separate (STAR-style precision). Default off.
+    bool splice_pairs = false;
 };
 
 /// Set the configuration once, single-threaded, from mpmap_main (before the parallel
@@ -92,6 +98,11 @@ bool augment_enabled();
 /// True if whole-read MMP seeds should REPLACE the MEM pool (--mmp-primary); find_mems is
 /// then skipped and MMP is the sole seeder.
 bool primary_enabled();
+
+/// True if splice candidates should be restricted to seed-pair-forced breakpoints
+/// (--mmp-splice-pairs). When on, the splice-rescue partner set is limited to located MMP
+/// seed hits instead of the raw cluster candidate pool.
+bool splice_pairs_enabled();
 
 /// Whole-read sequential MMP walk (STAR-style): append breakpoint-chained exact-match seeds,
 /// with located graph hits, to `mems` so they augment (or, in replace mode, form) the seed

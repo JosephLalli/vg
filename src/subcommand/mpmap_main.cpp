@@ -71,16 +71,19 @@ vector<tuple<string, string, double>> parse_splice_motif_file(const Logger& logg
         logger.error() << "Splice motif scores file contained no motifs" << endl;
         exit(1);
     }
-    // SpliceStats requires the motif frequencies to sum to <= 1.0; a sum > 1.0 otherwise
-    // silently produces degenerate scores that reject every splice. Fail loudly instead.
+    // Frequencies need not sum to <= 1.0. Each motif is scored independently by
+    // SpliceStats as log(freq)/log_base, and the no-splice baseline is a separate
+    // configurable log-odds, so the sum never enters the splice-acceptance decision.
+    // A sum > 1.0 therefore just means the values are being used as independent
+    // per-motif priors (STAR-style: admit many non-canonical motifs at a flat prior)
+    // rather than a normalized distribution. Warn instead of failing.
     double total = 0.0;
     for (const auto& m : motifs) {
         total += get<2>(m);
     }
     if (total > 1.0 + 1e-9) {
-        logger.error() << "Splice motif frequencies sum to " << total
-                       << " (> 1.0); they must sum to <= 1.0" << endl;
-        exit(1);
+        logger.warn() << "Splice motif frequencies sum to " << total
+                      << " (> 1.0); treating them as independent per-motif priors, not a normalized distribution" << endl;
     }
     return motifs;
 }
@@ -328,6 +331,7 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_MMP_START_LMAX = 1055;
     constexpr int OPT_MMP_START_LMAX_OVER_LREAD = 1056;
     constexpr int OPT_MMP_SEED_PER_READ_MAX = 1057;
+    constexpr int OPT_MMP_SPLICE_PAIRS = 1058;
     constexpr int OPT_SJ_OUT = 1061;
     constexpr int OPT_SJDB_SCORE = 1062;
     string matrix_file_name;
@@ -360,6 +364,7 @@ int main_mpmap(int argc, char** argv) {
     int64_t mmp_max_seeds = 4;
     bool mmp_primary = false;  // --mmp-primary: MMP replaces the MEM pool (pure MMP seeding)
     bool mmp_augment = false;  // --mmp-augment: MMP augments the MEM pool (MEM + MMP)
+    bool mmp_splice_pairs = false;  // --mmp-splice-pairs: restrict splice partners to seed hits
     int64_t mmp_start_lmax = 6;
     double mmp_start_lmax_over_lread = 1.0;
     int64_t mmp_seed_per_read_max = 1000;
@@ -617,6 +622,7 @@ int main_mpmap(int argc, char** argv) {
             {"sj-out", required_argument, 0, OPT_SJ_OUT},
             {"sjdb-score", required_argument, 0, OPT_SJDB_SCORE},
             {"mmp-primary", no_argument, 0, OPT_MMP_PRIMARY},
+            {"mmp-splice-pairs", no_argument, 0, OPT_MMP_SPLICE_PAIRS},
             {"mmp-augment", no_argument, 0, OPT_MMP_AUGMENT},
             {"mmp-start-lmax", required_argument, 0, OPT_MMP_START_LMAX},
             {"mmp-start-lmax-over-lread", required_argument, 0, OPT_MMP_START_LMAX_OVER_LREAD},
@@ -1064,6 +1070,10 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_MMP_PRIMARY:
                 mmp_primary = true;
+                break;
+
+            case OPT_MMP_SPLICE_PAIRS:
+                mmp_splice_pairs = true;
                 break;
 
             case OPT_MMP_AUGMENT:
@@ -2152,7 +2162,7 @@ int main_mpmap(int argc, char** argv) {
     // mapping loop. Disabled unless --mmp-seed was given, so default behavior is unchanged.
     {
         mpmap_mmp::MmpParams mmp_params;
-        mmp_params.enabled = mmp_seed_enabled;
+        mmp_params.enabled = mmp_seed_enabled || mmp_splice_pairs;  // seed-pair splice needs MMP seeds
         mmp_params.min_prefix = mmp_min_prefix;
         mmp_params.overlap_tol = max_softclip_overlap;
         mmp_params.max_intron = mmp_max_intron;
@@ -2163,6 +2173,7 @@ int main_mpmap(int argc, char** argv) {
         mmp_params.max_seeds = mmp_max_seeds;
         mmp_params.augment = mmp_augment;
         mmp_params.primary = mmp_primary;
+        mmp_params.splice_pairs = mmp_splice_pairs;
         mmp_params.start_lmax = mmp_start_lmax;
         mmp_params.start_lmax_over_lread = mmp_start_lmax_over_lread;
         mmp_params.seed_per_read_max = mmp_seed_per_read_max;

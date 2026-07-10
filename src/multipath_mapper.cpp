@@ -3456,7 +3456,7 @@ namespace vg {
         trace_add_splice_edges((int64_t) putative_joins.size());
         make_heap(putative_joins.begin(), putative_joins.end(), score_bound_comp);
         
-        while (!putative_joins.empty() && putative_joins.front().max_score >= best_net_score) {
+        while (!putative_joins.empty() && (splice_eval_all || putative_joins.front().max_score >= best_net_score)) {
             
             auto& join = putative_joins.front();
             
@@ -3495,46 +3495,46 @@ namespace vg {
                 }
             }
 
-            if (net_score > no_splice_log_odds && passes_noncanon_mismatch) {
-                // this is a statistically significant spliced alignment
-                
-                // find which mapping is immediately after the splice
+            // Locate the mapping immediately after the splice and translate to original IDs. Done for
+            // every ALIGNED candidate (guarded so a candidate whose alignment did not cross the splice
+            // node is skipped) so that --sj-candidates can dump the full generated set, including
+            // sub-threshold and (under --splice-eval-all) otherwise-pruned candidates. For gate-passing
+            // candidates this is identical to the previous behavior.
+            bool splice_located = false;
+            {
                 auto path = join.connecting_aln.mutable_path();
                 auto splice_id = join.joined_graph.get_id(join.joined_graph.right_splice_node());
                 join.splice_idx = 1;
-                while (path->mapping(join.splice_idx).position().node_id() != splice_id) {
+                while ((int) join.splice_idx < path->mapping_size()
+                       && path->mapping(join.splice_idx).position().node_id() != splice_id) {
                     ++join.splice_idx;
                 }
-                
-                // and translate into the original ID space
-                join.joined_graph.translate_node_ids(*path);
-
-                // Phase-1 diagnostic (--sj-candidates): dump every gate-passing candidate join with
-                // its score components, so splice mis-placement can be analyzed (does the off-site win
-                // on connecting-alignment score = context, or on motif score = equal-prior tie?).
-                if (mpmap_sj::candidates_enabled() && join.splice_idx >= 1
-                    && (int) join.splice_idx < path->mapping_size()) {
-                    const auto& cdm = path->mapping(join.splice_idx - 1);
-                    const auto& cdp = cdm.position();
-                    const auto& cap = path->mapping(join.splice_idx).position();
-                    string cmotif = splice_stats.unoriented_motif(join.motif_idx, false)
-                                  + splice_stats.unoriented_motif(join.motif_idx, true);
-                    mpmap_sj::record_candidate(alignment.name(),
-                        cdp.node_id(), cdp.offset() + mapping_from_length(cdm), cdp.is_reverse(),
-                        cap.node_id(), cap.offset(), cap.is_reverse(),
-                        cmotif, splice_stats.motif_score(join.motif_idx),
-                        join.connecting_aln.score(), join.intron_score, net_score);
+                splice_located = (join.splice_idx >= 1 && (int) join.splice_idx < path->mapping_size());
+                if (splice_located) {
+                    join.joined_graph.translate_node_ids(*path);
+                    if (mpmap_sj::candidates_enabled()) {
+                        const auto& cdm = path->mapping(join.splice_idx - 1);
+                        const auto& cdp = cdm.position();
+                        const auto& cap = path->mapping(join.splice_idx).position();
+                        string cmotif = splice_stats.unoriented_motif(join.motif_idx, false)
+                                      + splice_stats.unoriented_motif(join.motif_idx, true);
+                        mpmap_sj::record_candidate(alignment.name(),
+                            cdp.node_id(), cdp.offset() + mapping_from_length(cdm), cdp.is_reverse(),
+                            cap.node_id(), cap.offset(), cap.is_reverse(),
+                            cmotif, splice_stats.motif_score(join.motif_idx),
+                            join.connecting_aln.score(), join.intron_score, net_score);
+                    }
                 }
+            }
 
+            if (splice_located && net_score > no_splice_log_odds && passes_noncanon_mismatch) {
+                // this is a statistically significant spliced alignment
                 if (net_score > best_net_score ||
                     (net_score == best_net_score && join.estimated_intron_length < best_intron_length)) {
-#ifdef debug_multipath_mapper
-                    cerr << "this score from motif " << join.motif_idx << " and splice site " << path->mapping(join.splice_idx - 1).position().node_id() << (path->mapping(join.splice_idx - 1).position().is_reverse() ? "-" : "+") << " -> " << path->mapping(join.splice_idx).position().node_id() << (path->mapping(join.splice_idx).position().is_reverse() ? "-" : "+") <<  " is the best so far, beating previous best " << best_net_score << endl;
-#endif
                     best_intron_length = join.estimated_intron_length;
                     best_net_score = net_score;
                     best_join = unique_ptr<PutativeJoin>(new PutativeJoin(std::move(join)));
-                    
+
                 }
             }
             

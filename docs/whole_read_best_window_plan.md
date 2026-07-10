@@ -97,7 +97,41 @@ motif_score, connect_score, intron_score, net_score) and analyzed the clean cont
 - Instrumentation added (default-off, tests pass): `--sj-candidates FILE`, plus `--max-splice-overhang N`
   (Phase-1 knob; couples trim/search/context and is non-monotonic — not the fix).
 
-## Phase 2 — DESIGN (mechanism follows Phase 1)
+## Phase 1 FOLLOW-UP: cheap levers exhausted → full re-architecture chosen (2026-07-10)
+After the verdict, every cheap precision lever was tested and FAILED or backfired on the clean control:
+`--max-splice-overhang` widening (35%, more spurious; high-support false 5→17), canonical-prior
+flattening (STAR-flat direction: 49%/40%, no help), overhang/unique filters (no separation),
+distance-collapse (47→63% but recall 23→19). **True positives are invariant at 30 across every config;
+levers only move the spurious count.** mpmap finds MORE true junctions than STAR (30 vs 24) but pays
+with per-read scatter — higher recall and lower precision are two sides of the same per-read-placement
+architecture. Root mechanism (multipath_mapper.cpp:3459): the splice-join selection is a
+branch-and-bound that PRUNES candidates whose score bound < current best, then keeps the single best
+by `net_score` (motif prior + local connecting alignment). A high-scoring near-miss site (canonical
+prior or connect noise) can prune the true non-canonical site before it is aligned, and different reads
+prune/pick differently → scatter. **User decision: full whole-read re-architecture** (adapt STAR's
+whole-read best-window + one-junction-per-cluster to graphs).
+
+## Phase 2 — DESIGN: whole-read best-window re-architecture (graph-native)
+Target (STAR-faithful): for each read, consider all candidate splice windows, align the WHOLE read
+(both exons + intron at the candidate site) in each, pick the single best whole-read spliced alignment,
+report its junction. Consistent whole-read alignment → reads on a true junction converge → one junction
+per cluster → precision, without dropping the true placement (recall preserved). All flag-gated;
+default byte-identical; validated against the no-regression gate + chr20-10x + MHC + tests.
+
+**Milestones**
+- **M1 — evaluate-all (output-invariant):** `--splice-eval-all` removes the score-bound pruning so the
+  true site is never discarded before alignment. Pruning only skips candidates that cannot beat the
+  best, so the winner (and thus default output) is unchanged; this only exposes the full candidate set.
+  Combined with `--sj-candidates`, confirms whether the true site is generated-but-pruned/sub-threshold
+  (→ re-scoring can recover it) or never generated (→ candidate generation must change). [IMPLEMENTED]
+- **M2 — whole-read re-score selection:** rank evaluated candidates by the WHOLE-READ re-aligned
+  spliced score (full-exon context), not the local `net_score`, so a 1-4 bp shift pays its true
+  downstream penalty and the true site wins. Bound cost with a top-K pre-filter.
+- **M3 — one-junction-per-cluster reporting:** at `--sj-out`, collapse per-read placements to the
+  whole-read-best consensus per cluster (reassign low-support near-duplicates to the dominant true
+  junction; never drop, to hold recall).
+- **M4 — validate:** no-regression gate (precision AND recall ≥ baseline on clean + repeat-heavy),
+  chr20-10x + MHC anti-overfitting, tests 33/35, runtime.
 Primary design (STAR-faithful, expected if H1/H2 dominate): **`--sj-whole-read-window`** — when placing
 the splice, score candidate placements by the **whole-read** fused alignment (full anchors + bridge),
 not just the trimmed window, and **tie-break toward maximal exact-anchor extension** (STAR pins the

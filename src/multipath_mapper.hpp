@@ -201,6 +201,9 @@ namespace vg {
         int64_t max_softclip_overlap = 8;
         int64_t max_splice_overhang = 3;
         int64_t min_splice_rescue_matches = 6;
+        // whole-read best-window re-arch (Milestone 1): evaluate ALL candidate splice joins instead
+        // of pruning by the score bound, so the true site is not discarded before it is aligned.
+        bool splice_eval_all = false;
         // about 250k
         int64_t max_intron_length = 1 << 18;
         int64_t max_splice_ref_search_length = 32;

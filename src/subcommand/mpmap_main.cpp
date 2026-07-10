@@ -337,6 +337,7 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_SJ_READS = 1063;
     constexpr int OPT_MAX_SPLICE_OVERHANG = 1064;
     constexpr int OPT_SJ_CANDIDATES = 1065;
+    constexpr int OPT_SPLICE_EVAL_ALL = 1066;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -355,6 +356,7 @@ int main_mpmap(int argc, char** argv) {
     string sj_out_name;
     string sj_reads_name;
     string sj_candidates_name;
+    bool splice_eval_all = false;
     int sjdb_score = 0;
     string trace_splice_search_name;
     string trace_truth_junctions_name;
@@ -627,6 +629,7 @@ int main_mpmap(int argc, char** argv) {
             {"sj-out", required_argument, 0, OPT_SJ_OUT},
             {"sj-reads", required_argument, 0, OPT_SJ_READS},
             {"sj-candidates", required_argument, 0, OPT_SJ_CANDIDATES},
+            {"splice-eval-all", no_argument, 0, OPT_SPLICE_EVAL_ALL},
             {"max-splice-overhang", required_argument, 0, OPT_MAX_SPLICE_OVERHANG},
             {"sjdb-score", required_argument, 0, OPT_SJDB_SCORE},
             {"mmp-primary", no_argument, 0, OPT_MMP_PRIMARY},
@@ -1120,6 +1123,10 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_SJ_CANDIDATES:
                 sj_candidates_name = ensure_writable(logger, optarg);
+                break;
+
+            case OPT_SPLICE_EVAL_ALL:
+                splice_eval_all = true;
                 break;
 
             case OPT_SJDB_SCORE:
@@ -2081,6 +2088,7 @@ int main_mpmap(int argc, char** argv) {
     multipath_mapper.set_log_odds_against_splice(no_splice_log_odds);
     multipath_mapper.max_softclip_overlap = max_softclip_overlap;
     multipath_mapper.max_splice_overhang = max_splice_overhang;
+    multipath_mapper.splice_eval_all = splice_eval_all;
     multipath_mapper.splice_rescue_graph_std_devs = splice_rescue_graph_std_devs;
     multipath_mapper.ref_path_handles = std::move(ref_path_handles);
     multipath_mapper.max_motif_pairs = max_motif_pairs;

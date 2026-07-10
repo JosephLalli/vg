@@ -204,6 +204,21 @@ namespace vg {
         // whole-read best-window re-arch (Milestone 1): evaluate ALL candidate splice joins instead
         // of pruning by the score bound, so the true site is not discarded before it is aligned.
         bool splice_eval_all = false;
+        // Milestone 2: re-rank the top candidate splice joins by a whole-read alignment score (the
+        // read aligned across the junction with full-anchor context) instead of the local net_score,
+        // so a 1-4 bp-shifted site pays its true downstream penalty. Implies splice_eval_all.
+        bool splice_whole_read = false;
+        // Exon context (bp) extracted on each side of the junction when re-scoring a candidate over
+        // the whole read. 0 = auto: use the read's own length, which bounds how far either side can
+        // align (handles 100 bp, 150 bp, and per-mate paired reads without a fixed assumption).
+        int64_t splice_whole_read_context = 0;
+        // how many top-by-net_score candidates to re-score over the whole read (bounds the added cost)
+        int64_t splice_whole_read_topk = 8;
+        // weight on the STAR fixed motif bonus in the whole-read re-rank. The whole-read alignment
+        // already prefers the true site; the raw STAR -8 bonus over-dominates mpmap's ~1/base scale
+        // and canonical-steals (recall regression), while 0 slightly over-reports. ~0.5 is the balance
+        // point that holds recall and improves precision on the chr20 control.
+        double splice_whole_read_motif_weight = 0.5;
         // about 250k
         int64_t max_intron_length = 1 << 18;
         int64_t max_splice_ref_search_length = 32;

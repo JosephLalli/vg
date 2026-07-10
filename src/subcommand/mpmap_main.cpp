@@ -338,6 +338,10 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_MAX_SPLICE_OVERHANG = 1064;
     constexpr int OPT_SJ_CANDIDATES = 1065;
     constexpr int OPT_SPLICE_EVAL_ALL = 1066;
+    constexpr int OPT_SPLICE_WHOLE_READ = 1067;
+    constexpr int OPT_SPLICE_WHOLE_READ_CONTEXT = 1068;
+    constexpr int OPT_SPLICE_WHOLE_READ_TOPK = 1069;
+    constexpr int OPT_SPLICE_WHOLE_READ_MOTIF_WEIGHT = 1070;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -357,6 +361,10 @@ int main_mpmap(int argc, char** argv) {
     string sj_reads_name;
     string sj_candidates_name;
     bool splice_eval_all = false;
+    bool splice_whole_read = false;
+    int splice_whole_read_context = 0;   // 0 = auto: use the read's own length
+    int splice_whole_read_topk = 8;
+    double splice_whole_read_motif_weight = 0.5;
     int sjdb_score = 0;
     string trace_splice_search_name;
     string trace_truth_junctions_name;
@@ -630,6 +638,10 @@ int main_mpmap(int argc, char** argv) {
             {"sj-reads", required_argument, 0, OPT_SJ_READS},
             {"sj-candidates", required_argument, 0, OPT_SJ_CANDIDATES},
             {"splice-eval-all", no_argument, 0, OPT_SPLICE_EVAL_ALL},
+            {"splice-whole-read", no_argument, 0, OPT_SPLICE_WHOLE_READ},
+            {"splice-whole-read-context", required_argument, 0, OPT_SPLICE_WHOLE_READ_CONTEXT},
+            {"splice-whole-read-topk", required_argument, 0, OPT_SPLICE_WHOLE_READ_TOPK},
+            {"splice-whole-read-motif-weight", required_argument, 0, OPT_SPLICE_WHOLE_READ_MOTIF_WEIGHT},
             {"max-splice-overhang", required_argument, 0, OPT_MAX_SPLICE_OVERHANG},
             {"sjdb-score", required_argument, 0, OPT_SJDB_SCORE},
             {"mmp-primary", no_argument, 0, OPT_MMP_PRIMARY},
@@ -1127,6 +1139,22 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_SPLICE_EVAL_ALL:
                 splice_eval_all = true;
+                break;
+
+            case OPT_SPLICE_WHOLE_READ:
+                splice_whole_read = true;
+                break;
+
+            case OPT_SPLICE_WHOLE_READ_CONTEXT:
+                splice_whole_read_context = parse<int>(optarg);
+                break;
+
+            case OPT_SPLICE_WHOLE_READ_TOPK:
+                splice_whole_read_topk = parse<int>(optarg);
+                break;
+
+            case OPT_SPLICE_WHOLE_READ_MOTIF_WEIGHT:
+                splice_whole_read_motif_weight = parse<double>(optarg);
                 break;
 
             case OPT_SJDB_SCORE:
@@ -2088,7 +2116,11 @@ int main_mpmap(int argc, char** argv) {
     multipath_mapper.set_log_odds_against_splice(no_splice_log_odds);
     multipath_mapper.max_softclip_overlap = max_softclip_overlap;
     multipath_mapper.max_splice_overhang = max_splice_overhang;
-    multipath_mapper.splice_eval_all = splice_eval_all;
+    multipath_mapper.splice_eval_all = splice_eval_all || splice_whole_read;
+    multipath_mapper.splice_whole_read = splice_whole_read;
+    multipath_mapper.splice_whole_read_context = splice_whole_read_context;
+    multipath_mapper.splice_whole_read_topk = splice_whole_read_topk;
+    multipath_mapper.splice_whole_read_motif_weight = splice_whole_read_motif_weight;
     multipath_mapper.splice_rescue_graph_std_devs = splice_rescue_graph_std_devs;
     multipath_mapper.ref_path_handles = std::move(ref_path_handles);
     multipath_mapper.max_motif_pairs = max_motif_pairs;

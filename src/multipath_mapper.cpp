@@ -3447,7 +3447,84 @@ namespace vg {
         int32_t best_net_score = -1;
         int64_t best_intron_length = numeric_limits<int64_t>::max();
         unique_ptr<PutativeJoin> best_join;
-        
+
+        // Milestone 2 (whole_read_best_window_plan.md): STAR places a junction by the score of the
+        // whole stitched alignment plus a FIXED motif bonus (scoreGapNoncan=-8, GC-AG=-4, GT-AG=0),
+        // not a per-motif frequency prior. Graph-native analog: for the top candidates, build a small
+        // two-exon DAG (donor exon ending at the junction -> acceptor exon starting at it) with full
+        // read-length context, locally align the WHOLE read to it, and rank by that score + the STAR
+        // fixed motif bonus. A 1-4 bp-shifted junction then pays its true downstream penalty over the
+        // whole read (which the ~16 bp connecting window never sees), so the true site wins and a
+        // nearby GT-AG cannot steal a true non-canonical junction.
+        vector<pair<int32_t, unique_ptr<PutativeJoin>>> wr_candidates;  // (net_score, join)
+        int64_t wr_context = (splice_whole_read_context > 0 ? splice_whole_read_context
+                                                            : (int64_t) alignment.sequence().size());
+        auto star_motif_bonus = [&](size_t motif_idx) -> int32_t {
+            string m = splice_stats.unoriented_motif(motif_idx, false)
+                     + splice_stats.unoriented_motif(motif_idx, true);
+            if (m == "GTAG") return 0;
+            if (m == "GCAG") return -4;
+            return -8;  // AT-AC and all non-canonical (STAR scoreGapNoncan)
+        };
+        // exon sequence (5'->3') ending just before `p`, walking up to `dist` bp upstream
+        auto upstream_seq = [&](pos_t p, int64_t dist) -> string {
+            handle_t h = xindex->get_handle(id(p), is_rev(p));
+            string hs = xindex->get_sequence(h);
+            int64_t take = min<int64_t>(offset(p), dist);
+            string s = hs.substr(offset(p) - take, take);
+            dist -= take;
+            while (dist > 0) {
+                bool found = false;
+                xindex->follow_edges(h, true, [&](const handle_t& prev) {
+                    string ps = xindex->get_sequence(prev);
+                    int64_t t = min<int64_t>((int64_t) ps.size(), dist);
+                    s = ps.substr(ps.size() - t, t) + s;
+                    dist -= t; h = prev; found = true;
+                    return false;  // first predecessor only
+                });
+                if (!found) break;
+            }
+            return s;
+        };
+        // exon sequence (5'->3') starting at `p`, walking up to `dist` bp downstream
+        auto downstream_seq = [&](pos_t p, int64_t dist) -> string {
+            handle_t h = xindex->get_handle(id(p), is_rev(p));
+            string hs = xindex->get_sequence(h);
+            int64_t take = min<int64_t>((int64_t) hs.size() - (int64_t) offset(p), dist);
+            string s = hs.substr(offset(p), take);
+            dist -= take;
+            while (dist > 0) {
+                bool found = false;
+                xindex->follow_edges(h, false, [&](const handle_t& next) {
+                    string ns = xindex->get_sequence(next);
+                    int64_t t = min<int64_t>((int64_t) ns.size(), dist);
+                    s += ns.substr(0, t);
+                    dist -= t; h = next; found = true;
+                    return false;  // first successor only
+                });
+                if (!found) break;
+            }
+            return s;
+        };
+        auto whole_read_score = [&](const pos_t& donor_pos, const pos_t& acceptor_pos, size_t motif_idx) -> double {
+            string dseq = upstream_seq(donor_pos, wr_context);
+            string aseq = downstream_seq(acceptor_pos, wr_context);
+            if (dseq.empty() || aseq.empty()) {
+                return -numeric_limits<double>::infinity();
+            }
+            bdsg::HashGraph g;
+            handle_t h1 = g.create_handle(dseq);
+            handle_t h2 = g.create_handle(aseq);
+            g.create_edge(h1, h2);
+            Alignment re;
+            re.set_sequence(alignment.sequence());
+            if (!alignment.quality().empty()) {
+                re.set_quality(alignment.quality());
+            }
+            get_aligner(!alignment.quality().empty())->align(re, g, false);
+            return (double) re.score() + splice_whole_read_motif_weight * star_motif_bonus(motif_idx);
+        };
+
         auto score_bound_comp = [](const PutativeJoin& join_1, const PutativeJoin& join_2) {
             return join_1.max_score < join_2.max_score;
         };
@@ -3529,7 +3606,11 @@ namespace vg {
 
             if (splice_located && net_score > no_splice_log_odds && passes_noncanon_mismatch) {
                 // this is a statistically significant spliced alignment
-                if (net_score > best_net_score ||
+                if (splice_whole_read) {
+                    // defer selection: collect for whole-read re-ranking after the loop
+                    wr_candidates.emplace_back(net_score, unique_ptr<PutativeJoin>(new PutativeJoin(std::move(join))));
+                }
+                else if (net_score > best_net_score ||
                     (net_score == best_net_score && join.estimated_intron_length < best_intron_length)) {
                     best_intron_length = join.estimated_intron_length;
                     best_net_score = net_score;
@@ -3542,11 +3623,41 @@ namespace vg {
             pop_heap(putative_joins.begin(), putative_joins.end(), score_bound_comp);
             putative_joins.pop_back();
         }
-        
+
+        // Milestone 2: re-rank the top-by-net_score candidates by their whole-read alignment score
+        // (+ STAR fixed motif bonus) and select that winner, so a locally-better but 1-4 bp-shifted
+        // site loses to the site that best explains the whole read.
+        if (splice_whole_read && !wr_candidates.empty()) {
+            sort(wr_candidates.begin(), wr_candidates.end(),
+                 [](const pair<int32_t, unique_ptr<PutativeJoin>>& a,
+                    const pair<int32_t, unique_ptr<PutativeJoin>>& b) { return a.first > b.first; });
+            size_t k = min<size_t>(wr_candidates.size(), (size_t) max<int64_t>(1, splice_whole_read_topk));
+            double best_wr = -numeric_limits<double>::infinity();
+            for (size_t i = 0; i < k; ++i) {
+                PutativeJoin& join = *wr_candidates[i].second;
+                const auto& jpath = join.connecting_aln.path();
+                if (join.splice_idx < 1 || (int) join.splice_idx >= jpath.mapping_size()) {
+                    continue;
+                }
+                const auto& dm = jpath.mapping(join.splice_idx - 1);
+                const auto& dp = dm.position();
+                const auto& ap = jpath.mapping(join.splice_idx).position();
+                pos_t donor_pos = make_pos_t(dp.node_id(), dp.is_reverse(), dp.offset() + mapping_from_length(dm));
+                pos_t acceptor_pos = make_pos_t(ap.node_id(), ap.is_reverse(), ap.offset());
+                double wr = whole_read_score(donor_pos, acceptor_pos, join.motif_idx);
+                if (wr > best_wr) {
+                    best_wr = wr;
+                    best_net_score = wr_candidates[i].first;
+                    best_intron_length = join.estimated_intron_length;
+                    best_join = std::move(wr_candidates[i].second);
+                }
+            }
+        }
+
 #ifdef debug_multipath_mapper
         cerr << "pruned " << putative_joins.size() << " putative joins for having low score bounds" << endl;
 #endif
-        
+
         if (best_join.get() == nullptr) {
 #ifdef debug_multipath_mapper
             cerr << "no splice candidates were statistically significant" << endl;

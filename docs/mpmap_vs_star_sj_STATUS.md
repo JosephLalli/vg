@@ -97,12 +97,29 @@ at W≥8 but costs recall **23→19**; overhang and unique-read filters do not s
 architectural difference: STAR reports one splice per read cluster; mpmap's splice rescue reports
 per-read positional/motif variants.
 
-## Next step — STEP 1 (mechanism confirmation, in progress)
-`star_vs_mpmap_sj_precision_diagnostic_plan.md` STEP 1: add per-read `--sj-out` instrumentation
-(junction → supporting read names + per-read chosen vs best-alternative splice score), then a
-read-level STAR-vs-mpmap diff — for each mpmap false junction, classify how STAR handled the same
-reads (no-splice / spliced-true / multimapping / filtered). Confirms whole-read best-window before
-implementing it (or the portable distance-collapse filter).
+## STEP 1 result — mechanism confirmed: whole-read best-window (2026-07-10)
+Added per-read `--sj-reads` instrumentation (junction → supporting read names + chosen splice score;
+default-off, tests pass) and diffed mpmap's 32 clean-control false non-canonical junctions against
+STAR's per-read `jM`/`jI`/`NH`. Of the 429 (false-junction, supporting-read) pairs:
+
+| STAR did with the read | share | meaning |
+|------------------------|-------|---------|
+| **B — spliced at the TRUE junction** | **89%** | STAR placed the *same read* at the correct junction |
+| A — did not splice | 6% | splice-margin |
+| C — multimapping (NH>1) | 1% | not multimapping |
+| D — spliced then SJ-filtered | 0% | not a missing `outSJfilter` |
+
+**Verdict:** the residual precision gap is an alignment-**selection** defect. For 89% of the reads
+behind an mpmap false junction, a correct whole-read placement exists and STAR takes it; mpmap's
+splice rescue anchors one exon and accepts a locally-optimal soft-clip donor instead. Not seeding,
+not multimapping, not a filter. The lever is **whole-read best-window selection** — score the chosen
+splice against the read's best alternative placement and report only the winner (STAR's architecture).
+
+## Next step — implement the fix
+Choose per review: (a) **whole-read best-window** in splice rescue (the real lever, larger change:
+compare the rescued spliced alignment to the read's best alternative and keep the whole-read
+optimum), or (b) ship the portable **distance-collapse SJ filter** (`outSJfilterDistToOtherSJmin`
+analogue) as an interim precision option (47%→63%, recall 23→19).
 
 ## Flag & feature inventory (verified against `src/subcommand/mpmap_main.cpp`, 2026-07-10)
 All flags below are default-off; default mapping/splice output is byte-identical when unused.
@@ -118,7 +135,9 @@ All flags below are default-off; default mapping/splice output is byte-identical
   `--sjdb-score N` (bonus for annotated/graph-edge junctions; partial).
 - **Junction output** — `star_first_pass_plan.md` (item 7):
   `--sj-out FILE` (graph-native SJ table: donor/acceptor `node:offset:strand`, motif, annotated flag,
-  unique/multi read support, max overhang).
+  unique/multi read support, max overhang; donor coordinate fixed to the splice point),
+  `--sj-reads FILE` (debug: per-junction supporting read names + chosen splice score, for read-level
+  diffs against another aligner; drove the STEP 1 whole-read-best-window verdict).
 - **Experimental precision (open work)** — `seed_pair_splice_generation_plan.md`:
   `--mmp-splice-pairs` (seed-pair-gated candidates + non-canonical partner constraints; does NOT yet recover precision).
 - **Proposed but NOT shipped** (do not cite as current): `--mmp-extend` (built then removed — degraded mapping),

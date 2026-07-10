@@ -1,8 +1,13 @@
 # Plan: determine WHY STAR out-precisions vg mpmap on splice-junction calling
 
-> **Doc status (2026-07-10):** ACTIVE plan — the current next step for the open non-canonical
-> precision gap. Not yet executed. Substrate: chr20 `refpath`. Current state:
-> **`mpmap_vs_star_sj_STATUS.md`**.
+> **Doc status (2026-07-10):** EXECUTED. STEP 0 (clean genome-unique control) and STEP 1 (read-level
+> diff) are done. Findings: (1) ~92% of the original false junctions were a repeat confounder; (2) a
+> `--sj-out` donor-coordinate bug corrupted both precision and recall (fixed, commit `8b6115c`);
+> (3) residual gap on the clean control is mpmap 47% vs STAR 100% precision, and STEP 1 shows **89%
+> of the reads behind mpmap's false junctions are spliced by STAR at the TRUE junction** — a
+> whole-read best-window (alignment-selection) difference, not multimapping (1%) or a missing
+> `outSJfilter` (0%). Current state + standing table: **`mpmap_vs_star_sj_STATUS.md`**. Remaining:
+> implement whole-read best-window selection (or ship the interim distance-collapse filter).
 
 ## Objective
 On the identical chr20 positive-control reads, STAR pass-1 reports ~91% non-canonical SJ precision

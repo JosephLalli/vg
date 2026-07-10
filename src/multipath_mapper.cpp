@@ -3554,9 +3554,17 @@ namespace vg {
         {
             const auto& jpath = best_join->connecting_aln.path();
             if (best_join->splice_idx >= 1 && (int) best_join->splice_idx < jpath.mapping_size()) {
-                const auto& dp = jpath.mapping(best_join->splice_idx - 1).position();
+                const auto& dm = jpath.mapping(best_join->splice_idx - 1);
+                const auto& dp = dm.position();
                 const auto& ap = jpath.mapping(best_join->splice_idx).position();
-                sj_donor = make_pos_t(dp.node_id(), dp.is_reverse(), dp.offset());
+                // The donor splice point is the END of the last donor-side block (the base
+                // adjacent to the intron), not its start. position().offset() is the block
+                // start, so advance by the block's reference length to land on the junction.
+                // The acceptor is the START of the downstream block, so ap.offset() is already
+                // the acceptor splice point. Recording the donor start instead shifted the
+                // reported donor upstream by the (per-read variable) connecting-block length,
+                // both mislocating the junction and splitting one junction into many records.
+                sj_donor = make_pos_t(dp.node_id(), dp.is_reverse(), dp.offset() + mapping_from_length(dm));
                 sj_acceptor = make_pos_t(ap.node_id(), ap.is_reverse(), ap.offset());
                 sj_have_junction = true;
                 handle_t dh = xindex->get_handle(dp.node_id(), dp.is_reverse());

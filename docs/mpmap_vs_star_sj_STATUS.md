@@ -4,10 +4,17 @@ Single source of truth for the current goal and standing. A **Document Map** of 
 and a **verified flag inventory**, are at the bottom. Last updated 2026-07-10.
 
 ## Current goal
-Make **vg mpmap perform as well as or better than STAR on BOTH precision and recall** of
-splice-junction detection — **canonical and non-canonical** — on a **reference-haplotype-only
-chr20 graph** **with introduced non-canonical junctions**. Either the MEM or MMP seeding pathway
-is acceptable (seeding has been shown not to be the lever).
+**Continue the splice-search instrumentation analysis.** This is the active line of work.
+
+**The benchmark it serves:** get **either vg mpmap seeding mode — MEM or MMP — to mirror STAR's
+splice-junction performance on a linear chr20**. "Linear chr20" here means the HPRC chr20 pangenome
+**stripped of every non-reference node and path** — vg maps fine against a pangenome reduced to the
+reference alone (see **Substrate** below). Concretely: make **vg mpmap perform as well as or better
+than STAR on BOTH precision and recall** of splice-junction detection — **canonical and
+non-canonical** — on that reference-only chr20 graph **with introduced non-canonical junctions**.
+Either seeding pathway is acceptable (seeding has been shown not to be the lever); the one open gap
+is **non-canonical precision**, which the instrumentation analysis
+(`star_vs_mpmap_sj_precision_diagnostic_plan.md`) is built to diagnose read-by-read.
 
 **Substrate definition (per user, 2026-07-10):** the "linear graph" is NOT a freshly-constructed
 reference. It is the **HPRC chr20 pangenome pruned to the reference haplotype** — keep only the
@@ -29,6 +36,12 @@ sequence into fresh nodes with no junction edges. Testing is on chr20.
 - **Positive control:** 15 canonical (GT-AG) + 30 non-canonical junctions with *verified, diverse*
   non-canonical motifs, 150 bp exon anchors, ~800 bp introns, deep tiled reads (400/junction,
   1% error). Scored **motif-verified** against exact reference coordinates.
+- **Read source is bulk RNA-seq, not single-cell.** The control reads (`reads_pc*.fq`, 100 bp
+  single-end simulated cDNA) are bulk-style fragments — no barcodes/UMIs. Splice detection depends
+  only on the cDNA read, so a 10x scRNA source (whose R1 barcode/UMI is discarded before mapping)
+  would add nothing; bulk is the simpler, apples-to-apples source against STAR (natively a bulk
+  aligner). The 10x `gex` reads under `hprc_v2_vg_rna/chr20_compare/` are a *separate* real-data
+  sanity check, not the controlled benchmark.
 - **Reference:** STAR pass-1 (`/usr/bin/STAR` 2.7.11b), de novo.
 - **Harness:** `$CLAUDE_JOB_DIR/tmp/chr20bench` — `score_pc.py`, `truth_pc.tsv`, `reads_pc*.fq`,
   `design_pc.py`, `motif_curated.txt`, `sj_lin_*.tsv`. (Job scratch is ephemeral; the numbers below

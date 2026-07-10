@@ -1,5 +1,9 @@
 # Plan: determine WHY STAR out-precisions vg mpmap on splice-junction calling
 
+> **Doc status (2026-07-10):** ACTIVE plan — the current next step for the open non-canonical
+> precision gap. Not yet executed. Substrate: chr20 `refpath`. Current state:
+> **`mpmap_vs_star_sj_STATUS.md`**.
+
 ## Objective
 On the identical chr20 positive-control reads, STAR pass-1 reports ~91% non-canonical SJ precision
 while vg mpmap reports ~3%. Four candidate fixes (partner-source, stitch-mismatch, partner-
@@ -10,6 +14,11 @@ reporting, or a splice-rescue re-architecture?
 
 Reference numbers to reproduce/beat live in `$CLAUDE_JOB_DIR/tmp/chr20bench` (score_pc.py,
 truth_pc.tsv, reads_pc*.fq, sj_lin_*.tsv). STAR = /usr/bin/STAR 2.7.11b.
+
+**Substrate:** the goal graph is `refpath` — the HPRC chr20 pangenome pruned to the `CHM13#0#chr20`
+reference path (`vg mod -k`), preserving pangenome node IDs (see `mpmap_vs_star_sj_STATUS.md`).
+The 3% figure below was first measured on a sequence-equivalent `vg construct` reference graph
+(a diagnostic); the exact `refpath` re-measurement is the authoritative number.
 
 ## STEP 0 — eliminate the benchmark confounder first (cheap, ~0.5 day)
 The current designer exons are random CHM13 fragments that contain repeats; characterization

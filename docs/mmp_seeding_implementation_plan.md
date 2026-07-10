@@ -1,5 +1,13 @@
 # Implementation Plan: STAR-style MMP Splice-Junction Discovery Path for `vg mpmap`
 
+> **Doc status (2026-07-10):** IMPLEMENTED on branch `mmp-splice-seeding` (M0–M7 done, default-off
+> byte-identical). This is the *foundational* MMP-seeding plan. Its verdict — "MEM seeding already
+> captures ~99% of recoverable junctions; the MMP front end adds visibility, not recall" — concerns
+> the **seeding lever** and still holds (MEM ≡ MMP). The later non-canonical **recall** win came from
+> the splice **motif model**, not seeding (Plan B in `mmp_star_parity_plans.md`). Benchmarks below are
+> on the **MHC fixtures** (earlier substrate; since superseded by chr20 — MHC paralogy confounded
+> coordinate P/R). Authoritative current state + chr20 benchmark: **`mpmap_vs_star_sj_STATUS.md`**.
+
 ## Implementation Status (2026-07-07, branch `mmp-splice-seeding`)
 
 Follow-up plans to close the remaining gaps to STAR (sequential chaining, motif scoring,

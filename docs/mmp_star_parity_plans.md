@@ -1,5 +1,13 @@
 # MMP -> STAR Parity: Follow-up Implementation Plans
 
+> **Doc status (2026-07-10):** Plans A/B/C IMPLEMENTED on branch `mmp-splice-seeding`, default-off
+> byte-identical. Plan B (motif scoring) is the basis of the STAR-level non-canonical **recall** win.
+> Benchmarks below are on the **MHC pangenome fixtures** (earlier substrate; chr20 is now
+> authoritative). Current state + chr20 benchmark: **`mpmap_vs_star_sj_STATUS.md`**.
+>
+> Next phase -- faithful STAR first-pass (multi-start seeding, mismatch handling, annotated-
+> junction scoring, SJ output, both-strand seeding): see `star_first_pass_plan.md`.
+
 ## Benchmark graph (important)
 
 Performance metrics (mapping rate, seed counts, runtime) MUST be measured on the multipath
@@ -65,7 +73,7 @@ must NOT be used for the mapping-rate / performance numbers above.
 
 
 
-The shipped STAR-style MMP seeding path (see `secondaryPeakVerification.md`) matches STAR's
+The shipped STAR-style MMP seeding path (see `mmp_seeding_implementation_plan.md`) matches STAR's
 breakpoint-anchored re-seed on the LEFT soft-clip tail, reuses mpmap's validated splice
 scoring, and adds a correct (but distal-pinned) RIGHT tail. Review identified three
 algorithmic gaps between that path and STAR proper. Each plan below is flag-gated,

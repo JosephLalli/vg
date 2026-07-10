@@ -1,5 +1,11 @@
 # STAR First-Pass on Graphs: Implementation Plan (items 2, 3, 6, 7, 5)
 
+> **Doc status (2026-07-10):** Items 2/3/6/7/5 IMPLEMENTED on branch `mmp-splice-seeding`, default-off
+> byte-identical. `--sj-out` (item 7) is the shipped first-pass deliverable used by the chr20 benchmark.
+> Item 6 (`--sjdb-score`) is partial; the proposed `--mmp-extend` was implemented then **removed**
+> (it degraded mapping — see item 3). Benchmarks below are on the **MHC pangenome fixtures**.
+> Current state + chr20 benchmark: **`mpmap_vs_star_sj_STATUS.md`**.
+
 ## Goal and scope
 
 Faithfully re-implement the **first pass** of STAR's two-pass method on the vg graph mapper.

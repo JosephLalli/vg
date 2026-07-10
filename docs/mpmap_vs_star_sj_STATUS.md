@@ -1,17 +1,30 @@
 # mpmap vs STAR on splice-junction detection — STATUS (authoritative)
 
-Single source of truth for the current goal and standing. Sub-plans are linked at the bottom.
-Last updated 2026-07-10.
+Single source of truth for the current goal and standing. A **Document Map** of every related doc,
+and a **verified flag inventory**, are at the bottom. Last updated 2026-07-10.
 
 ## Current goal
 Make **vg mpmap perform as well as or better than STAR on BOTH precision and recall** of
-splice-junction detection — **canonical and non-canonical** — on a **linear graph genome**
-(CHM13 chr20) **with introduced non-canonical junctions**. Either the MEM or MMP seeding pathway
+splice-junction detection — **canonical and non-canonical** — on a **reference-haplotype-only
+chr20 graph** **with introduced non-canonical junctions**. Either the MEM or MMP seeding pathway
 is acceptable (seeding has been shown not to be the lever).
 
+**Substrate definition (per user, 2026-07-10):** the "linear graph" is NOT a freshly-constructed
+reference. It is the **HPRC chr20 pangenome pruned to the reference haplotype** — keep only the
+nodes and paths that define `CHM13#0#chr20`, prune every non-reference node/path
+(`vg mod -k CHM13#0#chr20 maptarget.pg`). This **retains the pangenome's node IDs/boundaries and
+any annotated CAT junction edges** on the reference, unlike `vg construct` which re-chops the same
+sequence into fresh nodes with no junction edges. Testing is on chr20.
+
 ## Benchmark (the standing measurement)
-- **Graph:** linear CHM13 chr20 (`vg construct` from the reference; no variation), so the
-  comparison is head-to-head with STAR on the same linear genome.
+- **Graph:** `refpath` = HPRC chr20 pangenome (`maptarget`, CHM13-primary) pruned to the
+  `CHM13#0#chr20` reference path via `vg mod -k`; pangenome node structure preserved, all
+  non-reference nodes/paths removed. Node→CHM13 coordinate scoring reuses `node2chm13_mt.tsv`
+  (same node IDs). Head-to-head with STAR on the identical CHM13 chr20 sequence.
+  (**All numbers in the standing table below were measured on an earlier `vg construct` reference
+  graph** — sequence-identical to `refpath` but with fresh node boundaries and no junction edges —
+  used as a diagnostic. The `refpath` indexes are now built; the authoritative re-measurement on
+  `refpath` is **pending** and will replace the table numbers when run.)
 - **Positive control:** 15 canonical (GT-AG) + 30 non-canonical junctions with *verified, diverse*
   non-canonical motifs, 150 bp exon anchors, ~800 bp introns, deep tiled reads (400/junction,
   1% error). Scored **motif-verified** against exact reference coordinates.
@@ -56,8 +69,38 @@ STAR suppressed the same reads (no-splice / spliced-true / multimapping / filter
 histogram decides whether the fix is a benchmark artifact, a portable `outSJfilter`, multimapping-
 aware reporting, or the whole-read best-window re-architecture. Only then do we implement.
 
-## Sub-documents
-- `star_vs_mpmap_sj_precision_diagnostic_plan.md` — the precision diagnostic (the active next step).
-- `seed_pair_splice_generation_plan.md` — seed-pair candidate generation approach + its refuted validation.
-- `mmp_star_parity_plans.md`, `star_first_pass_plan.md` — earlier MMP / STAR first-pass parity work
-  (recall + mapping-rate phase; historical context).
+## Flag & feature inventory (verified against `src/subcommand/mpmap_main.cpp`, 2026-07-10)
+All flags below are default-off; default mapping/splice output is byte-identical when unused.
+
+- **MMP seeding (STAR-style front end)** — `mmp_seeding_implementation_plan.md`, `star_first_pass_plan.md`:
+  `--mmp-seed` (splice-rescue MMP re-seed), `--mmp-primary` (MMP replaces the MEM pool),
+  `--mmp-augment` (MMP appended to MEM pool), `--mmp-chain` (sequential MMP walk),
+  `--mmp-strand-mode {native|rc|both}`; density/bound knobs `--mmp-min-prefix`, `--mmp-hit-max`,
+  `--mmp-max-intron`, `--mmp-max-seeds`, `--mmp-start-lmax`, `--mmp-start-lmax-over-lread`,
+  `--mmp-seed-per-read-max`; `--mmp-relax-accept N` (relaxed short-overhang acceptance, MMP candidates only).
+- **Splice scoring** — `mmp_star_parity_plans.md` (Plan B), `star_first_pass_plan.md` (item 6):
+  `--splice-motif-scores FILE` (per-motif donor/acceptor frequency table; **the relaxed-budget recall lever**),
+  `--sjdb-score N` (bonus for annotated/graph-edge junctions; partial).
+- **Junction output** — `star_first_pass_plan.md` (item 7):
+  `--sj-out FILE` (graph-native SJ table: donor/acceptor `node:offset:strand`, motif, annotated flag,
+  unique/multi read support, max overhang).
+- **Experimental precision (open work)** — `seed_pair_splice_generation_plan.md`:
+  `--mmp-splice-pairs` (seed-pair-gated candidates + non-canonical partner constraints; does NOT yet recover precision).
+- **Proposed but NOT shipped** (do not cite as current): `--mmp-extend` (built then removed — degraded mapping),
+  `--mmp-both-strands`, `--sj-ref-path`, `--sj-min-overhang`, `--sj-min-reads`, `--sjdb-overhang-min`,
+  `--novel-overhang-min`, `--splice-motif-preset`.
+
+## Document map (all splice/SJ docs, 2026-07-10)
+| Doc | Role / phase | Status | Substrate |
+|-----|--------------|--------|-----------|
+| **`mpmap_vs_star_sj_STATUS.md`** (this) | current goal + standing; the hub | authoritative | chr20 `refpath` |
+| `star_vs_mpmap_sj_precision_diagnostic_plan.md` | precision diagnostic (the next step) | active plan, not yet run | chr20 `refpath` |
+| `seed_pair_splice_generation_plan.md` | seed-pair precision approach | **REFUTED** | chr20 |
+| `mmp_seeding_implementation_plan.md` | foundational MMP-seeding impl (M0–M7) | implemented | MHC (earlier) |
+| `mmp_star_parity_plans.md` | follow-ups: A chaining / **B motif (recall win)** / C RC tail | implemented | MHC (earlier) |
+| `star_first_pass_plan.md` | STAR first-pass items 2/3/6/7/5 (ships `--sj-out`) | implemented | MHC (earlier) |
+
+**Substrate note:** the three implementation docs benchmarked on the MHC pangenome fixtures
+(`panSC/tests/fixtures/mhc/sampleA.spliced`, 466-hap). Those numbers predate the move to chr20, which
+was adopted because MHC paralogy confounded coordinate precision/recall. **chr20 `refpath` is now the
+authoritative benchmark substrate.**

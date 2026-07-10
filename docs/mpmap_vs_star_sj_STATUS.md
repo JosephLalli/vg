@@ -21,10 +21,11 @@ sequence into fresh nodes with no junction edges. Testing is on chr20.
   `CHM13#0#chr20` reference path via `vg mod -k`; pangenome node structure preserved, all
   non-reference nodes/paths removed. Node→CHM13 coordinate scoring reuses `node2chm13_mt.tsv`
   (same node IDs). Head-to-head with STAR on the identical CHM13 chr20 sequence.
-  (**All numbers in the standing table below were measured on an earlier `vg construct` reference
-  graph** — sequence-identical to `refpath` but with fresh node boundaries and no junction edges —
-  used as a diagnostic. The `refpath` indexes are now built; the authoritative re-measurement on
-  `refpath` is **pending** and will replace the table numbers when run.)
+  (**The standing table below is measured on `refpath`** — the authoritative substrate — over the
+  3,600-read subset. An earlier `vg construct` reference graph, sequence-identical but with fresh
+  node boundaries and no junction edges, gave **equivalent** results as a diagnostic: precision 3%,
+  non-canonical recall 17/30. So the precision gap is **not** an artifact of graph construction —
+  the pangenome node structure + junction edges moved precision only 2%↔3%.)
 - **Positive control:** 15 canonical (GT-AG) + 30 non-canonical junctions with *verified, diverse*
   non-canonical motifs, 150 bp exon anchors, ~800 bp introns, deep tiled reads (400/junction,
   1% error). Scored **motif-verified** against exact reference coordinates.
@@ -33,20 +34,26 @@ sequence into fresh nodes with no junction edges. Testing is on chr20.
   `design_pc.py`, `motif_curated.txt`, `sj_lin_*.tsv`. (Job scratch is ephemeral; the numbers below
   are the durable record.)
 
-## Current standing (2026-07-10)
-| Metric                        | mpmap        | STAR    | Goal status |
-|-------------------------------|--------------|---------|-------------|
-| Mapping accuracy (≤100 bp)    | 93%          | ≈93%    | **MET**     |
-| Canonical SJ recall           | 12–14/15     | 12/15   | **MET**     |
-| Non-canonical SJ recall       | **17/30**    | 10/30   | **MET (exceeds)** |
-| Non-canonical SJ precision    | **3%**       | ~91%    | **NOT MET** |
-| MEM vs MMP (any metric)       | identical    | —       | seeding is not a lever |
+## Current standing (2026-07-10, measured on `refpath`)
+Default config = MEM + relaxed-budget curated motifs (the recall-win config). `+splice-pairs` =
+adding experimental `--mmp-splice-pairs`.
+| Metric                        | mpmap (default) | mpmap (+splice-pairs) | STAR    | Goal status |
+|-------------------------------|-----------------|-----------------------|---------|-------------|
+| Mapping accuracy (≤100 bp)    | 93%             | 93%                   | ≈93%    | **MET**     |
+| Canonical SJ recall           | 12/15           | 12/15                 | 12/15   | **MET (tie)** |
+| Non-canonical SJ recall       | **14/30**       | 10/30                 | 10/30   | **MET (exceeds/tie)** |
+| Non-canonical SJ precision    | **2%** (20/1081) | **4%** (11/307)      | ~91%    | **NOT MET** |
+| MEM vs MMP (any metric)       | identical       | identical             | —       | seeding is not a lever |
+
+`--mmp-splice-pairs` trades recall (14→10/30) for a negligible precision gain (2→4%) by cutting
+total junctions (1272→481) — the same pattern seen on the diagnostic graph; it is not a fix.
 
 ## What is done
 - **Relaxed splice-motif frequency budget** (committed `9baee7e`): treat per-motif frequencies as
   independent log-odds priors (sum may exceed 1), so a motif file keeps GT-AG dominant while
-  admitting non-canonical motifs at a flat prior. Non-canonical recall **0/30 → 17/30**. The
-  **recall half of the goal (canonical + non-canonical) is MET.**
+  admitting non-canonical motifs at a flat prior. Non-canonical recall **0/30 → 14/30 on `refpath`**
+  (17/30 on the diagnostic graph), both exceeding STAR's 10/30. The **recall half of the goal
+  (canonical + non-canonical) is MET.**
 - **`--sj-out max_overhang` populated** (was a hardcoded 0).
 - **`--mmp-splice-pairs`** experimental precision levers (partner-source restriction, stitch-
   mismatch cap, partner-seed uniqueness, partner-alignment-mismatch cap). All default-off

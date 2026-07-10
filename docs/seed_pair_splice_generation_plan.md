@@ -142,10 +142,11 @@ Implemented on branch `mmp-splice-seeding` (all default-off byte-identical, veri
   `alignSJstitchMismatchNmax=0` for non-canonical): reject a non-canonical join whose connecting
   (stitched) alignment carries any substitution (multipath_mapper.cpp splice-acceptance loop).
 
-Positive-control (3600 reads, curated motifs). NOTE: measured on a `vg construct` reference graph
-(sequence-equivalent diagnostic); the authoritative substrate is `refpath` = HPRC chr20 pangenome
-pruned to the `CHM13#0#chr20` reference path — see `mpmap_vs_star_sj_STATUS.md`. Re-measurement on
-`refpath` in progress:
+Positive-control (3600 reads, curated motifs). Numbers here are on a `vg construct` reference graph
+(diagnostic). The authoritative `refpath` substrate (HPRC chr20 pangenome pruned to `CHM13#0#chr20`;
+see `mpmap_vs_star_sj_STATUS.md`) **confirms the same conclusion**: default precision 2% (20/1081),
+`+splice-pairs` 4% (11/307) with recall 14→10/30 — `--mmp-splice-pairs` still does not recover
+precision. Diagnostic-graph numbers:
 - baseline (no flag):        canon 12/15, non-canon recall 17/30, non-canon precision 3% (29/902)
 - --mmp-splice-pairs:         canon 13/15, recall 17/30, precision 3% (1152 total — MMP seeds add partners)
 - + mismatch constraint:      canon 13/15, recall 17/30, precision 3% (632 non-canon reported, 22 true)

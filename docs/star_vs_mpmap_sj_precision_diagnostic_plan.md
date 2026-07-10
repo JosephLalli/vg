@@ -17,8 +17,10 @@ truth_pc.tsv, reads_pc*.fq, sj_lin_*.tsv). STAR = /usr/bin/STAR 2.7.11b.
 
 **Substrate:** the goal graph is `refpath` — the HPRC chr20 pangenome pruned to the `CHM13#0#chr20`
 reference path (`vg mod -k`), preserving pangenome node IDs (see `mpmap_vs_star_sj_STATUS.md`).
-The 3% figure below was first measured on a sequence-equivalent `vg construct` reference graph
-(a diagnostic); the exact `refpath` re-measurement is the authoritative number.
+The `refpath` re-measurement (2026-07-10) **confirms** the gap on the authoritative substrate:
+non-canonical precision **2%** (20/1081, default) / 4% (+splice-pairs), recall 14/30 — equivalent to
+the 3% first seen on a `vg construct` diagnostic graph. So the precision gap is substrate-independent,
+which strengthens the premise below (it is an algorithm/benchmark issue, not a graph-construction one).
 
 ## STEP 0 — eliminate the benchmark confounder first (cheap, ~0.5 day)
 The current designer exons are random CHM13 fragments that contain repeats; characterization

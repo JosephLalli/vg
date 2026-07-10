@@ -334,6 +334,7 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_MMP_SPLICE_PAIRS = 1058;
     constexpr int OPT_SJ_OUT = 1061;
     constexpr int OPT_SJDB_SCORE = 1062;
+    constexpr int OPT_SJ_READS = 1063;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -350,6 +351,7 @@ int main_mpmap(int argc, char** argv) {
     string intron_distr_name;
     string splice_motif_scores_name;
     string sj_out_name;
+    string sj_reads_name;
     int sjdb_score = 0;
     string trace_splice_search_name;
     string trace_truth_junctions_name;
@@ -620,6 +622,7 @@ int main_mpmap(int argc, char** argv) {
             {"mmp-max-seeds", required_argument, 0, OPT_MMP_MAX_SEEDS},
             {"splice-motif-scores", required_argument, 0, OPT_SPLICE_MOTIF_SCORES},
             {"sj-out", required_argument, 0, OPT_SJ_OUT},
+            {"sj-reads", required_argument, 0, OPT_SJ_READS},
             {"sjdb-score", required_argument, 0, OPT_SJDB_SCORE},
             {"mmp-primary", no_argument, 0, OPT_MMP_PRIMARY},
             {"mmp-splice-pairs", no_argument, 0, OPT_MMP_SPLICE_PAIRS},
@@ -1098,6 +1101,10 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_SJ_OUT:
                 sj_out_name = ensure_writable(logger, optarg);
+                break;
+
+            case OPT_SJ_READS:
+                sj_reads_name = ensure_writable(logger, optarg);
                 break;
 
             case OPT_SJDB_SCORE:
@@ -2072,6 +2079,9 @@ int main_mpmap(int argc, char** argv) {
     multipath_mapper.sjdb_score = sjdb_score;
     if (!sj_out_name.empty()) {
         mpmap_sj::open(sj_out_name);
+    }
+    if (!sj_reads_name.empty()) {
+        mpmap_sj::open_reads(sj_reads_name);
     }
     multipath_mapper.set_read_1_adapter(read_1_adapter);
     multipath_mapper.set_read_2_adapter(read_2_adapter);

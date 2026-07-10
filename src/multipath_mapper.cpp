@@ -3595,9 +3595,15 @@ namespace vg {
             // (right_clip_length); these sum to the read length, so their min is the length of
             // the shorter flanking block. A spurious splice has a short block on one side.
             int64_t sj_overhang = min(best_join->left_clip_length, best_join->right_clip_length);
+            // chosen-join score (motif + intron prior − no-splice odds + sjdb bonus); captured
+            // per read under --sj-reads so an external join can compare the accepted splice score
+            // against how another aligner scored the same read.
+            double sj_chosen_score = splice_stats.motif_score(best_join->motif_idx)
+                                   + best_join->intron_score - no_splice_log_odds + sjdb_bonus;
             mpmap_sj::record(id(sj_donor), offset(sj_donor), is_rev(sj_donor),
                              id(sj_acceptor), offset(sj_acceptor), is_rev(sj_acceptor),
-                             sj_motif, sj_annotated, sj_overhang, *anchor_multiplicity_out);
+                             sj_motif, sj_annotated, sj_overhang, *anchor_multiplicity_out,
+                             alignment.name(), sj_chosen_score);
         }
         
 #ifdef debug_multipath_mapper

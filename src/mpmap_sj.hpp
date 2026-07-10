@@ -22,15 +22,22 @@ namespace mpmap_sj {
 /// Enable collection and set the output path (called once, single-threaded, from mpmap_main).
 void open(const std::string& path);
 
+/// Enable per-read capture (debug; --sj-reads): additionally record, per junction, the supporting
+/// read names and the chosen splice score, and write a companion long-format table on close().
+/// Implies junction collection even when --sj-out was not given.
+void open_reads(const std::string& path);
+
 /// True if junction collection is active. One relaxed boolean load.
 bool enabled();
 
 /// Record one accepted splice junction (thread-safe). donor = last exonic base before the
 /// intron, acceptor = first exonic base after it, as graph positions. `annotated` = the junction
 /// reuses an existing graph edge. `multiplicity` < ~1.5 counts as a unique read, else multi.
+/// `read_name`/`chosen_score` are captured only under --sj-reads.
 void record(int64_t donor_id, int64_t donor_offset, bool donor_rev,
             int64_t acceptor_id, int64_t acceptor_offset, bool acceptor_rev,
-            const std::string& motif, bool annotated, int64_t overhang, double multiplicity);
+            const std::string& motif, bool annotated, int64_t overhang, double multiplicity,
+            const std::string& read_name = std::string(), double chosen_score = 0.0);
 
 /// Write the aggregated junction table and close. Safe to call when never opened.
 void close();

@@ -335,6 +335,8 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_SJ_OUT = 1061;
     constexpr int OPT_SJDB_SCORE = 1062;
     constexpr int OPT_SJ_READS = 1063;
+    constexpr int OPT_MAX_SPLICE_OVERHANG = 1064;
+    constexpr int OPT_SJ_CANDIDATES = 1065;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -352,6 +354,7 @@ int main_mpmap(int argc, char** argv) {
     string splice_motif_scores_name;
     string sj_out_name;
     string sj_reads_name;
+    string sj_candidates_name;
     int sjdb_score = 0;
     string trace_splice_search_name;
     string trace_truth_junctions_name;
@@ -623,6 +626,8 @@ int main_mpmap(int argc, char** argv) {
             {"splice-motif-scores", required_argument, 0, OPT_SPLICE_MOTIF_SCORES},
             {"sj-out", required_argument, 0, OPT_SJ_OUT},
             {"sj-reads", required_argument, 0, OPT_SJ_READS},
+            {"sj-candidates", required_argument, 0, OPT_SJ_CANDIDATES},
+            {"max-splice-overhang", required_argument, 0, OPT_MAX_SPLICE_OVERHANG},
             {"sjdb-score", required_argument, 0, OPT_SJDB_SCORE},
             {"mmp-primary", no_argument, 0, OPT_MMP_PRIMARY},
             {"mmp-splice-pairs", no_argument, 0, OPT_MMP_SPLICE_PAIRS},
@@ -1105,6 +1110,16 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_SJ_READS:
                 sj_reads_name = ensure_writable(logger, optarg);
+                break;
+
+            case OPT_MAX_SPLICE_OVERHANG:
+                // Phase-1 probe (whole_read_best_window_plan.md): widen the splice-placement context
+                // window (anchor re-alignment + 2x motif search) from the default 2*max_softclip_overlap.
+                max_splice_overhang = parse<int>(optarg);
+                break;
+
+            case OPT_SJ_CANDIDATES:
+                sj_candidates_name = ensure_writable(logger, optarg);
                 break;
 
             case OPT_SJDB_SCORE:
@@ -2082,6 +2097,9 @@ int main_mpmap(int argc, char** argv) {
     }
     if (!sj_reads_name.empty()) {
         mpmap_sj::open_reads(sj_reads_name);
+    }
+    if (!sj_candidates_name.empty()) {
+        mpmap_sj::open_candidates(sj_candidates_name);
     }
     multipath_mapper.set_read_1_adapter(read_1_adapter);
     multipath_mapper.set_read_2_adapter(read_2_adapter);

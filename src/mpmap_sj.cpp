@@ -14,6 +14,7 @@
 #include <tuple>
 #include <vector>
 #include <utility>
+#include <sstream>
 #include <iostream>
 
 namespace vg {
@@ -34,10 +35,13 @@ struct JVal {
 
 static std::atomic<bool> g_enabled{false};
 static std::atomic<bool> g_reads_enabled{false};
+static std::atomic<bool> g_cand_enabled{false};
 static std::string g_path;
 static std::string g_reads_path;
+static std::string g_cand_path;
 static std::mutex g_mutex;
 static std::map<JKey, JVal> g_junctions;
+static std::vector<std::string> g_candidates;  // pre-formatted --sj-candidates rows
 
 void open(const std::string& path) {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -52,6 +56,35 @@ void open_reads(const std::string& path) {
     g_reads_enabled.store(true, std::memory_order_relaxed);
     // Per-read capture needs junction collection running even without --sj-out.
     g_enabled.store(true, std::memory_order_relaxed);
+}
+
+void open_candidates(const std::string& path) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_cand_path = path;
+    g_candidates.clear();
+    g_cand_enabled.store(true, std::memory_order_relaxed);
+}
+
+bool candidates_enabled() {
+    return g_cand_enabled.load(std::memory_order_relaxed);
+}
+
+void record_candidate(const std::string& read_name,
+                      int64_t donor_id, int64_t donor_offset, bool donor_rev,
+                      int64_t acceptor_id, int64_t acceptor_offset, bool acceptor_rev,
+                      const std::string& motif, double motif_score, double connect_score,
+                      double intron_score, double net_score) {
+    if (!g_cand_enabled.load(std::memory_order_relaxed)) {
+        return;
+    }
+    std::ostringstream row;
+    row << read_name
+        << '\t' << donor_id << '\t' << donor_offset << '\t' << (donor_rev ? '-' : '+')
+        << '\t' << acceptor_id << '\t' << acceptor_offset << '\t' << (acceptor_rev ? '-' : '+')
+        << '\t' << (motif.empty() ? "." : motif)
+        << '\t' << motif_score << '\t' << connect_score << '\t' << intron_score << '\t' << net_score;
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_candidates.push_back(row.str());
 }
 
 bool enabled() {
@@ -85,7 +118,9 @@ void record(int64_t donor_id, int64_t donor_offset, bool donor_rev,
 
 void close() {
     std::lock_guard<std::mutex> lock(g_mutex);
-    if (!g_enabled.load(std::memory_order_relaxed)) {
+    if (!g_enabled.load(std::memory_order_relaxed)
+        && !g_reads_enabled.load(std::memory_order_relaxed)
+        && !g_cand_enabled.load(std::memory_order_relaxed)) {
         return;
     }
     // Graph-native SJ table (one row per junction), written when --sj-out was given. Columns:
@@ -134,8 +169,24 @@ void close() {
             rout.close();
         }
     }
+    // Per-candidate-join dump (--sj-candidates): one row per gate-passing candidate join.
+    if (g_cand_enabled.load(std::memory_order_relaxed) && !g_cand_path.empty()) {
+        std::ofstream cout_(g_cand_path);
+        if (!cout_.is_open()) {
+            std::cerr << "[vg mpmap] warning: could not open SJ candidates output '" << g_cand_path << "'" << std::endl;
+        } else {
+            cout_ << "#read_name\tdonor_node\tdonor_offset\tdonor_strand\tacceptor_node\tacceptor_offset"
+                     "\tacceptor_strand\tmotif\tmotif_score\tconnect_score\tintron_score\tnet_score\n";
+            for (const auto& row : g_candidates) {
+                cout_ << row << '\n';
+            }
+            cout_.flush();
+            cout_.close();
+        }
+    }
     g_enabled.store(false, std::memory_order_relaxed);
     g_reads_enabled.store(false, std::memory_order_relaxed);
+    g_cand_enabled.store(false, std::memory_order_relaxed);
 }
 
 } // namespace mpmap_sj

@@ -27,6 +27,21 @@ void open(const std::string& path);
 /// Implies junction collection even when --sj-out was not given.
 void open_reads(const std::string& path);
 
+/// Enable per-candidate-join dump (debug; --sj-candidates): record EVERY gate-passing candidate
+/// splice join considered per read, with its score components, to diagnose splice mis-placement.
+/// Independent of --sj-out.
+void open_candidates(const std::string& path);
+
+/// True if per-candidate-join dumping is active. One relaxed boolean load.
+bool candidates_enabled();
+
+/// Record one gate-passing candidate join (thread-safe; --sj-candidates only).
+void record_candidate(const std::string& read_name,
+                      int64_t donor_id, int64_t donor_offset, bool donor_rev,
+                      int64_t acceptor_id, int64_t acceptor_offset, bool acceptor_rev,
+                      const std::string& motif, double motif_score, double connect_score,
+                      double intron_score, double net_score);
+
 /// True if junction collection is active. One relaxed boolean load.
 bool enabled();
 

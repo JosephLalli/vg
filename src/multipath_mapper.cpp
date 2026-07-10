@@ -3508,7 +3508,24 @@ namespace vg {
                 
                 // and translate into the original ID space
                 join.joined_graph.translate_node_ids(*path);
-                
+
+                // Phase-1 diagnostic (--sj-candidates): dump every gate-passing candidate join with
+                // its score components, so splice mis-placement can be analyzed (does the off-site win
+                // on connecting-alignment score = context, or on motif score = equal-prior tie?).
+                if (mpmap_sj::candidates_enabled() && join.splice_idx >= 1
+                    && (int) join.splice_idx < path->mapping_size()) {
+                    const auto& cdm = path->mapping(join.splice_idx - 1);
+                    const auto& cdp = cdm.position();
+                    const auto& cap = path->mapping(join.splice_idx).position();
+                    string cmotif = splice_stats.unoriented_motif(join.motif_idx, false)
+                                  + splice_stats.unoriented_motif(join.motif_idx, true);
+                    mpmap_sj::record_candidate(alignment.name(),
+                        cdp.node_id(), cdp.offset() + mapping_from_length(cdm), cdp.is_reverse(),
+                        cap.node_id(), cap.offset(), cap.is_reverse(),
+                        cmotif, splice_stats.motif_score(join.motif_idx),
+                        join.connecting_aln.score(), join.intron_score, net_score);
+                }
+
                 if (net_score > best_net_score ||
                     (net_score == best_net_score && join.estimated_intron_length < best_intron_length)) {
 #ifdef debug_multipath_mapper

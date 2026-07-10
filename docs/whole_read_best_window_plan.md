@@ -124,9 +124,19 @@ default byte-identical; validated against the no-regression gate + chr20-10x + M
   best, so the winner (and thus default output) is unchanged; this only exposes the full candidate set.
   Combined with `--sj-candidates`, confirms whether the true site is generated-but-pruned/sub-threshold
   (→ re-scoring can recover it) or never generated (→ candidate generation must change). [IMPLEMENTED]
-- **M2 — whole-read re-score selection:** rank evaluated candidates by the WHOLE-READ re-aligned
-  spliced score (full-exon context), not the local `net_score`, so a 1-4 bp shift pays its true
-  downstream penalty and the true site wins. Bound cost with a top-K pre-filter.
+- **M2 — whole-read re-score selection [IMPLEMENTED, commit `8dfa2db`, `--splice-whole-read`]:**
+  for each spliced read, re-rank the candidate joins by a WHOLE-READ score instead of the local
+  `net_score`. Build a small two-exon DAG (donor exon ending at the junction -> acceptor exon
+  starting at it, read-length context each side), locally align the whole read to it, add a rescaled
+  STAR fixed motif bonus. **Key calibration finding:** STAR's `scoreGapNoncan=-8` is on STAR's scale;
+  on mpmap's ~1/base scale it over-dominates and canonical-steals (a nearby GT-AG beats the true
+  non-canonical junction, recall 25->22), while weight 0 slightly over-reports (precision 48%).
+  `--splice-whole-read-motif-weight` (default 0.5) is the balance point. RESULT on the clean chr20
+  control: canonical recall 14/15 and non-canonical recall 25/30 both HELD (both exceed STAR's 12/15,
+  24/30), non-canonical precision **50% -> 52%**; repeat-heavy control no regression; default-off
+  byte-identical; tests 33/35 pass. The residual precision gap to STAR's 100% is paralog/repeat
+  false positives that align well to their (wrong) two-exon graph — the whole-read score cannot
+  reject these (see M3/paralog disambiguation as the next lever, separate from placement).
 - **M3 — one-junction-per-cluster reporting:** at `--sj-out`, collapse per-read placements to the
   whole-read-best consensus per cluster (reassign low-support near-duplicates to the dominant true
   junction; never drop, to hold recall).

@@ -47,19 +47,25 @@ sequence into fresh nodes with no junction edges. Testing is on chr20.
   `design_pc.py`, `motif_curated.txt`, `sj_lin_*.tsv`. (Job scratch is ephemeral; the numbers below
   are the durable record.)
 
-## Current standing (2026-07-10, `refpath`, donor-coordinate fix applied)
+## Current standing (2026-07-10, `refpath`, donor fix + M2 whole-read re-score)
 The precision diagnostic (STEP 0) removed **two measurement artifacts** — a benchmark repeat
-confounder and a `--sj-out` donor-coordinate bug (both under **What is done**) — so the table below
-supersedes the earlier one. All cells are the same 3,600-read subset run through both tools; mpmap =
-MEM + relaxed-budget curated motifs. Authoritative substrate is the **clean genome-unique control**.
+confounder and a `--sj-out` donor-coordinate bug — and a scorer motif-strand convention; M2
+(`--splice-whole-read`, commit `8dfa2db`) adds whole-read best-window re-scoring. All cells are the
+same 3,600-read subset through both tools on the **clean genome-unique control** (authoritative).
 
-| Metric                        | mpmap        | STAR         | Goal status |
-|-------------------------------|--------------|--------------|-------------|
-| Mapping accuracy (≤100 bp)    | 93%          | ≈93%         | **MET**     |
-| Canonical SJ recall           | 14/15        | 12/15        | **MET**     |
-| Non-canonical SJ recall       | 23/30        | 24/30        | **MET (~tie)** |
-| Non-canonical SJ precision    | **47%** (28/60) | 100% (24/24) | **NOT MET (residual)** |
-| MEM vs MMP (any metric)       | identical    | —            | seeding is not a lever |
+| Metric                        | mpmap default | mpmap `--splice-whole-read` | STAR    | Goal status |
+|-------------------------------|---------------|------------------------------|---------|-------------|
+| Mapping accuracy (≤100 bp)    | 93%           | 93%                          | ≈93%    | **MET**     |
+| Canonical SJ recall           | 14/15         | 14/15                        | 12/15   | **MET (beats STAR)** |
+| Non-canonical SJ recall       | 25/30         | 25/30                        | 24/30   | **MET (beats STAR)** |
+| Non-canonical SJ precision    | 50% (30/60)   | **52%** (30/58)              | 100% (24/24) | **improved, still < STAR** |
+| MEM vs MMP (any metric)       | identical     | —                            | —       | seeding is not a lever |
+
+M2 clears the no-regression gate (every metric ≥ default on the clean AND repeat-heavy controls;
+default-off byte-identical; tests 33/35 pass) and improves non-canonical precision. The residual gap
+to STAR's 100% is **paralog/repeat false positives** that align well to their own (wrong) two-exon
+graph — the whole-read score cannot reject these; that is a paralog-disambiguation problem, separate
+from splice placement (`whole_read_best_window_plan.md`).
 
 Repeat-heavy control (fixed binary), for reference: mpmap 20/30 recall, **2%** (22/891) precision;
 STAR 10/30, 91%. The low precision there is genuine repeat-mismap false junctions (reads' Alu/LINE

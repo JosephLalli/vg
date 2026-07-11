@@ -193,6 +193,83 @@ for harder substrates only.
 3. **Bundle all-256 registration into `--splice-denovo`** so no external motif file is needed.
 4. **Default support filter** guidance (unique≥3) for the `--sj-out` de-novo path.
 
+## Scaled validation — 465 and 1282-junction controls (2026-07-10)
+Expanded the genome-unique control with denser grids (`design_pcUbig.py` STEP=8000; `design_pcUcanon.py`
+STEP=1000, MIN_SPACING=2000 — canonical is availability-limited so a finer grid finds far more: 105→922).
+Same 50-mer uniqueness screen, 80 reads/junction. Current `--splice-denovo` build vs STAR at unique≥3:
+
+| Metric | 465-set mpmap | 465 STAR | 1282-set mpmap | 1282 STAR |
+|---|---|---|---|---|
+| Canonical recall | 105/105 (100%) | 95/105 (90%) | **918/922 (99.6%)** | 845/922 (91.6%) |
+| Canonical precision | 93% | 62% | **920/922 (100%)** | 847/925 (92%) |
+| Non-canonical recall | 357/360 (99%) | 280/360 (78%) | **359/360 (99.7%)** | 284/360 (78.9%) |
+| Non-canonical precision | 94% | 100% | 93% | 100% |
+
+**Stable large-sample verdict:** mpmap beats STAR decisively on **canonical recall, canonical precision, and
+non-canonical recall** (the last by ~21 pts every time; canonical precision is ~100% at scale) and trails STAR
+only on **non-canonical precision** (93-94% vs 100%) — a small, *reproducible* residual (~25 false non-canonical
+calls survive unique≥3). The 45-junction set hid this by looking 100%/100%. Sweeping the support threshold lifts
+non-canonical precision toward but never onto STAR's 100%. So the win is 3-of-4 metrics decisively, non-canonical
+precision a persistent ~7-pt gap. Runtime: 102,560 reads in 86 s.
+
+**Availability note:** chr20 supports ~1,004 clean genome-unique canonical junctions total (all found at
+STEP=1000); non-canonical are effectively unlimited (98,575 clean candidates at STEP=1000).
+
+### Multi-haplotype pangenome (maptarget, full HPRC chr20) — 465-junction control, unique≥3
+Same reads/motifs, mapped to the full pangenome (3.9M nodes / 5.4M edges) instead of ref-only `refpath`
+(2.0M / 2.2M); `node2chm13_mt.tsv` shared (refpath = `vg mod -k` of maptarget).
+
+| Metric | refpath | maptarget |
+|---|---|---|
+| Canonical recall | 105/105 | 105/105 |
+| Canonical precision | 93% | 94% |
+| Non-canonical recall | 357/360 | 353/360 |
+| Non-canonical precision | 94% | 94% |
+
+**Haplotype complexity barely degrades de-novo discovery** — costs 4 non-canonical junctions (reads pulled to
+alt-haplotype nodes, off the ref-coordinate map), everything else flat, +40% runtime. Generalizes cleanly;
+the MHC-paralogy P/R confound is MHC-specific, not a general pangenome effect.
+
+### Comparison target: STAR ONE-PASS discovery
+The goal is to match STAR's **one-pass** splice-junction discovery. One-pass IS the discovery comparison —
+`--twopassMode Basic` is a separate feature that re-maps reads across pass-1 junctions to improve *alignment
+accuracy after discovery*, not a discovery mode; it is out of scope here. So STAR one-pass is the correct
+apples-to-apples target, not a weakened baseline.
+
+The one real fairness gap is **annotation symmetry on real data**: the real-data STAR is one-pass
+*annotation-guided* (CAT sjdb), while mpmap was run on `refpath` (no embedded junctions). To match STAR's
+one-pass discovery on real data, mpmap must map against a graph with the reference splice junctions embedded
+(`vg rna` spliced graph, e.g. `smoke_chr20/chr20.spliced.pg`) — the graph analog of STAR's sjdb. That
+annotation-guided-vs-annotation-guided, both one-pass, is the pending real-data comparison. (The synthetic
+control is already correct: STAR there is one-pass de-novo, mpmap on `refpath` — both blind, novel junctions.)
+
+## Real-data validation (real 10x chr20 cDNA, 2M reads) — 2026-07-11
+Mapped the real `chr20_gex` cDNA (`chr20_R2.trim.fastq.gz`) and compared to one-pass annotation-guided STAR
+(`star_chm13/chr20_SJ.out.tab`, CAT sjdb). Two measurement routes gave OPPOSITE answers:
+
+| min_unique=3 | via `--sj-out` | via **surjected alignments** | STAR |
+|---|---|---|---|
+| mpmap junctions | 281 | 2,849 | 2,682 |
+| STAR recovered by mpmap | **3%** | **93%** | — |
+| Known (annotated) junctions missed | 2,388 | **22** | — |
+| Jaccard | 0.03 | **0.82** | — |
+
+(unique≥5: surjected route 96% recovery, Jaccard 0.89.)
+
+**The `--sj-out` "failure" is a measurement artifact, not a mapping failure.** `--sj-out` records junctions only
+via `mpmap_sj::record` inside `test_splice_candidates` (the de-novo splice-**rescue** path). A read crossing an
+*annotated* junction traverses the graph's splice **edge** during normal chaining and never enters rescue, so
+`--sj-out` never logs it. On the synthetic control (novel junctions, not in the graph) everything is rescued →
+`--sj-out` captures all. On real data (junctions embedded as CAT edges) reads cross them via edges → `--sj-out`
+is blind. Measuring via **surjection** (`vg surject -S` → CIGAR `N` ops → CHM13 coords, STAR-equivalent) shows
+mpmap actually aligns across real junctions **as well as STAR** (93-96% recovery, high concordance, misses only
+~22 known junctions). Setup: built mpmap indexes for the `vg rna` spliced graph `smoke_chr20/chr20.spliced.pg`
+(xg/gcsa/dist; GCSA ~52 min) + derived `node2chm13_spliced.tsv` (path length 66,210,255 ✓).
+
+**Actionable finding (open):** `--sj-out` should also report junctions traversed via existing graph splice
+edges, not just de-novo rescue discoveries — otherwise it under-reports catastrophically on annotated graphs.
+Until then, real-data junction comparison must go through surjection, not `--sj-out`.
+
 ## Retrospective — how much of the committed code is essential? (2026-07-10)
 Committed as `226a273` (4 files, 288 insertions; 230 are this doc). Estimate of what could be reverted while
 keeping the clean-control performance:

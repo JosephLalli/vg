@@ -162,7 +162,7 @@ Build with the fork's wrapper (**never a bare `make`** — see `BUILDING-LOCAL.m
 ```bash
 ./build-local.sh obj/mpmap_trace.o obj/multipath_mapper.o obj/subcommand/mpmap_main.o
 ./build-local.sh                    # relink bin/vg
-cd test && prove -v t/35_vg_mpmap_trace.t   # 16 assertions
+cd test && prove -v t/35_vg_mpmap_trace.t   # 31 assertions
 ```
 
 `test/t/35_vg_mpmap_trace.t` is the smoke test: it confirms no file is written

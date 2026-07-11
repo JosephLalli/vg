@@ -60,7 +60,14 @@ Benchmarks on the PANGENOME (sampleA.spliced, 466-hap).
   pangenome: 397 junctions with support counts. Motif reported via `unoriented_motif` (canonical
   donor+acceptor label). SCOPE: captures rescue-DISCOVERED (novel) junctions; junctions traversed
   via existing graph splice edges during normal alignment are not yet captured -- a post-alignment
-  path scan is the reserved addition (and would populate the annotated rows for item 6).
+  path scan is the reserved addition (and would populate the annotated rows for item 6). **Update
+  (2026-07-11):** this scope limit was later confirmed to matter a lot on annotated real-data graphs
+  (~90%+ of spliced reads there cross edges, not rescue) and was kept as a deliberate scope decision
+  rather than built out -- see `beat_star_splice_discovery_implementation.md`'s real-data validation
+  section; use `vg surject -S` for annotated-graph junction completeness instead. Separately (commit
+  `59df9e4`), `--sj-out` gained `donor_ref_path`/`donor_ref_pos`/`acceptor_ref_path`/`acceptor_ref_pos`
+  columns (reference-path projection, `.` fallback when off-reference), superseding the `--sj-ref-path`
+  idea sketched below -- coordinates are now always emitted, not opt-in by flag.
 - **Item 5 (both-strand) -- DONE (investigation: already covered).** vg's GCSA2 is double-stranded,
   so a forward-read query already returns both-strand hits. Confirmed: reverse-strand reads map
   under `--mmp-primary`. No RC-seeding code needed; a `--mmp-both-strands` toggle is unnecessary.

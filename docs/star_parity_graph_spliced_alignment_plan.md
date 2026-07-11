@@ -8,6 +8,15 @@
 > `whole_read_best_window_plan.md` for what shipped: M1/M2 whole-read re-score + graph-native paralog
 > filter). Goal unchanged: adapt STAR's algorithm to the graph and match/beat it on mapping, junction
 > discovery, and non-canonical discovery, with **no regression** vs current mpmap.
+>
+> **Update (2026-07-11) — Phase 4 (stitch-first DP) superseded, not built.** De novo non-canonical
+> discovery, the gap Phase 4 targets below, was closed by a parameter/input lever instead (raising
+> `--max-motif-pairs`, supplying all-256 motifs via `--splice-motif-scores`, filtering with
+> `--sj-min-unique`) — see `beat_star_splice_discovery_implementation.md`. No
+> `banded_global_aligner` surgery was implemented. Phases 1/2/3/5/6 below remain open/unimplemented
+> proposals as written; only Phase 4's justification for aligner surgery is superseded — the
+> non-canonical-precision gap it also cites is real (see STATUS) but the diagnosed fix is the
+> whole-read-cluster consensus reporting in `whole_read_best_window_plan.md` M3, not this DP.
 
 ## Unifying idea: a splice is a node→node edge
 Every gap below closes if a splice junction is treated as a **first-class graph edge / transition**

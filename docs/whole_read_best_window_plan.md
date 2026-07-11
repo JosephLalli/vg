@@ -143,9 +143,16 @@ default byte-identical; validated against the no-regression gate + chr20-10x + M
   byte-identical; tests 33/35 pass. The residual precision gap to STAR's 100% is paralog/repeat
   false positives that align well to their (wrong) two-exon graph — the whole-read score cannot
   reject these (see M3/paralog disambiguation as the next lever, separate from placement).
-- **M3 — one-junction-per-cluster reporting:** at `--sj-out`, collapse per-read placements to the
-  whole-read-best consensus per cluster (reassign low-support near-duplicates to the dominant true
-  junction; never drop, to hold recall).
+- **M3 — one-junction-per-cluster reporting [NOT IMPLEMENTED]:** at `--sj-out`, collapse per-read
+  placements to the whole-read-best consensus per cluster (reassign low-support near-duplicates to
+  the dominant true junction; never drop, to hold recall). This is the fix later diagnosed
+  (`beat_star_splice_discovery_implementation.md` scaled validation, 2026-07-10) as the way to close
+  the non-canonical-precision gap (~93-94% vs STAR ~100% at scale): the `--sj-out` sink keys on exact
+  node/offset, so one true junction with per-read donor/acceptor/motif jitter fragments into several
+  low-support rows with no cross-read consensus. Do not confuse this unbuilt cluster-consensus fix
+  with M2 (`--splice-whole-read`, shipped, commit `8dfa2db`) — M2 re-scores/re-ranks candidate joins
+  per read; M3 would additionally cluster and consolidate *across* reads at report time, and that
+  clustering step has not been built.
 - **M4 — validate:** no-regression gate (precision AND recall ≥ baseline on clean + repeat-heavy),
   chr20-10x + MHC anti-overfitting, tests 33/35, runtime.
 

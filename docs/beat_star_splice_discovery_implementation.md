@@ -2,10 +2,25 @@
 
 > **Navigation:** Hub / entry point for all splice/SJ docs: [`mpmap_vs_star_sj_STATUS.md`](mpmap_vs_star_sj_STATUS.md).
 > This doc is the execution plan for the goal below; it consumes the Phase 4 spec
-> ([`graph_denovo_splice_discovery_plan.md`](graph_denovo_splice_discovery_plan.md)) and the M2 whole-read
-> machinery ([`whole_read_best_window_plan.md`](whole_read_best_window_plan.md)).
+> ([`graph_denovo_splice_discovery_plan.md`](graph_denovo_splice_discovery_plan.md), superseded — see
+> that doc's header) and the M2 whole-read machinery
+> ([`whole_read_best_window_plan.md`](whole_read_best_window_plan.md)).
 
-**Status (2026-07-10):** PLAN. Ground established (build works, benchmark reproducible, surgery site mapped).
+**Status (2026-07-11):** RESULT RECORDED, goal partially met — this doc now contains the full
+history from initial plan through the de novo discovery breakthrough, scaled validation, real-data
+validation, and two retrospectives on how little code the win actually required. **Read to the
+bottom before citing a number from here**; the sections below are in chronological order and later
+sections revise earlier ones (in particular "Stage B" / "native stitch-first DP" as planned near the
+top was never built — see the BREAKTHROUGH and retrospective sections). Honest summary of where
+things stand: de novo canonical recall/precision and non-canonical recall beat STAR decisively at
+scale; **non-canonical precision (~93-94%) is the one metric still below STAR (~100%)**, diagnosed
+as per-read junction fragmentation, unimplemented fix documented in `whole_read_best_window_plan.md`
+M3. Real-data (annotated-graph) junction recovery via surjection is a 93-96% **tie** with STAR, not
+a win — a different regime from de novo discovery. `--sj-out` (commit `59df9e4`, 2026-07-11) now
+also reports each junction's reference-path coordinates; see the "Junction output format" note
+below.
+
+**Original status (2026-07-10, superseded by the above):** PLAN. Ground established (build works, benchmark reproducible, surgery site mapped).
 Stage A (de-novo generation, rescue-path) is cleared to start; Stage B (native stitch-first DP) is gated on
 Stage A results + explicit sign-off before any `banded_global_aligner` surgery.
 
@@ -266,9 +281,22 @@ mpmap actually aligns across real junctions **as well as STAR** (93-96% recovery
 ~22 known junctions). Setup: built mpmap indexes for the `vg rna` spliced graph `smoke_chr20/chr20.spliced.pg`
 (xg/gcsa/dist; GCSA ~52 min) + derived `node2chm13_spliced.tsv` (path length 66,210,255 ✓).
 
-**Actionable finding (open):** `--sj-out` should also report junctions traversed via existing graph splice
-edges, not just de-novo rescue discoveries — otherwise it under-reports catastrophically on annotated graphs.
-Until then, real-data junction comparison must go through surjection, not `--sj-out`.
+**Scope decision (deliberate, not built this session):** `--sj-out` still reports only de-novo rescue
+discoveries, not junctions traversed via existing graph splice edges — this was decided as out of
+scope rather than an oversight. Consequence: real-data / annotated-graph junction comparison must go
+through surjection (`vg surject -S` → CIGAR `N` ops), never `--sj-out`, which under-reports
+catastrophically (3% vs 93-96%) on those graphs. `--sj-out` remains the right tool only for de-novo
+(non-annotated-graph) discovery, where the synthetic control above is measured.
+
+**Junction output format update (2026-07-11, commit `59df9e4`):** `--sj-out` now appends four
+reference-path coordinate columns — `donor_ref_path`, `donor_ref_pos`, `acceptor_ref_path`,
+`acceptor_ref_pos` — by projecting each junction's donor/acceptor graph position onto a
+reference/generic path (`algorithms::nearest_offsets_in_paths`). This makes the table
+self-sufficient in linear coordinates (no external node->coordinate map, e.g. `node2chm13_mt.tsv`,
+needed to score it against STAR going forward). An endpoint with no reference path falls back to `.`
+in both of its columns; the existing node/offset/strand columns and the rescue-only recording logic
+above are unchanged. Per-haplotype coordinate placement (e.g. a path like `HG002#1#...`) is deferred
+pending a haplotype-carrying spliced graph — the current spliced graph embeds only reference paths.
 
 ## Retrospective — how much of the committed code is essential? (2026-07-10)
 Committed as `226a273` (4 files, 288 insertions; 230 are this doc). Estimate of what could be reverted while
@@ -331,6 +359,12 @@ without `--sj-out`). Also unmodified `SpliceStats::init` may reject motif freque
 relaxed this in 9baee7e); a flat all-256 prior summing ≤ 1 sidesteps it.
 
 ## Stage B — native stitch-first spliced alignment  [HIGH risk; gated on Stage A + sign-off]
+**NOT TRIGGERED / NOT BUILT.** This section is the original plan's design for Stage B, written before
+Stage A's result was known. The BREAKTHROUGH section above found Stage A's ceiling was generation
+starvation, not a whole-read-selection wall — the decision criterion below resolved to "B unnecessary,
+goal met on the rescue path" (see "Implication for Stage B" above), so neither B1 nor B2 was
+implemented. Kept verbatim for the historical record; do not cite as current or planned work.
+
 Only if Stage A discovers junctions but systematically **mis-places** them or is too slow. Two realizations
 of "native whole-read spliced alignment" — decide before cutting:
 

@@ -8,7 +8,13 @@ Single source of truth for the current goal and standing. A **Document Map** of 
 and a **verified flag inventory**, are at the bottom. Last updated 2026-07-10.
 
 ## Current goal
-**Continue the splice-search instrumentation analysis.** This is the active line of work.
+**Adapt STAR's algorithm to the node/edge graph and match or beat it on splice-junction detection.**
+The read-by-read precision diagnostic is complete; the whole-read best-window re-score (M2,
+`--splice-whole-read`, commit `8dfa2db`) and a graph-native paralog filter (`--sj-anchor-multimap-max`
++ `--sj-min-unique`, commit `e272e6d`) have shipped. The active line of work is the STAR-parity
+roadmap (`star_parity_graph_spliced_alignment_plan.md`) — closing the remaining gaps while keeping the
+node/edge graph model, with de novo non-canonical discovery (`graph_denovo_splice_discovery_plan.md`,
+Phase 4) as the next lever.
 
 **The benchmark it serves:** get **either vg mpmap seeding mode — MEM or MMP — to mirror STAR's
 splice-junction performance on a linear chr20**. "Linear chr20" here means the HPRC chr20 pangenome
@@ -16,9 +22,12 @@ splice-junction performance on a linear chr20**. "Linear chr20" here means the H
 reference alone (see **Substrate** below). Concretely: make **vg mpmap perform as well as or better
 than STAR on BOTH precision and recall** of splice-junction detection — **canonical and
 non-canonical** — on that reference-only chr20 graph **with introduced non-canonical junctions**.
-Either seeding pathway is acceptable (seeding has been shown not to be the lever); the one open gap
-is **non-canonical precision**, which the instrumentation analysis
-(`star_vs_mpmap_sj_precision_diagnostic_plan.md`) is built to diagnose read-by-read.
+Either seeding pathway is acceptable (seeding has been shown not to be the lever). Two gaps remain
+open: **non-canonical precision** (mpmap 52% vs STAR 100% on the clean control — a
+paralog-disambiguation problem, roadmap Phase 3) and **de novo non-canonical discovery** (mpmap only
+discovers junctions whose motif is pre-listed — Phase 4). The precision diagnostic
+(`star_vs_mpmap_sj_precision_diagnostic_plan.md`) has delivered its verdict (whole-read best-window),
+so it is complete rather than active.
 
 **Substrate definition (per user, 2026-07-10):** the "linear graph" is NOT a freshly-constructed
 reference. It is the **HPRC chr20 pangenome pruned to the reference haplotype** — keep only the

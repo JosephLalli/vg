@@ -142,6 +142,21 @@ default byte-identical; validated against the no-regression gate + chr20-10x + M
   junction; never drop, to hold recall).
 - **M4 — validate:** no-regression gate (precision AND recall ≥ baseline on clean + repeat-heavy),
   chr20-10x + MHC anti-overfitting, tests 33/35, runtime.
+
+## Paralog false positives — graph-native STAR defense [IMPLEMENTED, commit `e272e6d`]
+Separate lever from placement. STAR confirmed defaults (from the 2.7.11b binary): `outFilterMultimapNmax=10`
+(drop >10-loci reads), `winAnchorMultimapNmax=50` (repeat seeds don't anchor), `outSJfilterCountUniqueMin=3 1 1 1`
+and `outSJfilterCountTotalMin=3 1 1 1` (OR'd), `outSJfilterOverhangMin=30 12 12 12`,
+`outSJfilterDistToOtherSJmin=10 0 5 10`, `scoreGapNoncan/GCAG/ATAC=-8/-4/-8`. Root cause in mpmap:
+it hit-caps repeat MEMs, never enumerates the paralog copies, and **mislabels 100% of paralog false
+junctions as uniquely-supported** (measured: 869/869 on the repeat-heavy control). Fix (two composable
+flags): `--sj-anchor-multimap-max N` (graph-native winAnchorMultimapNmax — query GCSA2 for the junction's
+donor/acceptor anchor k-mer frequency; if > N loci, count support as multi not unique) and
+`--sj-min-unique M` (outSJfilterCountUniqueMin). Result: repeat-heavy precision 3% -> 16% (threshold 10,
+891 -> 119 junctions) by removing repeat-anchored junctions; genome-unique control near-no-op; default-off
+byte-identical. Tuning: anchor k-mer is min(gcsa order, 24) — shorter than the k=50 uniqueness screen, so a
+sub-k-mer can recur inside a 50-mer-unique flank and drop a few true junctions on the clean control (use a
+longer anchor k-mer / higher threshold); the GCSA count adds per-junction runtime (bound/cache it).
 Primary design (STAR-faithful, expected if H1/H2 dominate): **`--sj-whole-read-window`** — when placing
 the splice, score candidate placements by the **whole-read** fused alignment (full anchors + bridge),
 not just the trimmed window, and **tie-break toward maximal exact-anchor extension** (STAR pins the

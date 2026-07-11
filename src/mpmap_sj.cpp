@@ -41,6 +41,8 @@ static std::string g_reads_path;
 static std::string g_cand_path;
 static std::mutex g_mutex;
 static std::map<JKey, JVal> g_junctions;
+static int64_t g_min_unique = 0;  // outSJfilterCountUniqueMin analog: drop non-annotated junctions
+                                  // with fewer than this many unique reads (0 = off)
 static std::vector<std::string> g_candidates;  // pre-formatted --sj-candidates rows
 
 void open(const std::string& path) {
@@ -48,6 +50,11 @@ void open(const std::string& path) {
     g_path = path;
     g_junctions.clear();
     g_enabled.store(true, std::memory_order_relaxed);
+}
+
+void set_min_unique(int64_t m) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_min_unique = m;
 }
 
 void open_reads(const std::string& path) {
@@ -94,7 +101,7 @@ bool enabled() {
 void record(int64_t donor_id, int64_t donor_offset, bool donor_rev,
             int64_t acceptor_id, int64_t acceptor_offset, bool acceptor_rev,
             const std::string& motif, bool annotated, int64_t overhang, double multiplicity,
-            const std::string& read_name, double chosen_score) {
+            const std::string& read_name, double chosen_score, bool anchor_repetitive) {
     if (!enabled()) {
         return;
     }
@@ -103,7 +110,10 @@ void record(int64_t donor_id, int64_t donor_offset, bool donor_rev,
     JVal& v = g_junctions[key];
     v.motif = motif;
     v.annotated = v.annotated || annotated;
-    if (multiplicity < 1.5) {
+    // graph-native winAnchorMultimapNmax: a junction whose anchor k-mer maps to many graph loci is
+    // repeat/paralog-derived; its read is effectively multi-mapping even if the local cluster made
+    // its multiplicity look ~1 (mpmap hit-caps repeat MEMs and never sees the paralog copies).
+    if (multiplicity < 1.5 && !anchor_repetitive) {
         v.unique_reads += 1;
     } else {
         v.multi_reads += 1;
@@ -136,6 +146,10 @@ void close() {
             for (const auto& kv : g_junctions) {
                 const JKey& k = kv.first;
                 const JVal& v = kv.second;
+                // outSJfilterCountUniqueMin analog (annotated junctions exempt, as in STAR)
+                if (g_min_unique > 0 && !v.annotated && v.unique_reads < g_min_unique) {
+                    continue;
+                }
                 out << std::get<0>(k) << '\t' << std::get<1>(k) << '\t' << (std::get<2>(k) ? '-' : '+')
                     << '\t' << std::get<3>(k) << '\t' << std::get<4>(k) << '\t' << (std::get<5>(k) ? '-' : '+')
                     << '\t' << (v.motif.empty() ? "." : v.motif)

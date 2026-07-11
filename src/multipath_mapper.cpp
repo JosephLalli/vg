@@ -3728,10 +3728,26 @@ namespace vg {
             // against how another aligner scored the same read.
             double sj_chosen_score = splice_stats.motif_score(best_join->motif_idx)
                                    + best_join->intron_score - no_splice_log_odds + sjdb_bonus;
+            // graph-native winAnchorMultimapNmax: query GCSA2 for the junction's donor/acceptor anchor
+            // k-mer frequency; if either maps to > sj_anchor_multimap_max loci the junction is
+            // repeat/paralog-anchored, so count its support as multi (mpmap hit-caps repeat MEMs and
+            // otherwise mis-labels these as unique). Reuses the whole-read exon-sequence walkers.
+            bool sj_anchor_repetitive = false;
+            if (sj_anchor_multimap_max > 0 && gcsa != nullptr) {
+                int64_t kk = min<int64_t>((int64_t) gcsa->order(), 24);
+                auto anchor_freq = [&](const string& s) -> int64_t {
+                    if ((int64_t) s.size() < kk) return 0;
+                    return (int64_t) gcsa->count(gcsa->find(s.begin(), s.end()));
+                };
+                if (anchor_freq(upstream_seq(sj_donor, kk)) > sj_anchor_multimap_max
+                    || anchor_freq(downstream_seq(sj_acceptor, kk)) > sj_anchor_multimap_max) {
+                    sj_anchor_repetitive = true;
+                }
+            }
             mpmap_sj::record(id(sj_donor), offset(sj_donor), is_rev(sj_donor),
                              id(sj_acceptor), offset(sj_acceptor), is_rev(sj_acceptor),
                              sj_motif, sj_annotated, sj_overhang, *anchor_multiplicity_out,
-                             alignment.name(), sj_chosen_score);
+                             alignment.name(), sj_chosen_score, sj_anchor_repetitive);
         }
         
 #ifdef debug_multipath_mapper

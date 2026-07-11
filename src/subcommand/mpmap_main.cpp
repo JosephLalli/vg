@@ -342,6 +342,8 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_SPLICE_WHOLE_READ_CONTEXT = 1068;
     constexpr int OPT_SPLICE_WHOLE_READ_TOPK = 1069;
     constexpr int OPT_SPLICE_WHOLE_READ_MOTIF_WEIGHT = 1070;
+    constexpr int OPT_SJ_ANCHOR_MULTIMAP_MAX = 1071;
+    constexpr int OPT_SJ_MIN_UNIQUE = 1072;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -365,6 +367,8 @@ int main_mpmap(int argc, char** argv) {
     int splice_whole_read_context = 0;   // 0 = auto: use the read's own length
     int splice_whole_read_topk = 8;
     double splice_whole_read_motif_weight = 0.5;
+    int sj_anchor_multimap_max = 0;
+    int sj_min_unique = 0;
     int sjdb_score = 0;
     string trace_splice_search_name;
     string trace_truth_junctions_name;
@@ -642,6 +646,8 @@ int main_mpmap(int argc, char** argv) {
             {"splice-whole-read-context", required_argument, 0, OPT_SPLICE_WHOLE_READ_CONTEXT},
             {"splice-whole-read-topk", required_argument, 0, OPT_SPLICE_WHOLE_READ_TOPK},
             {"splice-whole-read-motif-weight", required_argument, 0, OPT_SPLICE_WHOLE_READ_MOTIF_WEIGHT},
+            {"sj-anchor-multimap-max", required_argument, 0, OPT_SJ_ANCHOR_MULTIMAP_MAX},
+            {"sj-min-unique", required_argument, 0, OPT_SJ_MIN_UNIQUE},
             {"max-splice-overhang", required_argument, 0, OPT_MAX_SPLICE_OVERHANG},
             {"sjdb-score", required_argument, 0, OPT_SJDB_SCORE},
             {"mmp-primary", no_argument, 0, OPT_MMP_PRIMARY},
@@ -1155,6 +1161,14 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_SPLICE_WHOLE_READ_MOTIF_WEIGHT:
                 splice_whole_read_motif_weight = parse<double>(optarg);
+                break;
+
+            case OPT_SJ_ANCHOR_MULTIMAP_MAX:
+                sj_anchor_multimap_max = parse<int>(optarg);
+                break;
+
+            case OPT_SJ_MIN_UNIQUE:
+                sj_min_unique = parse<int>(optarg);
                 break;
 
             case OPT_SJDB_SCORE:
@@ -2121,6 +2135,7 @@ int main_mpmap(int argc, char** argv) {
     multipath_mapper.splice_whole_read_context = splice_whole_read_context;
     multipath_mapper.splice_whole_read_topk = splice_whole_read_topk;
     multipath_mapper.splice_whole_read_motif_weight = splice_whole_read_motif_weight;
+    multipath_mapper.sj_anchor_multimap_max = sj_anchor_multimap_max;
     multipath_mapper.splice_rescue_graph_std_devs = splice_rescue_graph_std_devs;
     multipath_mapper.ref_path_handles = std::move(ref_path_handles);
     multipath_mapper.max_motif_pairs = max_motif_pairs;
@@ -2134,6 +2149,9 @@ int main_mpmap(int argc, char** argv) {
     multipath_mapper.sjdb_score = sjdb_score;
     if (!sj_out_name.empty()) {
         mpmap_sj::open(sj_out_name);
+    }
+    if (sj_min_unique > 0) {
+        mpmap_sj::set_min_unique(sj_min_unique);
     }
     if (!sj_reads_name.empty()) {
         mpmap_sj::open_reads(sj_reads_name);

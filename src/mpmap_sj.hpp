@@ -52,7 +52,12 @@ bool enabled();
 void record(int64_t donor_id, int64_t donor_offset, bool donor_rev,
             int64_t acceptor_id, int64_t acceptor_offset, bool acceptor_rev,
             const std::string& motif, bool annotated, int64_t overhang, double multiplicity,
-            const std::string& read_name = std::string(), double chosen_score = 0.0);
+            const std::string& read_name = std::string(), double chosen_score = 0.0,
+            bool anchor_repetitive = false);
+
+/// outSJfilterCountUniqueMin analog: drop non-annotated junctions with fewer than `m` unique reads
+/// from the --sj-out table (0 = off). Set once, single-threaded, from mpmap_main.
+void set_min_unique(int64_t m);
 
 /// Write the aggregated junction table and close. Safe to call when never opened.
 void close();

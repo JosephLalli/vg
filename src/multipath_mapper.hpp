@@ -214,6 +214,10 @@ namespace vg {
         int64_t splice_whole_read_context = 0;
         // how many top-by-net_score candidates to re-score over the whole read (bounds the added cost)
         int64_t splice_whole_read_topk = 8;
+        // graph-native winAnchorMultimapNmax: if a splice junction's donor/acceptor anchor k-mer maps
+        // to more than this many graph loci (GCSA2 count), the junction is repeat/paralog-anchored and
+        // its support is counted as multi- rather than uniquely-mapping in --sj-out. 0 = off.
+        int64_t sj_anchor_multimap_max = 0;
         // weight on the STAR fixed motif bonus in the whole-read re-rank. The whole-read alignment
         // already prefers the true site; the raw STAR -8 bonus over-dominates mpmap's ~1/base scale
         // and canonical-steals (recall regression), while 0 slightly over-reports. ~0.5 is the balance

@@ -1,5 +1,9 @@
 # mpmap vs STAR on splice-junction detection — STATUS (authoritative)
 
+**Entry point for all splice/SJ docs in `docs/`.** A freshly-spawned agent should start here. The
+Document Map (bottom of this file) lists every related planning doc and links forward to each one;
+each planning doc links back here.
+
 Single source of truth for the current goal and standing. A **Document Map** of every related doc,
 and a **verified flag inventory**, are at the bottom. Last updated 2026-07-10.
 
@@ -128,7 +132,8 @@ optimum), or (b) ship the portable **distance-collapse SJ filter** (`outSJfilter
 analogue) as an interim precision option (47%→63%, recall 23→19).
 
 ## Flag & feature inventory (verified against `src/subcommand/mpmap_main.cpp`, 2026-07-10)
-All flags below are default-off; default mapping/splice output is byte-identical when unused.
+All flags below are default-off (or default-value byte-identical); default mapping/splice output is
+unchanged when unused. Defaults noted where non-obvious.
 
 - **MMP seeding (STAR-style front end)** — `mmp_seeding_implementation_plan.md`, `star_first_pass_plan.md`:
   `--mmp-seed` (splice-rescue MMP re-seed), `--mmp-primary` (MMP replaces the MEM pool),
@@ -139,11 +144,33 @@ All flags below are default-off; default mapping/splice output is byte-identical
 - **Splice scoring** — `mmp_star_parity_plans.md` (Plan B), `star_first_pass_plan.md` (item 6):
   `--splice-motif-scores FILE` (per-motif donor/acceptor frequency table; **the relaxed-budget recall lever**),
   `--sjdb-score N` (bonus for annotated/graph-edge junctions; partial).
+- **Whole-read best-window re-scoring** — `whole_read_best_window_plan.md`:
+  `--splice-eval-all` (disable pruning: evaluate all candidate splice windows, not just the top-scoring
+  anchor; implied by `--splice-whole-read`; default off),
+  `--splice-whole-read` (whole-read best-window re-score — the M2 precision lever; default off;
+  implies `--splice-eval-all`),
+  `--splice-whole-read-context INT` (bp of read context used for re-score window; 0 = auto, uses
+  read length; default 0),
+  `--splice-whole-read-topk INT` (top-K candidate windows considered per re-score; default 8),
+  `--splice-whole-read-motif-weight FLOAT` (weight of motif log-odds in the whole-read score;
+  default 0.5).
 - **Junction output** — `star_first_pass_plan.md` (item 7):
   `--sj-out FILE` (graph-native SJ table: donor/acceptor `node:offset:strand`, motif, annotated flag,
-  unique/multi read support, max overhang; donor coordinate fixed to the splice point),
-  `--sj-reads FILE` (debug: per-junction supporting read names + chosen splice score, for read-level
-  diffs against another aligner; drove the STEP 1 whole-read-best-window verdict).
+  unique/multi read support, max overhang; donor coordinate fixed to the splice point
+  `dp.offset() + mapping_from_length`),
+  `--sj-reads FILE` (debug: per-junction supporting read names + chosen splice score; drove the STEP 1
+  whole-read-best-window verdict),
+  `--sj-candidates FILE` (debug: dump all candidate splice windows before selection; for Phase 4
+  discovery analysis),
+  `--sj-min-unique INT` (filter `--sj-out` rows whose unique-read support is below this threshold;
+  default 0 = no filter),
+  `--max-splice-overhang INT` (maximum overhang reported in `--sj-out`; default
+  `2 * max_softclip_overlap` = 16).
+- **Junction-table multi-mapping controls** — `star_parity_graph_spliced_alignment_plan.md`:
+  `--sj-anchor-multimap-max INT` (reads with more than this many anchor mappings are counted as
+  multi- rather than uniquely-mapping in `--sj-out`; 0 = off; default 0),
+  `--sj-slide` (canonicalize junction coordinates by sliding to the nearest annotated position when
+  the sequence is compatible; default off).
 - **Experimental precision (open work)** — `seed_pair_splice_generation_plan.md`:
   `--mmp-splice-pairs` (seed-pair-gated candidates + non-canonical partner constraints; does NOT yet recover precision).
 - **Proposed but NOT shipped** (do not cite as current): `--mmp-extend` (built then removed — degraded mapping),
@@ -153,8 +180,11 @@ All flags below are default-off; default mapping/splice output is byte-identical
 ## Document map (all splice/SJ docs, 2026-07-10)
 | Doc | Role / phase | Status | Substrate |
 |-----|--------------|--------|-----------|
-| **`mpmap_vs_star_sj_STATUS.md`** (this) | current goal + standing; the hub | authoritative | chr20 `refpath` |
-| `star_vs_mpmap_sj_precision_diagnostic_plan.md` | precision diagnostic (the next step) | active plan, not yet run | chr20 `refpath` |
+| **`mpmap_vs_star_sj_STATUS.md`** (this) | current goal + standing; the hub / entry point | authoritative | chr20 `refpath` |
+| `whole_read_best_window_plan.md` | M1/M2 whole-read best-window re-score design + success criteria | M2 shipped (`--splice-whole-read`, commit `8dfa2db`); residual open work documented | chr20 `refpath` |
+| `star_parity_graph_spliced_alignment_plan.md` | graph-native STAR-parity alignment phases (Phases 1/2/3/6) | proposed; bridges remaining gaps after M2 | chr20 `refpath` |
+| `graph_denovo_splice_discovery_plan.md` | Phase 4 de novo non-canonical splice discovery spec (lite + full stitch-first DP) | spec; follows after Phases 1/2 | chr20 `refpath` |
+| `star_vs_mpmap_sj_precision_diagnostic_plan.md` | precision diagnostic (STEP 1 read-level analysis) | complete — verdict delivered (whole-read best-window) | chr20 `refpath` |
 | `seed_pair_splice_generation_plan.md` | seed-pair precision approach | **REFUTED** | chr20 |
 | `mmp_seeding_implementation_plan.md` | foundational MMP-seeding impl (M0–M7) | implemented | MHC (earlier) |
 | `mmp_star_parity_plans.md` | follow-ups: A chaining / **B motif (recall win)** / C RC tail | implemented | MHC (earlier) |

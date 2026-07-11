@@ -1,5 +1,9 @@
 # STAR-parity spliced alignment on the pangenome graph — design plan
 
+> **Navigation:** Hub / entry point for all splice/SJ docs: [`mpmap_vs_star_sj_STATUS.md`](mpmap_vs_star_sj_STATUS.md).
+> Sequence position: follows `whole_read_best_window_plan.md` (M1/M2 shipped); precedes
+> `graph_denovo_splice_discovery_plan.md` (Phase 4 discovery spec).
+
 > **Status (2026-07-10):** PROPOSED. Bridges the remaining STAR-vs-mpmap gaps (see
 > `whole_read_best_window_plan.md` for what shipped: M1/M2 whole-read re-score + graph-native paralog
 > filter). Goal unchanged: adapt STAR's algorithm to the graph and match/beat it on mapping, junction

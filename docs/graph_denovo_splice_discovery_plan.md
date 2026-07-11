@@ -1,5 +1,9 @@
 # Phase 4: de novo non-canonical splice discovery on the graph — spec
 
+> **Navigation:** Hub / entry point for all splice/SJ docs: [`mpmap_vs_star_sj_STATUS.md`](mpmap_vs_star_sj_STATUS.md).
+> Sequence position: follows `whole_read_best_window_plan.md` (M1/M2 shipped) and
+> `star_parity_graph_spliced_alignment_plan.md` (Phases 1/2/3/6 design); this doc is Phase 4.
+
 > **Status (2026-07-10):** SPEC (both a bounded "lite" version and the full stitch-first DP). Follows
 > `whole_read_best_window_plan.md` (M1/M2 shipped) and `star_parity_graph_spliced_alignment_plan.md`.
 > Confirmed by reevaluation: Phases 1/2/6 are no-ops on the discovery gap (they refine

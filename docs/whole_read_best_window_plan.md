@@ -1,8 +1,14 @@
 # Plan: whole-read best-window splice placement for vg mpmap (graph-native STAR adaptation)
 
-> **Doc status (2026-07-10):** PROPOSED — planning for the residual non-canonical precision gap.
-> Not yet implemented. Depends on: `mpmap_vs_star_sj_STATUS.md` (standing), the donor-coordinate fix
-> (`8b6115c`), and the STEP 1 read-level verdict (whole-read best-window). Awaiting review before code.
+> **Navigation:** Hub / entry point for all splice/SJ docs: [`mpmap_vs_star_sj_STATUS.md`](mpmap_vs_star_sj_STATUS.md).
+> Sequence position: first planning doc after the STEP 1 read-level diagnostic verdict; M1/M2
+> (`--splice-eval-all`, `--splice-whole-read`) implemented from this plan. Followed by
+> `star_parity_graph_spliced_alignment_plan.md` and `graph_denovo_splice_discovery_plan.md`.
+
+> **Doc status (2026-07-10):** M1/M2 SHIPPED (`--splice-eval-all` + `--splice-whole-read`, commit
+> `8dfa2db`). Residual open work (paralog disambiguation) documented in
+> `star_parity_graph_spliced_alignment_plan.md`. Depends on: `mpmap_vs_star_sj_STATUS.md` (standing),
+> the donor-coordinate fix (`8b6115c`), and the STEP 1 read-level verdict (whole-read best-window).
 
 ## Goal & success criteria (hard constraints, per user 2026-07-10)
 Adapt STAR's whole-read best-window splice placement to **graph** genomes and see whether it improves

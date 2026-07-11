@@ -345,6 +345,7 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_SJ_ANCHOR_MULTIMAP_MAX = 1071;
     constexpr int OPT_SJ_MIN_UNIQUE = 1072;
     constexpr int OPT_SJ_SLIDE = 1073;
+    constexpr int OPT_SPLICE_DENOVO = 1074;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -365,6 +366,7 @@ int main_mpmap(int argc, char** argv) {
     string sj_candidates_name;
     bool splice_eval_all = false;
     bool splice_whole_read = false;
+    bool splice_denovo = false;
     int splice_whole_read_context = 0;   // 0 = auto: use the read's own length
     int splice_whole_read_topk = 8;
     double splice_whole_read_motif_weight = 0.5;
@@ -645,6 +647,7 @@ int main_mpmap(int argc, char** argv) {
             {"sj-candidates", required_argument, 0, OPT_SJ_CANDIDATES},
             {"splice-eval-all", no_argument, 0, OPT_SPLICE_EVAL_ALL},
             {"splice-whole-read", no_argument, 0, OPT_SPLICE_WHOLE_READ},
+            {"splice-denovo", no_argument, 0, OPT_SPLICE_DENOVO},
             {"splice-whole-read-context", required_argument, 0, OPT_SPLICE_WHOLE_READ_CONTEXT},
             {"splice-whole-read-topk", required_argument, 0, OPT_SPLICE_WHOLE_READ_TOPK},
             {"splice-whole-read-motif-weight", required_argument, 0, OPT_SPLICE_WHOLE_READ_MOTIF_WEIGHT},
@@ -1152,6 +1155,10 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_SPLICE_WHOLE_READ:
                 splice_whole_read = true;
+                break;
+
+            case OPT_SPLICE_DENOVO:
+                splice_denovo = true;
                 break;
 
             case OPT_SPLICE_WHOLE_READ_CONTEXT:
@@ -2137,8 +2144,9 @@ int main_mpmap(int argc, char** argv) {
     multipath_mapper.set_log_odds_against_splice(no_splice_log_odds);
     multipath_mapper.max_softclip_overlap = max_softclip_overlap;
     multipath_mapper.max_splice_overhang = max_splice_overhang;
-    multipath_mapper.splice_eval_all = splice_eval_all || splice_whole_read;
-    multipath_mapper.splice_whole_read = splice_whole_read;
+    multipath_mapper.splice_eval_all = splice_eval_all || splice_whole_read || splice_denovo;
+    multipath_mapper.splice_whole_read = splice_whole_read || splice_denovo;
+    multipath_mapper.splice_denovo = splice_denovo;
     multipath_mapper.splice_whole_read_context = splice_whole_read_context;
     multipath_mapper.splice_whole_read_topk = splice_whole_read_topk;
     multipath_mapper.splice_whole_read_motif_weight = splice_whole_read_motif_weight;
@@ -2146,6 +2154,13 @@ int main_mpmap(int argc, char** argv) {
     multipath_mapper.sj_slide = sj_slide;
     multipath_mapper.splice_rescue_graph_std_devs = splice_rescue_graph_std_devs;
     multipath_mapper.ref_path_handles = std::move(ref_path_handles);
+    // De-novo discovery registers all 256 dinucleotide pairs, and max_motif_pairs is a GLOBAL budget
+    // shared across motifs: at the default 200 the true donor/acceptor pairing for a non-canonical
+    // junction is sampled out (empirically caps de-novo non-canonical recall at ~4/30). Scale the budget
+    // up so every registered motif can contribute pairs, unless the user tuned it themselves.
+    if (splice_denovo && max_motif_pairs == 200) {
+        max_motif_pairs = 20000;
+    }
     multipath_mapper.max_motif_pairs = max_motif_pairs;
     if (!intron_distr_name.empty()) {
         multipath_mapper.set_intron_length_distribution(intron_mixture_weights, intron_component_params);

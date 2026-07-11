@@ -208,6 +208,11 @@ namespace vg {
         // read aligned across the junction with full-anchor context) instead of the local net_score,
         // so a 1-4 bp-shifted site pays its true downstream penalty. Implies splice_eval_all.
         bool splice_whole_read = false;
+        // Phase 4-lite de-novo discovery: gate the splice accept decision on the WHOLE-READ net gain
+        // rather than the local net_score, and admit candidates through a relaxed (motif-penalty-removed)
+        // entry pre-filter, so a non-canonical junction whose motif was never listed is still discovered
+        // when the full-read alignment across it clears no_splice_log_odds. Implies splice_whole_read.
+        bool splice_denovo = false;
         // Exon context (bp) extracted on each side of the junction when re-scoring a candidate over
         // the whole read. 0 = auto: use the read's own length, which bounds how far either side can
         // align (handles 100 bp, 150 bp, and per-mate paired reads without a fixed assumption).

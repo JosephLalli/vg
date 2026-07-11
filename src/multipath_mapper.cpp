@@ -3522,7 +3522,11 @@ namespace vg {
                 re.set_quality(alignment.quality());
             }
             get_aligner(!alignment.quality().empty())->align(re, g, false);
-            return (double) re.score() + splice_whole_read_motif_weight * star_motif_bonus(motif_idx);
+            // Return the raw whole-read alignment score across the splice. Callers add their own terms:
+            // M2 adds the STAR motif bonus; de-novo subtracts the unspliced baseline and adds the motif
+            // and intron log-odds to form a net gain comparable to no_splice_log_odds.
+            (void) motif_idx;
+            return (double) re.score();
         };
 
         auto score_bound_comp = [](const PutativeJoin& join_1, const PutativeJoin& join_2) {
@@ -3604,11 +3608,21 @@ namespace vg {
                 }
             }
 
-            if (splice_located && net_score > no_splice_log_odds && passes_noncanon_mismatch) {
+            // De-novo discovery relaxes the entry gate by removing the motif penalty (which is what
+            // sinks an unlisted non-canonical junction's local net_score below threshold), so the
+            // candidate can enter the whole-read pool; the whole-read net gate after the loop makes the
+            // real accept/reject decision. For non-denovo, entry_score == net_score (unchanged).
+            int32_t entry_score = net_score;
+            if (splice_denovo) {
+                entry_score = net_score - splice_stats.motif_score(join.motif_idx);
+            }
+            if (splice_located && entry_score > no_splice_log_odds && passes_noncanon_mismatch) {
                 // this is a statistically significant spliced alignment
                 if (splice_whole_read) {
-                    // defer selection: collect for whole-read re-ranking after the loop
-                    wr_candidates.emplace_back(net_score, unique_ptr<PutativeJoin>(new PutativeJoin(std::move(join))));
+                    // defer selection: collect for whole-read re-ranking after the loop. Key on
+                    // entry_score so the top-K pulled for whole-read scoring are ranked by their
+                    // motif-independent local gain (non-canonical are not buried by the -8 penalty).
+                    wr_candidates.emplace_back(entry_score, unique_ptr<PutativeJoin>(new PutativeJoin(std::move(join))));
                 }
                 else if (net_score > best_net_score ||
                     (net_score == best_net_score && join.estimated_intron_length < best_intron_length)) {
@@ -3644,7 +3658,24 @@ namespace vg {
                 const auto& ap = jpath.mapping(join.splice_idx).position();
                 pos_t donor_pos = make_pos_t(dp.node_id(), dp.is_reverse(), dp.offset() + mapping_from_length(dm));
                 pos_t acceptor_pos = make_pos_t(ap.node_id(), ap.is_reverse(), ap.offset());
-                double wr = whole_read_score(donor_pos, acceptor_pos, join.motif_idx);
+                double raw_wr = whole_read_score(donor_pos, acceptor_pos, join.motif_idx);
+                double wr;
+                if (splice_denovo) {
+                    // Whole-read net gain: the full read aligned across the splice, minus the optimal
+                    // unspliced alignment, plus the motif and intron log-odds. This is the whole-read
+                    // analog of net_score; gate it against no_splice_log_odds so the flat non-canonical
+                    // penalty is dwarfed by the recovered-exon gain instead of the ~16 bp local gain.
+                    wr = raw_wr - (double) opt.score()
+                       + (double) splice_stats.motif_score(join.motif_idx)
+                       + (double) join.intron_score;
+                    if (wr <= (double) no_splice_log_odds) {
+                        continue;
+                    }
+                }
+                else {
+                    // M2 (unchanged): raw whole-read score plus the STAR fixed motif bonus.
+                    wr = raw_wr + splice_whole_read_motif_weight * star_motif_bonus(join.motif_idx);
+                }
                 if (wr > best_wr) {
                     best_wr = wr;
                     best_net_score = wr_candidates[i].first;

@@ -7,6 +7,10 @@
 
 #include "mpmap_sj.hpp"
 
+#include "position.hpp"                             // make_pos_t / pos_t
+#include "handle.hpp"                               // PathPositionHandleGraph, path_handle_t
+#include "algorithms/nearest_offsets_in_paths.hpp"  // project a graph pos onto a path offset
+
 #include <fstream>
 #include <mutex>
 #include <atomic>
@@ -44,6 +48,7 @@ static std::map<JKey, JVal> g_junctions;
 static int64_t g_min_unique = 0;  // outSJfilterCountUniqueMin analog: drop non-annotated junctions
                                   // with fewer than this many unique reads (0 = off)
 static std::vector<std::string> g_candidates;  // pre-formatted --sj-candidates rows
+static const handlegraph::PathPositionHandleGraph* g_graph = nullptr;  // for path projection
 
 void open(const std::string& path) {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -55,6 +60,54 @@ void open(const std::string& path) {
 void set_min_unique(int64_t m) {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_min_unique = m;
+}
+
+void set_graph(const handlegraph::PathPositionHandleGraph* graph) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_graph = graph;
+}
+
+// Project a graph-native (node, offset, orientation) onto a reference/generic path. Returns
+// {path_name, path_offset}; {"", -1} when the position resolves to no such path (the caller then
+// falls back to raw node coordinates). When several paths cover the position a CHM13/reference-
+// looking name is preferred, then the lexicographically-smallest name, so output is stable.
+// Haplotype paths are excluded by nearest_offsets_in_paths' default sense filter. Called only from
+// close() (single-threaded, holding g_mutex), so it takes no lock itself.
+static std::pair<std::string, int64_t> project_to_path(int64_t node_id, int64_t offset, bool rev) {
+    if (g_graph == nullptr) {
+        return {std::string(), -1};
+    }
+    pos_t p = make_pos_t(node_id, rev, offset);
+    auto offs = algorithms::nearest_offsets_in_paths(g_graph, p, 200);
+    if (offs.empty()) {
+        return {std::string(), -1};
+    }
+    bool have = false;
+    path_handle_t best{};
+    std::string best_name;
+    for (const auto& kv : offs) {
+        if (kv.second.empty()) {
+            continue;
+        }
+        std::string nm = g_graph->get_path_name(kv.first);
+        bool better;
+        if (!have) {
+            better = true;
+        } else {
+            bool cur_chm = best_name.find("CHM13") != std::string::npos;
+            bool new_chm = nm.find("CHM13") != std::string::npos;
+            better = (new_chm != cur_chm) ? new_chm : (nm < best_name);
+        }
+        if (better) {
+            have = true;
+            best = kv.first;
+            best_name = std::move(nm);
+        }
+    }
+    if (!have) {
+        return {std::string(), -1};
+    }
+    return {best_name, (int64_t) offs.at(best).front().first};
 }
 
 void open_reads(const std::string& path) {
@@ -142,7 +195,8 @@ void close() {
             std::cerr << "[vg mpmap] warning: could not open SJ output '" << g_path << "'" << std::endl;
         } else {
             out << "#donor_node\tdonor_offset\tdonor_strand\tacceptor_node\tacceptor_offset"
-                   "\tacceptor_strand\tmotif\tannotated\tunique_reads\tmulti_reads\tmax_overhang\n";
+                   "\tacceptor_strand\tmotif\tannotated\tunique_reads\tmulti_reads\tmax_overhang"
+                   "\tdonor_ref_path\tdonor_ref_pos\tacceptor_ref_path\tacceptor_ref_pos\n";
             for (const auto& kv : g_junctions) {
                 const JKey& k = kv.first;
                 const JVal& v = kv.second;
@@ -150,11 +204,21 @@ void close() {
                 if (g_min_unique > 0 && !v.annotated && v.unique_reads < g_min_unique) {
                     continue;
                 }
+                // project each endpoint onto a reference/generic path so the row is self-sufficient
+                // (linear coordinates, no surjection); "." columns mean the endpoint is off-reference
+                // and only the node coordinates apply.
+                auto dref = project_to_path(std::get<0>(k), std::get<1>(k), std::get<2>(k));
+                auto aref = project_to_path(std::get<3>(k), std::get<4>(k), std::get<5>(k));
+                std::string d_path = dref.second < 0 ? "." : dref.first;
+                std::string d_pos  = dref.second < 0 ? "." : std::to_string(dref.second);
+                std::string a_path = aref.second < 0 ? "." : aref.first;
+                std::string a_pos  = aref.second < 0 ? "." : std::to_string(aref.second);
                 out << std::get<0>(k) << '\t' << std::get<1>(k) << '\t' << (std::get<2>(k) ? '-' : '+')
                     << '\t' << std::get<3>(k) << '\t' << std::get<4>(k) << '\t' << (std::get<5>(k) ? '-' : '+')
                     << '\t' << (v.motif.empty() ? "." : v.motif)
                     << '\t' << (v.annotated ? 1 : 0)
-                    << '\t' << v.unique_reads << '\t' << v.multi_reads << '\t' << v.max_overhang << '\n';
+                    << '\t' << v.unique_reads << '\t' << v.multi_reads << '\t' << v.max_overhang
+                    << '\t' << d_path << '\t' << d_pos << '\t' << a_path << '\t' << a_pos << '\n';
             }
             out.flush();
             out.close();

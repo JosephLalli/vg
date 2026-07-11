@@ -16,6 +16,8 @@
 #include <cstdint>
 #include <string>
 
+namespace handlegraph { class PathPositionHandleGraph; }
+
 namespace vg {
 namespace mpmap_sj {
 
@@ -58,6 +60,13 @@ void record(int64_t donor_id, int64_t donor_offset, bool donor_rev,
 /// outSJfilterCountUniqueMin analog: drop non-annotated junctions with fewer than `m` unique reads
 /// from the --sj-out table (0 = off). Set once, single-threaded, from mpmap_main.
 void set_min_unique(int64_t m);
+
+/// Provide the aligned graph so close() can project each junction's graph-native donor/acceptor
+/// position onto a reference (or generic) path, making --sj-out self-sufficient: linear
+/// coordinates with no external node->coordinate map or surjection. Haplotype paths are not
+/// consulted; an endpoint that resolves to no such path falls back to raw node coordinates.
+/// Set once, single-threaded, from mpmap_main.
+void set_graph(const handlegraph::PathPositionHandleGraph* graph);
 
 /// Write the aggregated junction table and close. Safe to call when never opened.
 void close();

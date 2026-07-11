@@ -2173,6 +2173,10 @@ int main_mpmap(int argc, char** argv) {
     if (!sj_out_name.empty()) {
         mpmap_sj::open(sj_out_name);
     }
+    if (!sj_out_name.empty() || !sj_reads_name.empty()) {
+        // give the SJ sink the graph so it can report junctions in reference-path coordinates
+        mpmap_sj::set_graph(path_position_handle_graph);
+    }
     if (sj_min_unique > 0) {
         mpmap_sj::set_min_unique(sj_min_unique);
     }

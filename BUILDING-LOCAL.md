@@ -10,7 +10,7 @@ compilation, single targets, `make clean`) works through it.
 ## TL;DR
 
 ```bash
-./build-toolchain.sh      # ONCE: builds the local static protobuf+abseil toolchain
+./build-toolchain.sh      # ONCE: builds the local static protobuf+abseil toolchain (~2 min at -j64)
 ./build-local.sh          # build bin/vg (incremental: only recompiles what changed)
 ```
 
@@ -20,7 +20,10 @@ compilation, single targets, `make clean`) works through it.
    Builds a work-directory-specific **static** protobuf (v29.3) + abseil into
    `/mnt/ssd/lalli/vg-latest-toolchain` (override with `VG_TOOLCHAIN=/path`). This
    is what replaces the unusable Homebrew protobuf/abseil. You only ever run this
-   once (or after `rm -rf` of the toolchain). ~2 min.
+   once (or after `rm -rf` of the toolchain).
+   Runtime: ~2 min at `-j64` on this 256-core machine.
+   `build-local.sh` checks for `$TOOLCHAIN/lib/libprotobuf.a` on every invocation
+   and exits with a clear error if the toolchain is absent.
 
 2. `./build-local.sh`
    First run compiles all dependencies and all of vg (~20–40 min at `-j64`).
@@ -59,6 +62,30 @@ Then run `./build-local.sh` (no args) once to relink `bin/vg` when you're ready.
 Any arguments you pass are forwarded to `make` as targets, e.g.
 `./build-local.sh lib/libvg.a` or `./build-local.sh test`.
 
+### Splice-search iteration pattern
+
+When iterating on `--trace-splice-search` specifically, the three changed objects
+are `multipath_mapper.o`, `mpmap_trace.o`, and `mpmap_main.o`.  Compile all three
+then relink in two steps (skipping the rest of libvg):
+
+```bash
+./build-local.sh obj/multipath_mapper.o obj/mpmap_trace.o obj/subcommand/mpmap_main.o
+./build-local.sh bin/vg
+```
+
+This takes ~compile time for those three files (each a couple of minutes) plus the
+relink (~1–2 min), rather than the full incremental make scan.
+
+## Parallelism
+
+`build-local.sh` defaults to `JOBS=64` (the `-j` value passed to `make`).  This
+machine has 256 cores, so 64 is conservative and safe.  To use more or fewer:
+
+```bash
+JOBS=128 ./build-local.sh       # more aggressive
+JOBS=24 ./build-local.sh        # lighter load, project-convention default for shared sessions
+```
+
 ## Full clean rebuild
 
 ```bash
@@ -70,6 +97,15 @@ triggers the full ~20–40 min build again. The local protobuf/abseil **toolchai
 not touched** by `make clean` — only `rm -rf /mnt/ssd/lalli/vg-latest-toolchain`
 (followed by `./build-toolchain.sh`) rebuilds that.
 
+## Editor / LSP diagnostics are not authoritative
+
+clangd and other language servers typically do not see the vendored include paths or
+the toolchain headers that `build-local.sh` injects.  Red squiggles such as
+`'algorithm' file not found`, `unknown type 'AbslAny'`, or `no member named 'X' in
+namespace 'std'` inside the editor are LSP noise — they reflect the LSP's missing
+context, not real build errors.  The only authoritative check is a real
+`./build-local.sh` compile.
+
 ## Why the wrapper is needed (what it sets, and why)
 
 `build-local.sh` sets, for every `make` invocation:
@@ -78,8 +114,8 @@ not touched** by `make clean` — only `rm -rf /mnt/ssd/lalli/vg-latest-toolchai
 |---|---|
 | `PKG_CONFIG_PATH`/`PATH` → local toolchain first | use the local static protobuf + its matching `protoc`, not Homebrew's 33.4 |
 | vg's `include/` + `lib/` prepended to `CPLUS_INCLUDE_PATH`/`LIBRARY_PATH`/`LDFLAGS` | Homebrew ships its own `sdsl`/`divsufsort` that otherwise shadow vg's vendored ones (gbwt then fails to link: `sdsl::simple_sds` undefined) |
-| `CC=gcc-13` | Homebrew gcc-15 rejects the vendored elfutils (`-Werror=unterminated-string-initialization`); Ubuntu gcc-13 builds it |
-| `CXX=g++-15 CXX_STANDARD=20` | abseil (a protobuf dependency) needs C++20's `std::*_ordering` under this libstdc++ |
+| `CC=gcc-13` | Homebrew gcc-15 rejects the vendored elfutils (`-Werror=unterminated-string-initialization`); the Ubuntu system `gcc-13` (at `/usr/bin/gcc-13`, v13.3.0) builds it cleanly |
+| `CXX=g++-15 CXX_STANDARD=20` | abseil (a protobuf dependency) needs C++20's `std::*_ordering` under this libstdc++; `g++-15` is Homebrew GCC 15.2.0 at `/mnt/ssd/lalli/.linuxbrew/bin/g++-15` |
 | `--jobserver-style=pipe` | some dependency sub-makes can't read make 4.4's default *fifo* jobserver (`invalid --jobserver-auth 'fifo:...'`) |
 | pre-creates `obj/*` and `lib/` dirs | under `-j` the compiler can race ahead of the Makefile's `mkdir` and fail writing `.d` files |
 

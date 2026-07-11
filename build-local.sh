@@ -10,14 +10,39 @@
 # vendored libraries authoritative on the include/library search paths.
 #
 # Usage:
-#   ./build-local.sh                       # incremental build of bin/vg (only
-#                                          #   recompiles sources you changed)
-#   ./build-local.sh clean                 # make clean first, then full rebuild
-#   ./build-local.sh obj/multipath_mapper.o  # build just one object
-#   ./build-local.sh clean bin/vg          # clean, then build a specific target
+#   ./build-local.sh                          # incremental build of bin/vg (only
+#                                             #   recompiles sources you changed)
+#   ./build-local.sh clean                    # make clean first, then full rebuild
+#   ./build-local.sh obj/multipath_mapper.o   # build just one object (no relink)
+#   ./build-local.sh clean bin/vg             # clean, then build a specific target
 #
 # Any arguments after an optional leading "clean" are passed straight to make as
 # targets, so you can rebuild a single object without relinking, etc.
+#
+# Fastest iteration for splice-search work (recompile only the two changed objects
+# then relink -- skips unrelated translation units):
+#   ./build-local.sh obj/multipath_mapper.o obj/mpmap_trace.o obj/subcommand/mpmap_main.o
+#   ./build-local.sh bin/vg
+#
+# Parallelism:
+#   The JOBS env var controls -j (default: 64).  This machine has 256 cores, so
+#   the default is fine; the project convention is JOBS=24 for lighter sessions:
+#   JOBS=24 ./build-local.sh
+#
+# Prerequisite:
+#   The first-ever build (or after deleting the toolchain dir) requires running
+#   ./build-toolchain.sh once beforehand.  That clones protobuf v29.3 + its
+#   bundled abseil, builds them static+PIC with g++-15, and installs to
+#   $VG_TOOLCHAIN (default: /mnt/ssd/lalli/vg-latest-toolchain).  Runtime:
+#   roughly 2 minutes at -j64.  build-local.sh checks for
+#   $TOOLCHAIN/lib/libprotobuf.a and refuses to proceed if the toolchain is absent.
+#
+# Editor / LSP diagnostics:
+#   clangd and other LSP servers typically lack the include paths that this build
+#   uses (vendored sdsl, divsufsort, toolchain headers).  Errors like
+#   "'algorithm' file not found" or "unknown type 'AbslAny'" appearing in the
+#   editor are LSP noise -- they are NOT real build errors.  The authoritative
+#   check is always a real ./build-local.sh compile.
 #
 set -euo pipefail
 

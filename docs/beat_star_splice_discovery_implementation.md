@@ -193,6 +193,37 @@ for harder substrates only.
 3. **Bundle all-256 registration into `--splice-denovo`** so no external motif file is needed.
 4. **Default support filter** guidance (unique≥3) for the `--sj-out` de-novo path.
 
+## Retrospective — how much of the committed code is essential? (2026-07-10)
+Committed as `226a273` (4 files, 288 insertions; 230 are this doc). Estimate of what could be reverted while
+keeping the clean-control performance:
+
+**The RESULT needs zero source changes.** The scorecard (canonical 15/15 / 100%, non-canonical 30/30 / 100%
+at unique≥3, beating STAR) reproduces on the PRE-change binary with existing flags:
+`vg mpmap --splice-motif-scores motif_all256.txt --max-motif-pairs 20000 --sj-min-unique 3`
+— the ablation showed local gate + mp=20000 is byte-identical to `--splice-denovo` + mp=20000. The entire win
+is the `max_motif_pairs` budget (an existing flag) plus the standard `--sj-min-unique` support filter.
+
+**Code diff ≈ 58 lines across 3 source files. Essential vs revertible:**
+| Change | ~lines | Load-bearing? | Revertible w/o perf loss? |
+|---|---|---|---|
+| `max_motif_pairs` de-novo default (mpmap_main.cpp) | 4 | ergonomics only | yes, if callers pass `--max-motif-pairs` |
+| `--splice-denovo` flag plumbing (mpmap_main.cpp + hpp) | ~13 | only to trigger the above | yes |
+| whole-read net gate (multipath_mapper.cpp: entry relax + net gate + lambda refactor) | ~41 | **NO — inert** (ablation byte-identical to local gate) | **YES, zero perf loss** |
+
+**Estimate: ~70% of the code diff (the ~41-line whole-read gate) is fully revertible with no clean-control
+performance change.** The remaining ~17 lines are an ergonomic wrapper over the existing `--max-motif-pairs`
+flag; the truly net-new essential code is ~4 lines (the budget default). Reproducing the result from scratch
+needs **0** new lines.
+
+**Lesson:** the expensive part — the whole-read gate, the original Phase-4-lite hypothesis — was premature. A
+`max_motif_pairs` parameter sweep would have found the wall in minutes without touching the mapper's splice
+path. Two hypotheses were falsified (whole-read gate is the lever; Stage B native DP is required); the actual
+root cause was a shared-budget sampling starvation. The session's value was the **diagnosis** (all-256
+registration starves the 200-pair budget; low-support paralog calls need a support filter), not the code.
+
+**Recommended cleanup (optional):** revert the multipath_mapper.cpp whole-read gate, reducing `--splice-denovo`
+to {raise `max_motif_pairs`} — and optionally bundle all-256 registration so no external motif file is needed.
+
 ## Stage B — native stitch-first spliced alignment  [HIGH risk; gated on Stage A + sign-off]
 Only if Stage A discovers junctions but systematically **mis-places** them or is too slow. Two realizations
 of "native whole-read spliced alignment" — decide before cutting:

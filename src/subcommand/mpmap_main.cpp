@@ -344,6 +344,7 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_SPLICE_WHOLE_READ_MOTIF_WEIGHT = 1070;
     constexpr int OPT_SJ_ANCHOR_MULTIMAP_MAX = 1071;
     constexpr int OPT_SJ_MIN_UNIQUE = 1072;
+    constexpr int OPT_SJ_SLIDE = 1073;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -369,6 +370,7 @@ int main_mpmap(int argc, char** argv) {
     double splice_whole_read_motif_weight = 0.5;
     int sj_anchor_multimap_max = 0;
     int sj_min_unique = 0;
+    bool sj_slide = false;
     int sjdb_score = 0;
     string trace_splice_search_name;
     string trace_truth_junctions_name;
@@ -648,6 +650,7 @@ int main_mpmap(int argc, char** argv) {
             {"splice-whole-read-motif-weight", required_argument, 0, OPT_SPLICE_WHOLE_READ_MOTIF_WEIGHT},
             {"sj-anchor-multimap-max", required_argument, 0, OPT_SJ_ANCHOR_MULTIMAP_MAX},
             {"sj-min-unique", required_argument, 0, OPT_SJ_MIN_UNIQUE},
+            {"sj-slide", no_argument, 0, OPT_SJ_SLIDE},
             {"max-splice-overhang", required_argument, 0, OPT_MAX_SPLICE_OVERHANG},
             {"sjdb-score", required_argument, 0, OPT_SJDB_SCORE},
             {"mmp-primary", no_argument, 0, OPT_MMP_PRIMARY},
@@ -1169,6 +1172,10 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_SJ_MIN_UNIQUE:
                 sj_min_unique = parse<int>(optarg);
+                break;
+
+            case OPT_SJ_SLIDE:
+                sj_slide = true;
                 break;
 
             case OPT_SJDB_SCORE:
@@ -2136,6 +2143,7 @@ int main_mpmap(int argc, char** argv) {
     multipath_mapper.splice_whole_read_topk = splice_whole_read_topk;
     multipath_mapper.splice_whole_read_motif_weight = splice_whole_read_motif_weight;
     multipath_mapper.sj_anchor_multimap_max = sj_anchor_multimap_max;
+    multipath_mapper.sj_slide = sj_slide;
     multipath_mapper.splice_rescue_graph_std_devs = splice_rescue_graph_std_devs;
     multipath_mapper.ref_path_handles = std::move(ref_path_handles);
     multipath_mapper.max_motif_pairs = max_motif_pairs;

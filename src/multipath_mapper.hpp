@@ -214,6 +214,11 @@ namespace vg {
         int64_t splice_whole_read_context = 0;
         // how many top-by-net_score candidates to re-score over the whole read (bounds the added cost)
         int64_t splice_whole_read_topk = 8;
+        // Phase 2: slide a discovered junction to the leftmost sequence-equivalent position within its
+        // microhomology window (STAR-style shift), so reads that place the boundary at interchangeable
+        // positions converge on one junction and, when the slide crosses an existing graph edge, land
+        // on the annotated position. Off by default (0/false keeps --sj-out byte-identical).
+        bool sj_slide = false;
         // graph-native winAnchorMultimapNmax: if a splice junction's donor/acceptor anchor k-mer maps
         // to more than this many graph loci (GCSA2 count), the junction is repeat/paralog-anchored and
         // its support is counted as multi- rather than uniquely-mapping in --sj-out. 0 = off.

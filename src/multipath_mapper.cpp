@@ -3695,6 +3695,36 @@ namespace vg {
                 sj_donor = make_pos_t(dp.node_id(), dp.is_reverse(), dp.offset() + mapping_from_length(dm));
                 sj_acceptor = make_pos_t(ap.node_id(), ap.is_reverse(), ap.offset());
                 sj_have_junction = true;
+
+                // Phase 2: slide the junction to the leftmost sequence-equivalent position within its
+                // microhomology window. Shifting the intron left by one base is equivalent iff the base
+                // leaving the intron on the donor side equals the base entering the exon on the acceptor
+                // side, i.e. base(donor-1) == base(acceptor-1). This converges reads that placed the
+                // boundary anywhere in the microhomology onto a single junction (graph-native STAR shift).
+                if (sj_slide) {
+                    auto base_at = [&](const pos_t& p) -> char {
+                        return xindex->get_sequence(xindex->get_handle(id(p), is_rev(p)))[offset(p)];
+                    };
+                    auto shift_left = [&](pos_t& p) -> bool {
+                        if (offset(p) > 0) { p = make_pos_t(id(p), is_rev(p), offset(p) - 1); return true; }
+                        handle_t h = xindex->get_handle(id(p), is_rev(p));
+                        bool moved = false;
+                        xindex->follow_edges(h, true, [&](const handle_t& prev) {
+                            p = make_pos_t(xindex->get_id(prev), xindex->get_is_reverse(prev),
+                                           xindex->get_length(prev) - 1);
+                            moved = true;
+                            return false;  // first predecessor only
+                        });
+                        return moved;
+                    };
+                    for (int slide = 0; slide < 30; ++slide) {
+                        pos_t d2 = sj_donor, a2 = sj_acceptor;
+                        if (!shift_left(d2) || !shift_left(a2)) break;
+                        if (base_at(d2) != base_at(a2)) break;
+                        sj_donor = d2;
+                        sj_acceptor = a2;
+                    }
+                }
                 handle_t dh = xindex->get_handle(dp.node_id(), dp.is_reverse());
                 handle_t ah = xindex->get_handle(ap.node_id(), ap.is_reverse());
                 xindex->follow_edges(dh, false, [&](const handle_t& n) {

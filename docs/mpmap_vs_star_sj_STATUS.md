@@ -9,16 +9,29 @@ and a **verified flag inventory**, are at the bottom. Last updated 2026-07-11.
 
 > **Superseded section below (kept for history):** everything from "Current goal" through "Next
 > step — implement the fix" describes the state as of 2026-07-10, before de novo discovery was
-> attempted. See **`beat_star_splice_discovery_implementation.md`** for the current, authoritative
-> result: de novo non-canonical discovery was NOT solved by aligner surgery (Phase 4 / the
-> stitch-first DP was never built); it was solved by raising the pre-existing `--max-motif-pairs`
-> budget plus supplying all-256 custom motifs (`--splice-motif-scores`) and a support filter
-> (`--sj-min-unique`). At scale (1282-junction control): canonical recall/precision and
-> non-canonical recall beat STAR decisively; **non-canonical precision (~93-94%) remains below
-> STAR's ~100%** — the one open metric, diagnosed as per-read junction fragmentation (see that
-> doc's "Retrospective" sections and `whole_read_best_window_plan.md` M3, unimplemented). Real-data
-> (annotated-graph) junction recovery via surjection is a **93-96% tie** with STAR, a different
-> regime from de novo discovery — not a win, not a loss.
+> attempted. See **`beat_star_splice_discovery_implementation.md`** for the de novo discovery
+> narrative and **`mpmap_minimal_branch.md`** for the current, authoritative result: de novo
+> non-canonical discovery was NOT solved by aligner surgery (Phase 4 / the stitch-first DP was never
+> built); it was solved by raising the pre-existing `--max-motif-pairs` budget plus supplying custom
+> motifs (`--splice-motif-scores`) and a support filter (`--sj-min-unique`).
+>
+> **Correction (2026-07-11):** the "25/30 @ 52%" figure below (this doc's "Current standing" table,
+> M2-only, no budget lever) **understated mpmap** — it never applied the pre-existing
+> `--max-motif-pairs` budget lever to the `refpath` genome-unique (45-junction) control it was run
+> on. Re-measured on that same control with the budget lever applied (`--splice-motif-scores` +
+> `--max-motif-pairs 20000` + `--sj-min-unique 3`): **canonical 15/15 @ 100%, non-canonical 30/30 @
+> 97%** (Lean recipe); adding `--splice-denovo` brings non-canonical to **30/30 @ 100%**, exactly
+> tying STAR. STAR pass-1 on the same control: canonical 12/15 @ 57%, non-canonical 24/30 @ 100%.
+> mpmap beats STAR on canonical recall and precision, ties/exceeds on non-canonical recall, and with
+> `--splice-denovo` ties STAR's non-canonical precision. **Non-canonical precision is no longer an
+> open gap on this control.** (The separate "~93-94% non-canonical precision" figure elsewhere in
+> `beat_star_splice_discovery_implementation.md` is from a larger, denser 465/1282-junction control —
+> a different control, not directly re-measured this session; see that doc's scope note.) See
+> `mpmap_minimal_branch.md` for the full table, runtime cost, and the corrected characterization of
+> `--splice-denovo` (previously described as "inert"; that finding was regime-specific — see that
+> doc). Real-data (annotated-graph) junction recovery via surjection remains a **93-96% tie** with
+> STAR, a different regime from de novo discovery — not a win, not a loss, and not affected by this
+> correction.
 
 ## Current goal (as of 2026-07-10 — see superseded note above)
 **Adapt STAR's algorithm to the node/edge graph and match or beat it on splice-junction detection.**
@@ -42,10 +55,15 @@ discovers junctions whose motif is pre-listed — Phase 4). The precision diagno
 (`star_vs_mpmap_sj_precision_diagnostic_plan.md`) has delivered its verdict (whole-read best-window),
 so it is complete rather than active.
 
-**Outcome (2026-07-10/11, see `beat_star_splice_discovery_implementation.md`):** de novo discovery
-was closed via the `--max-motif-pairs` budget lever, not Phase 4's planned stitch-first DP (that DP
-was never built — see the superseded note above). Non-canonical precision is the one metric still
-below STAR at scale.
+**Outcome (2026-07-10/11, see `mpmap_minimal_branch.md`):** de novo discovery was closed via the
+`--max-motif-pairs` budget lever, not Phase 4's planned stitch-first DP (that DP was never built —
+see the superseded note above). With the budget lever correctly applied to the `refpath`
+genome-unique (45-junction) control, non-canonical precision is **97%** (Lean recipe) to **100%**
+(with `--splice-denovo`, exactly tying STAR) — no longer a metric below STAR on that control; an
+earlier measurement on the same control that omitted the budget lever had understated this. The
+larger 465/1282-junction scaled control's ~93-94% figure (`beat_star_splice_discovery_implementation.md`)
+was not re-measured with this correction. See the correction note above and `mpmap_minimal_branch.md`
+for the full table.
 
 **Substrate definition (per user, 2026-07-10):** the "linear graph" is NOT a freshly-constructed
 reference. It is the **HPRC chr20 pangenome pruned to the reference haplotype** — keep only the
@@ -79,6 +97,13 @@ sequence into fresh nodes with no junction edges. Testing is on chr20.
   are the durable record.)
 
 ## Current standing (2026-07-10, `refpath`, donor fix + M2 whole-read re-score)
+> **This table's config does not include the `--max-motif-pairs` budget lever or `--sj-min-unique`
+> filtering — see the correction note at the top of this doc.** It is kept verbatim below as the
+> historical record of the M2-only measurement. For the authoritative current numbers (budget lever
+> applied, `--sj-min-unique 3`), see `mpmap_minimal_branch.md`'s results table: Lean recipe
+> non-canonical 30/30 @ 97%, `--splice-denovo` 30/30 @ 100%, both beating or tying STAR on every
+> metric.
+
 The precision diagnostic (STEP 0) removed **two measurement artifacts** — a benchmark repeat
 confounder and a `--sj-out` donor-coordinate bug — and a scorer motif-strand convention; M2
 (`--splice-whole-read`, commit `8dfa2db`) adds whole-read best-window re-scoring. All cells are the
@@ -89,7 +114,7 @@ same 3,600-read subset through both tools on the **clean genome-unique control**
 | Mapping accuracy (≤100 bp)    | 93%           | 93%                          | ≈93%    | **MET**     |
 | Canonical SJ recall           | 14/15         | 14/15                        | 12/15   | **MET (beats STAR)** |
 | Non-canonical SJ recall       | 25/30         | 25/30                        | 24/30   | **MET (beats STAR)** |
-| Non-canonical SJ precision    | 50% (30/60)   | **52%** (30/58)              | 100% (24/24) | **improved, still < STAR** |
+| Non-canonical SJ precision    | 50% (30/60)   | **52%** (30/58)              | 100% (24/24) | superseded — see note above; with the budget lever this is 97-100%, not open |
 | MEM vs MMP (any metric)       | identical     | —                            | —       | seeding is not a lever |
 
 M2 clears the no-regression gate (every metric ≥ default on the clean AND repeat-heavy controls;
@@ -164,10 +189,19 @@ compare the rescued spliced alignment to the read's best alternative and keep th
 optimum), or (b) ship the portable **distance-collapse SJ filter** (`outSJfilterDistToOtherSJmin`
 analogue) as an interim precision option (47%→63%, recall 23→19).
 
-**Current open item (2026-07-11):** non-canonical precision at scale (~93-94% vs STAR ~100%) is
-diagnosed as per-read junction fragmentation — the SJ sink keys on exact node/offset, so one true
-junction with per-read donor/acceptor/motif jitter fragments into several low-support rows. Closing
-it needs the whole-read-cluster / one-junction-per-cluster consensus fix
+**Superseded (2026-07-11):** the "~93-94% vs STAR ~100%" figure below was measured without the
+`--max-motif-pairs` budget lever applied. Re-measured with the lever applied (`--max-motif-pairs
+20000` + `--sj-min-unique 3`): Lean recipe non-canonical precision is **97%**, and `--splice-denovo`
+closes it to **100%**, exactly tying STAR — see `mpmap_minimal_branch.md`. Non-canonical precision is
+no longer an open item on the genome-unique control. The per-read junction fragmentation diagnosis
+below may still explain the residual ~3% at Lean-only (pre-`--splice-denovo`), but the
+whole-read-cluster consensus fix (`whole_read_best_window_plan.md` M3) is no longer necessary to
+close the gap to STAR, since `--splice-denovo` already does.
+
+**(Original 2026-07-10/11 framing, kept for history):** non-canonical precision at scale (~93-94% vs
+STAR ~100%) is diagnosed as per-read junction fragmentation — the SJ sink keys on exact node/offset,
+so one true junction with per-read donor/acceptor/motif jitter fragments into several low-support
+rows. Closing it needs the whole-read-cluster / one-junction-per-cluster consensus fix
 (`whole_read_best_window_plan.md` M3), which is **not implemented**.
 
 ## Flag & feature inventory (verified against `src/subcommand/mpmap_main.cpp`, 2026-07-10)
@@ -193,6 +227,25 @@ unchanged when unused. Defaults noted where non-obvious.
   `--splice-whole-read-topk INT` (top-K candidate windows considered per re-score; default 8),
   `--splice-whole-read-motif-weight FLOAT` (weight of motif log-odds in the whole-read score;
   default 0.5).
+- **De-novo high-accuracy mode** — `--splice-denovo` (implies `--splice-eval-all` +
+  `--splice-whole-read`, auto-raises `--max-motif-pairs` 200 -> 20000; default off). **Positioning
+  (2026-07-11, corrected):** this is an opt-in high-accuracy de-novo mode, not a required step. The
+  **Lean recipe** (`--splice-motif-scores` + `--max-motif-pairs 20000` + `--sj-min-unique 3`, no
+  `--splice-denovo`) is the recommended default path — it beats STAR on 3 of 4 metrics and ties the
+  4th at only **+12% runtime** over stock mpmap (~7,087 vs ~7,930 reads/s, 180k splice-heavy reads,
+  `refpath`, `-t 16`). `--splice-denovo` closes the Lean recipe's remaining non-canonical precision
+  gap (97% -> 100%, exactly tying STAR) but costs **~2.0x runtime vs Lean** (~3,371 reads/s; 2.35x
+  vs stock) on splice-heavy data, because it disables the branch-and-bound early-out and re-aligns
+  the whole read across a donor/acceptor graph for each of the top-`--splice-whole-read-topk`
+  (default 8) candidates. The cost is confined to the de-novo splice-**rescue** path (reads that
+  never trigger rescue pay nothing), so real-world overhead on an annotated pangenome — where most
+  spliced reads cross already-annotated edges — is expected to be much smaller than this
+  splice-heavy synthetic figure. `--splice-whole-read-topk` is the available runtime lever if the 2x
+  cost needs to be cut. This corrects the earlier "the whole-read gate is inert" finding
+  (`beat_star_splice_discovery_implementation.md` "BREAKTHROUGH" section): that ablation used
+  all-256 flat motifs with a manually-raised budget; in the curated/custom-motif regime the gate is
+  load-bearing for the last precision gap. Full numbers, the runtime ladder, and the minimal
+  two-commit extraction of this recipe: `mpmap_minimal_branch.md`.
 - **Junction output** — `star_first_pass_plan.md` (item 7):
   `--sj-out FILE` (graph-native SJ table: donor/acceptor `node:offset:strand`, motif, annotated flag,
   unique/multi read support, max overhang; donor coordinate fixed to the splice point
@@ -230,14 +283,15 @@ unchanged when unused. Defaults noted where non-obvious.
   `--mmp-both-strands`, `--sj-ref-path`, `--sj-min-overhang`, `--sj-min-reads`, `--sjdb-overhang-min`,
   `--novel-overhang-min`, `--splice-motif-preset`.
 
-## Document map (all splice/SJ docs, 2026-07-10)
+## Document map (all splice/SJ docs, 2026-07-11)
 | Doc | Role / phase | Status | Substrate |
 |-----|--------------|--------|-----------|
-| **`mpmap_vs_star_sj_STATUS.md`** (this) | current goal + standing; the hub / entry point | authoritative for navigation; see `beat_star_splice_discovery_implementation.md` for the current result | chr20 `refpath` |
-| `beat_star_splice_discovery_implementation.md` | de novo discovery execution plan + result + retrospectives | authoritative for the current de novo/real-data result; non-canonical precision at scale is the open gap | chr20 `refpath` |
-| `whole_read_best_window_plan.md` | M1/M2 whole-read best-window re-score design + success criteria | M2 shipped (`--splice-whole-read`, commit `8dfa2db`); M3 (cluster consensus) NOT implemented — the open lever for non-canonical precision | chr20 `refpath` |
+| **`mpmap_vs_star_sj_STATUS.md`** (this) | current goal + standing; the hub / entry point | authoritative for navigation; see `mpmap_minimal_branch.md` for the current, corrected result | chr20 `refpath` |
+| `mpmap_minimal_branch.md` | corrected results table (budget lever applied), runtime ladder, and the minimal two-commit branch extraction (`mpmap-noncanonical-splice-minimal`) | **authoritative for current numbers** — supersedes the "25/30 @ 52%" / "~93-94% non-canonical precision" figures elsewhere in this doc and in `beat_star_splice_discovery_implementation.md` | chr20 `refpath` |
+| `beat_star_splice_discovery_implementation.md` | de novo discovery execution plan + result + retrospectives | authoritative for the de novo/real-data discovery *narrative*; its headline precision numbers and "whole-read gate is inert" retrospective are corrected by `mpmap_minimal_branch.md` | chr20 `refpath` |
+| `whole_read_best_window_plan.md` | M1/M2 whole-read best-window re-score design + success criteria | M2 shipped (`--splice-whole-read`, commit `8dfa2db`); M3 (cluster consensus) not built, and no longer necessary to reach STAR parity — `--splice-denovo` closes the gap instead (see `mpmap_minimal_branch.md`) | chr20 `refpath` |
 | `star_parity_graph_spliced_alignment_plan.md` | graph-native STAR-parity alignment phases (Phases 1/2/3/6) | proposed; Phase 4 (stitch-first DP) superseded, not built — see below | chr20 `refpath` |
-| `graph_denovo_splice_discovery_plan.md` | Phase 4 de novo non-canonical splice discovery spec (lite + full stitch-first DP) | **superseded** — de novo discovery was solved by the `--max-motif-pairs` budget lever instead (`beat_star_splice_discovery_implementation.md`); neither the Phase 4-lite whole-read gate nor the full stitch-first DP in this spec was the actual mechanism (the lite gate shipped as `--splice-denovo` but was measured inert; the full DP was never built) | chr20 `refpath` |
+| `graph_denovo_splice_discovery_plan.md` | Phase 4 de novo non-canonical splice discovery spec (lite + full stitch-first DP) | **superseded** — de novo discovery was solved by the `--max-motif-pairs` budget lever plus custom motifs (`beat_star_splice_discovery_implementation.md`, `mpmap_minimal_branch.md`); the full stitch-first DP in this spec was never built. Its "measured inert" characterization of the Phase-4-lite whole-read gate is itself superseded — see `mpmap_minimal_branch.md`, that finding was regime-specific (all-256 flat motifs, manually-raised budget); in the curated-motif regime the gate (`--splice-denovo`) is load-bearing | chr20 `refpath` |
 | `star_vs_mpmap_sj_precision_diagnostic_plan.md` | precision diagnostic (STEP 1 read-level analysis) | complete — verdict delivered (whole-read best-window) | chr20 `refpath` |
 | `seed_pair_splice_generation_plan.md` | seed-pair precision approach | **REFUTED** | chr20 |
 | `mmp_seeding_implementation_plan.md` | foundational MMP-seeding impl (M0–M7) | implemented | MHC (earlier) |

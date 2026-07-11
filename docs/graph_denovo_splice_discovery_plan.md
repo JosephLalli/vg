@@ -7,15 +7,21 @@
 > **SUPERSEDED (2026-07-10/11) — kept for history, not the mechanism that shipped.** The de novo
 > discovery goal spec'd here WAS met, but not by either plan in this doc. Phase 4-lite (the
 > de-gated-motif + whole-read-gate design below) was implemented as `--splice-denovo`
-> (commit `226a273`) and then measured **inert** by ablation: local gate + a raised
-> `--max-motif-pairs` budget reproduces `--splice-denovo`'s output byte-for-byte. Phase 4 full (the
-> stitch-first splice-aware DP, second half of this doc) was **never built** — no
-> `banded_global_aligner` surgery happened. The actual, verified mechanism was raising the
-> pre-existing `--max-motif-pairs` budget (200 -> 20000; the flag already existed upstream) plus
-> supplying all-256 custom motifs via `--splice-motif-scores` and filtering with `--sj-min-unique`.
-> See `beat_star_splice_discovery_implementation.md` ("BREAKTHROUGH" and both retrospective
-> sections) for the full account and numbers. The rest of this document describes the
-> superseded plan as originally written, unedited, for the historical record.
+> (commit `226a273`) and initially measured **inert** by ablation against the all-256-flat-motif
+> control: local gate + a raised `--max-motif-pairs` budget reproduced `--splice-denovo`'s output
+> byte-for-byte on that control. **Correction (2026-07-11):** that "inert" finding does not
+> generalize — re-measured in the curated/custom-motif regime (`--splice-motif-scores` with real
+> per-motif priors, the recipe actually recommended for use), `--splice-denovo` is load-bearing: it
+> closes non-canonical precision 97%->100%, exactly tying STAR, over the Lean (no-`--splice-denovo`)
+> recipe. See `mpmap_minimal_branch.md` for the corrected table and the two-commit minimal branch
+> that ships `--splice-denovo` as a real, kept feature (not reverted). Phase 4 full (the stitch-first
+> splice-aware DP, second half of this doc) was **never built** — no `banded_global_aligner` surgery
+> happened. The load-bearing mechanism for the recall win was raising the pre-existing
+> `--max-motif-pairs` budget (200 -> 20000; the flag already existed upstream) plus supplying custom
+> motifs via `--splice-motif-scores` and filtering with `--sj-min-unique`; `--splice-denovo` is what
+> then closes the residual precision gap. See `beat_star_splice_discovery_implementation.md`
+> ("BREAKTHROUGH" and both retrospective sections) for the full account and numbers. The rest of this
+> document describes the superseded plan as originally written, unedited, for the historical record.
 
 > **Status (2026-07-10):** SPEC (both a bounded "lite" version and the full stitch-first DP). Follows
 > `whole_read_best_window_plan.md` (M1/M2 shipped) and `star_parity_graph_spliced_alignment_plan.md`.

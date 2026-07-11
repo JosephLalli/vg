@@ -4,21 +4,38 @@
 > This doc is the execution plan for the goal below; it consumes the Phase 4 spec
 > ([`graph_denovo_splice_discovery_plan.md`](graph_denovo_splice_discovery_plan.md), superseded — see
 > that doc's header) and the M2 whole-read machinery
-> ([`whole_read_best_window_plan.md`](whole_read_best_window_plan.md)).
+> ([`whole_read_best_window_plan.md`](whole_read_best_window_plan.md)). **For the current, corrected
+> results and the minimal shippable branch, see
+> [`mpmap_minimal_branch.md`](mpmap_minimal_branch.md)** — several headline numbers and one
+> retrospective conclusion in this doc are superseded there (see the correction note directly below).
 
-**Status (2026-07-11):** RESULT RECORDED, goal partially met — this doc now contains the full
-history from initial plan through the de novo discovery breakthrough, scaled validation, real-data
-validation, and two retrospectives on how little code the win actually required. **Read to the
-bottom before citing a number from here**; the sections below are in chronological order and later
-sections revise earlier ones (in particular "Stage B" / "native stitch-first DP" as planned near the
-top was never built — see the BREAKTHROUGH and retrospective sections). Honest summary of where
-things stand: de novo canonical recall/precision and non-canonical recall beat STAR decisively at
-scale; **non-canonical precision (~93-94%) is the one metric still below STAR (~100%)**, diagnosed
-as per-read junction fragmentation, unimplemented fix documented in `whole_read_best_window_plan.md`
-M3. Real-data (annotated-graph) junction recovery via surjection is a 93-96% **tie** with STAR, not
-a win — a different regime from de novo discovery. `--sj-out` (commit `59df9e4`, 2026-07-11) now
-also reports each junction's reference-path coordinates; see the "Junction output format" note
-below.
+**Status (2026-07-11):** RESULT RECORDED, goal MET on the standing control — this doc now contains
+the full history from initial plan through the de novo discovery breakthrough, scaled validation,
+real-data validation, and two retrospectives on how little code the win actually required. **Read to
+the bottom before citing a number from here**; the sections below are in chronological order and
+later sections revise earlier ones (in particular "Stage B" / "native stitch-first DP" as planned
+near the top was never built — see the BREAKTHROUGH and retrospective sections).
+
+> **Correction (2026-07-11, see `mpmap_minimal_branch.md`):** the "~93-94%" non-canonical precision
+> figure and the "whole-read gate is inert" / "~70% revertible" claims in this doc's scaled-validation
+> and retrospective sections below were measured **without applying the `--max-motif-pairs` budget
+> lever to the scored control**. Re-measured with the lever applied (`--max-motif-pairs 20000` +
+> `--sj-min-unique 3`, chr20 `refpath` genome-unique control): Lean recipe (custom motifs + budget,
+> no `--splice-denovo`) gives non-canonical **30/30 @ 97%**; adding `--splice-denovo` gives
+> **30/30 @ 100%**, exactly tying STAR. `--splice-denovo`'s whole-read gate is **not inert** in this
+> regime — it is what closes the last 97%->100% gap, and it is not separable from the M1/M2
+> whole-read infrastructure it depends on. The "inert" finding was specific to the ablation's
+> original regime (all-256 flat motifs, manually-raised budget); see `mpmap_minimal_branch.md` for
+> the full corrected table, the runtime cost of `--splice-denovo` (~2x vs the Lean recipe on
+> splice-heavy data), and the minimal two-commit branch extraction.
+
+Honest summary of where things stand, corrected: de novo canonical recall/precision and non-canonical
+recall beat STAR decisively at scale; **non-canonical precision now ties STAR (100%) when
+`--splice-denovo` is used, or reaches 97% with the Lean recipe alone** — no longer an open metric
+below STAR. Real-data (annotated-graph) junction recovery via surjection is a 93-96% **tie** with
+STAR, not a win — a different regime from de novo discovery, unaffected by this correction.
+`--sj-out` (commit `59df9e4`, 2026-07-11) now also reports each junction's reference-path
+coordinates; see the "Junction output format" note below.
 
 **Original status (2026-07-10, superseded by the above):** PLAN. Ground established (build works, benchmark reproducible, surgery site mapped).
 Stage A (de-novo generation, rescue-path) is cleared to start; Stage B (native stitch-first DP) is gated on
@@ -190,10 +207,19 @@ precision ceiling). de-novo non-canonical recall 4/30 → 30/30 (motifs unlisted
   only 45% (32/71) vs STAR 100%. `--sj-min-unique 3` removes the low-support (median 1 read) false calls.
   The filter is applied **equally to both tools** (STAR's default is unique≥3), so the comparison is fair, and
   it does not cost mpmap recall (deep control: 30/30 holds through unique=5).
-- **The whole-read gate (`--splice-denovo`) is INERT here.** Ablation: local gate + mp=20000 is byte-for-byte
-  equivalent to `--splice-denovo` + mp=20000 (both 15/15, 100%, 30/30, 97% at min_unique=3). The load-bearing
-  change is the `max_motif_pairs` budget, NOT the whole-read net gate I implemented. Do not claim the gate as
-  the mechanism. It is retained as harmless (M2-consistent, byte-identical default-off) but unproven on this data.
+- **The whole-read gate (`--splice-denovo`) is INERT here — but "here" is a specific regime; see the
+  correction below.** Ablation: local gate + mp=20000 is byte-for-byte equivalent to `--splice-denovo` +
+  mp=20000 (both 15/15, 100%, 30/30, 97% at min_unique=3) **when both use the all-256 flat motif file
+  (`motif_all256.txt`)**. The load-bearing change in *this* ablation is the `max_motif_pairs` budget,
+  not the whole-read net gate.
+  > **Correction (2026-07-11):** this "inert" finding does not generalize to the curated/custom-motif
+  > regime (`--splice-motif-scores` with real per-motif priors, not the flat all-256 file). Re-measured
+  > on the Lean recipe's own motif table: Lean-only (no `--splice-denovo`) gives non-canonical
+  > **30/30 @ 97%**; adding `--splice-denovo` gives **30/30 @ 100%** — a real, reproducible 3-point
+  > precision gain, not a byte-identical no-op. In that regime the whole-read gate **is** load-bearing
+  > and is not separable from the M1/M2 infrastructure it implies (`--splice-eval-all`,
+  > `--splice-whole-read`). See `mpmap_minimal_branch.md` for the full table and the minimal branch that
+  > ships both the Lean recipe and `--splice-denovo` as two separate, independently useful commits.
 - **Clean genome-unique control only.** Repeat-heavy / real data will be harder (paralog false calls).
 - **Runtime:** mp=200 → 12s, mp=20000 → 26s on the 3,600-read subset (2.2×; acceptable). Profile at scale.
 
@@ -209,6 +235,14 @@ for harder substrates only.
 4. **Default support filter** guidance (unique≥3) for the `--sj-out` de-novo path.
 
 ## Scaled validation — 465 and 1282-junction controls (2026-07-10)
+> **Scope note (2026-07-11):** this section's 93-94% figures are on the larger 465/1282-junction
+> controls, a *different, denser* control from the 45-junction (15 canonical + 30 non-canonical)
+> control that the 2026-07-11 correction above (`mpmap_minimal_branch.md`) re-measured at 97%/100%.
+> The two are not directly comparable and this section's numbers are not superseded by that
+> correction — they stand as the large-sample measurement on their own control. Whether the
+> curated-motif + `--splice-denovo` combination also closes this section's residual at scale has not
+> been re-measured.
+
 Expanded the genome-unique control with denser grids (`design_pcUbig.py` STEP=8000; `design_pcUcanon.py`
 STEP=1000, MIN_SPACING=2000 — canonical is availability-limited so a finer grid finds far more: 105→922).
 Same 50-mer uniqueness screen, 80 reads/junction. Current `--splice-denovo` build vs STAR at unique≥3:
@@ -329,6 +363,18 @@ registration starves the 200-pair budget; low-support paralog calls need a suppo
 **Recommended cleanup (optional):** revert the multipath_mapper.cpp whole-read gate, reducing `--splice-denovo`
 to {raise `max_motif_pairs`} — and optionally bundle all-256 registration so no external motif file is needed.
 
+> **Correction (2026-07-11) — this retrospective's "~70% revertible" estimate does not hold in the
+> curated-motif regime.** The ablation above (`motif_all256.txt`, flat priors) found the whole-read
+> gate inert; re-measuring with the Lean recipe's curated `--splice-motif-scores` table (not flat
+> all-256) instead shows the gate closing a real 97%->100% non-canonical precision gap (see the
+> correction under "BREAKTHROUGH" above and `mpmap_minimal_branch.md`). **The recommended cleanup was
+> NOT taken** — the minimal branch (`mpmap-noncanonical-splice-minimal`) keeps the whole-read gate as
+> its own second commit (`35ff1bda2`, `--splice-denovo`) rather than reverting it, precisely because
+> it is load-bearing for precision in the shipped (curated-motif) configuration, at a measured ~2x
+> runtime cost on splice-heavy data. The "~58 lines, ~70% revertible" accounting above is accurate
+> only for the all-256-flat-motif ablation regime it was measured in; do not cite it as the final
+> disposition of the whole-read gate.
+
 ## Retrospective vs UNMODIFIED vg — was the lever there all along? (2026-07-10)
 Archaeology on the master checkout (`/mnt/ssd/lalli/vg`) vs the `mmp-splice-seeding` branch:
 
@@ -344,9 +390,12 @@ unmodified vg mpmap. The entire breakthrough was raising a pre-existing knob 200
    is required to score against STAR's SJ.out.tab. NECESSARY for measurement (discovery itself lands in GAM).
    A support filter (`--sj-min-unique`, branch e272e6d) can instead be applied post-hoc in the scorer.
 
-**NOT necessary for this goal (the bulk of the branch):** MMP seeding (`--mmp-*`, M0-M7 — STATUS already found
-"seeding is not a lever"), `--splice-whole-read` M2 (ablation: inert for de-novo), paralog filters
-(`--sj-slide`, `--sj-anchor-multimap-max`), and `--splice-denovo` (my gate — inert).
+**NOT necessary for de-novo recall specifically (the bulk of the branch):** MMP seeding (`--mmp-*`, M0-M7 —
+STATUS already found "seeding is not a lever"), paralog filters (`--sj-slide`, `--sj-anchor-multimap-max`).
+`--splice-whole-read` M2 and `--splice-denovo` are not needed for the *recall* win, but **`--splice-denovo`
+is necessary to close the last non-canonical precision gap** (97%→100% in the curated-motif regime; see the
+correction above and `mpmap_minimal_branch.md`) — it is not simply inert dead weight, contrary to the
+original framing of this line.
 
 **Answer to "could we have tweaked a setting at the beginning?":** essentially yes for the lever —
 `--max-motif-pairs` was pre-existing. The minimal path from unmodified vg was: (a) add custom-motif input,
@@ -357,6 +406,23 @@ small plumbing features + one existing-setting tweak; none of the heavy algorith
 `--splice-motif-scores`/`--sj-out`), not a from-scratch reproduction on master (not built here; can't be scored
 without `--sj-out`). Also unmodified `SpliceStats::init` may reject motif frequencies summing > 1 (the branch
 relaxed this in 9baee7e); a flat all-256 prior summing ≤ 1 sidesteps it.
+
+## The minimal shippable branch (2026-07-11)
+This archaeology was carried through to an actual minimal branch off `origin/master`:
+**`mpmap-noncanonical-splice-minimal`**, two commits.
+
+- `327a4940a` (Lean): `SpliceStats::init`'s per-motif-frequency relaxation (the one real algorithmic
+  change, ~6 lines), `set_splice_motifs`, `--splice-motif-scores`/`--sj-out`/`--sj-min-unique`, and
+  the new `src/mpmap_sj.{hpp,cpp}` junction-table module. Reproduces canonical 15/15 @ 100%,
+  non-canonical 30/30 @ 97% on the standing chr20 `refpath` control.
+- `35ff1bda2` (denovo, optional): `--splice-denovo` and the whole-read M1/M2 infrastructure. Default
+  off, byte-identical to Lean when unused. Closes non-canonical to 30/30 @ 100%, exactly tying STAR,
+  at ~2x the Lean recipe's runtime on splice-heavy data.
+
+Cut as unnecessary: MMP seeding, the `--trace-splice-search` diagnostic module (a separate
+deliverable on branch `mpmap-splice-search-trace`), and the paralog/experimental filters that never
+recovered precision. Full kept/cut inventory, the corrected results table, and the runtime ladder:
+**[`mpmap_minimal_branch.md`](mpmap_minimal_branch.md)**.
 
 ## Stage B — native stitch-first spliced alignment  [HIGH risk; gated on Stage A + sign-off]
 **NOT TRIGGERED / NOT BUILT.** This section is the original plan's design for Stage B, written before

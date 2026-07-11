@@ -224,6 +224,35 @@ registration starves the 200-pair budget; low-support paralog calls need a suppo
 **Recommended cleanup (optional):** revert the multipath_mapper.cpp whole-read gate, reducing `--splice-denovo`
 to {raise `max_motif_pairs`} — and optionally bundle all-256 registration so no external motif file is needed.
 
+## Retrospective vs UNMODIFIED vg — was the lever there all along? (2026-07-10)
+Archaeology on the master checkout (`/mnt/ssd/lalli/vg`) vs the `mmp-splice-seeding` branch:
+
+**The performance lever was already upstream.** `--max-motif-pairs` (master default **200** — the exact
+starvation value) and `--splice-odds` (the splice significance gate, `no_splice_log_odds`) are both in
+unmodified vg mpmap. The entire breakthrough was raising a pre-existing knob 200 → 20000.
+
+**What unmodified vg genuinely CANNOT do — the only necessary additions:**
+1. **Register non-canonical motifs.** Master `SpliceStats` is hardcoded to 3 canonical motifs
+   (GT-AG/GC-AG/AT-AC, Burset 2000); no custom-motif input exists. `--splice-motif-scores` (branch a5d4993)
+   is required to register all 256. NECESSARY.
+2. **Emit a splice-junction table.** Master mpmap has no `--sj-out` (0 matches). `--sj-out` (branch a5357e1)
+   is required to score against STAR's SJ.out.tab. NECESSARY for measurement (discovery itself lands in GAM).
+   A support filter (`--sj-min-unique`, branch e272e6d) can instead be applied post-hoc in the scorer.
+
+**NOT necessary for this goal (the bulk of the branch):** MMP seeding (`--mmp-*`, M0-M7 — STATUS already found
+"seeding is not a lever"), `--splice-whole-read` M2 (ablation: inert for de-novo), paralog filters
+(`--sj-slide`, `--sj-anchor-multimap-max`), and `--splice-denovo` (my gate — inert).
+
+**Answer to "could we have tweaked a setting at the beginning?":** essentially yes for the lever —
+`--max-motif-pairs` was pre-existing. The minimal path from unmodified vg was: (a) add custom-motif input,
+(b) add junction output, (c) raise the EXISTING `--max-motif-pairs 200 → 20000`, (d) filter by support. Two
+small plumbing features + one existing-setting tweak; none of the heavy algorithmic work was required.
+
+**Caveats:** this is flag/capability archaeology (master demonstrably has `--max-motif-pairs`, lacks
+`--splice-motif-scores`/`--sj-out`), not a from-scratch reproduction on master (not built here; can't be scored
+without `--sj-out`). Also unmodified `SpliceStats::init` may reject motif frequencies summing > 1 (the branch
+relaxed this in 9baee7e); a flat all-256 prior summing ≤ 1 sidesteps it.
+
 ## Stage B — native stitch-first spliced alignment  [HIGH risk; gated on Stage A + sign-off]
 Only if Stage A discovers junctions but systematically **mis-places** them or is too slow. Two realizations
 of "native whole-read spliced alignment" — decide before cutting:

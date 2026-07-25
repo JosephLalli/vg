@@ -241,9 +241,22 @@ class Transcriptome {
         /// graphs in the PackedGraph format. Return false if not sorted.
         bool sort_compact_nodes();
 
-        /// Embeds transcriptome transcript paths in the graph.  
+        /// Embeds transcriptome transcript paths in the graph.
         /// Returns the number of paths embedded.
         void embed_transcript_paths(const bool add_reference_transcripts, const bool add_haplotype_transcripts);
+
+        /// Embeds transcript BODY paths (unspliced: exons + introns) in the graph.
+        /// For each transcript, walks every assembly that carries its exons
+        /// (reference/embedded paths when add_reference_bodies; GBWT haplotype
+        /// threads when add_haplotype_bodies) from the first to the last exon
+        /// anchor, following the assembly THROUGH the introns. Body walks are
+        /// deduplicated on the unspliced node-walk, so a haplotype-specific intron
+        /// structure (e.g. a non-reference intronic insertion) keeps its own body
+        /// and a read landing wholly inside it is still attributable to the gene.
+        /// Bodies are GENERIC-sense with a reserved "__txbody__|PROV|txid|gene|k"
+        /// name namespace (PROV = REF if the transcript has a reference projection,
+        /// else ALT). Mapping-neutral: only embedded paths change, not nodes/edges.
+        void embed_transcript_body_paths(const gbwt::GBWT & haplotype_index, const bool add_reference_bodies, const bool add_haplotype_bodies);
 
         /// Adds transcriptome transcript paths as threads to a GBWT index.
         /// Returns the number of added threads.

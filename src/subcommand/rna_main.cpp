@@ -58,6 +58,8 @@ void help_rna(char** argv) {
          << "DON'T FORGET TO EMBED PATHS:" << endl
          << "  -r, --add-ref-paths        add reference transcripts as embedded paths" << endl
          << "  -a, --add-hap-paths        add projected transcripts as embedded paths" << endl
+         << "  -B, --add-tx-bodies        also embed per-transcript unspliced BODY paths" << endl
+         << "                             (exons+introns) for intron/intergenic read assignment" << endl
 
          << endl
          << "Output options:" << endl
@@ -95,6 +97,7 @@ int32_t main_rna(int32_t argc, char** argv) {
     bool sort_collapse_graph = true;
     bool add_reference_transcript_paths = false;
     bool add_projected_transcript_paths = false;
+    bool add_transcript_body_paths = false;
     bool exclude_reference_transcripts = false;
     string gbwt_out_filename = "";
     bool gbwt_add_bidirectional = false;
@@ -124,6 +127,7 @@ int32_t main_rna(int32_t argc, char** argv) {
                 {"do-not-sort",  no_argument, 0, 'o'},
                 {"add-ref-paths",  no_argument, 0, 'r'},
                 {"add-hap-paths",  no_argument, 0, 'a'},
+                {"add-tx-bodies",  no_argument, 0, 'B'},
                 {"write-gbwt",  required_argument, 0, 'b'},
                 {"write-hap-gbwt",  required_argument, 0, 'v'},
                 {"write-fasta",  required_argument, 0, 'f'},
@@ -138,7 +142,7 @@ int32_t main_rna(int32_t argc, char** argv) {
             };
 
         int32_t option_index = 0;
-        c = getopt_long(argc, argv, "n:m:y:s:l:zjec:k:dorab:v:f:i:uqgt:ph?", long_options, &option_index);
+        c = getopt_long(argc, argv, "n:m:y:s:l:zjec:k:doraBb:v:f:i:uqgt:ph?", long_options, &option_index);
 
         /* Detect the end of the options. */
         if (c == -1)
@@ -204,7 +208,11 @@ int32_t main_rna(int32_t argc, char** argv) {
         case 'a':
             add_projected_transcript_paths = true;
             break;
-                
+
+        case 'B':
+            add_transcript_body_paths = true;
+            break;
+
         case 'b':
             gbwt_out_filename = ensure_writable(logger, optarg);
             break;
@@ -508,7 +516,25 @@ int32_t main_rna(int32_t argc, char** argv) {
         transcriptome.embed_transcript_paths(add_reference_transcript_paths, add_projected_transcript_paths);
 
         if (show_progress) {
-            logger.info() << "Transcript paths added in " << gcsa::readTimer() - time_add_start 
+            logger.info() << "Transcript paths added in " << gcsa::readTimer() - time_add_start
+                          << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+        };
+    }
+
+    if (add_transcript_body_paths) {
+
+        double time_body_start = gcsa::readTimer();
+
+        if (show_progress) {
+            logger.info() << "Embedding per-transcript unspliced body paths in the graph ..." << endl;
+        }
+
+        // Walk both reference/embedded assemblies and GBWT haplotype threads that
+        // carry each transcript; bodies are deduplicated on the unspliced node-walk.
+        transcriptome.embed_transcript_body_paths(*haplotype_index, true, true);
+
+        if (show_progress) {
+            logger.info() << "Transcript body paths added in " << gcsa::readTimer() - time_body_start
                           << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
         };
     }

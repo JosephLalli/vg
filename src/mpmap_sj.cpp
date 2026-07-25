@@ -8,13 +8,13 @@
 #include "mpmap_sj.hpp"
 
 #include "position.hpp"                             // make_pos_t / pos_t
-#include "handle.hpp"                               // PathPositionHandleGraph, path_handle_t
-#include "algorithms/nearest_offsets_in_paths.hpp"  // project a graph pos onto a path offset
+#include "handle.hpp"                               // PathPositionHandleGraph, path_handle_t, PathSense
 
 #include <fstream>
 #include <mutex>
 #include <atomic>
 #include <map>
+#include <unordered_set>
 #include <tuple>
 #include <vector>
 #include <utility>
@@ -67,47 +67,116 @@ void set_graph(const handlegraph::PathPositionHandleGraph* graph) {
     g_graph = graph;
 }
 
-// Project a graph-native (node, offset, orientation) onto a reference/generic path. Returns
-// {path_name, path_offset}; {"", -1} when the position resolves to no such path (the caller then
-// falls back to raw node coordinates). When several paths cover the position a CHM13/reference-
-// looking name is preferred, then the lexicographically-smallest name, so output is stable.
-// Haplotype paths are excluded by nearest_offsets_in_paths' default sense filter. Called only from
-// close() (single-threaded, holding g_mutex), so it takes no lock itself.
-static std::pair<std::string, int64_t> project_to_path(int64_t node_id, int64_t offset, bool rev) {
+// Classify a graph-native (node, offset, orientation) endpoint by embedded-path MEMBERSHIP (no
+// proximity search). vg has no "gene" path sense, so genes are represented explicitly: `vg rna
+// --add-tx-bodies` embeds one unspliced BODY path per distinct transcript intron structure under
+// the reserved GENERIC name namespace "__txbody__|PROV|txid|gene|k" (PROV = REF if the transcript
+// has a reference projection, else ALT). Classification is then pure set membership on the endpoint
+// node:
+//   * on a __txbody__ path  -> inside that gene. Provenance (ref_gene/nonref_gene) is the body's
+//     PROV -- a construction-time property of the transcript, NOT the local node's assembly -- so a
+//     read inside a reference gene's haplotype-specific intronic insert is still ref_gene. exon vs
+//     intron: exon iff the SAME transcript's exon-chain path (<txid>_R*/_H*, embedded by vg rna
+//     -r/-a) also covers the node, else intron.
+//   * else on a REFERENCE assembly path -> ref_genomic (intergenic, on the reference).
+//   * else on a HAPLOTYPE assembly path -> nonref_genomic (intergenic, non-reference only).
+// ref_pos is the exact node-local linear coordinate on the reference assembly, or -1 when the
+// endpoint is off the reference. Called only from close() (single-threaded, holding g_mutex).
+struct EndpointClass { std::string path_name = "."; std::string cls = "none"; std::string region = "."; int64_t ref_pos = -1; };
+
+static bool sj_starts_with(const std::string& s, const std::string& p) {
+    return s.size() >= p.size() && s.compare(0, p.size(), p) == 0;
+}
+// Strip a trailing vg-rna exon-chain copy suffix ("_R<n>" / "_H<n>") to recover the transcript id.
+static std::string sj_exon_chain_base(const std::string& name) {
+    auto us = name.rfind('_');
+    if (us == std::string::npos || us + 2 > name.size()) return name;
+    char c = name[us + 1];
+    if (c != 'R' && c != 'H') return name;
+    for (size_t i = us + 2; i < name.size(); ++i) {
+        if (name[i] < '0' || name[i] > '9') return name;
+    }
+    return name.substr(0, us);
+}
+// Prefer a CHM13/reference-looking name, then the lexicographically-smallest, for stable output.
+static bool sj_name_better(const std::string& cand, const std::string& cur, bool have) {
+    if (!have) return true;
+    bool cur_chm = cur.find("CHM13") != std::string::npos;
+    bool new_chm = cand.find("CHM13") != std::string::npos;
+    return (new_chm != cur_chm) ? new_chm : (cand < cur);
+}
+
+static EndpointClass classify_endpoint(int64_t node_id, int64_t offset, bool rev) {
+    EndpointClass out;
     if (g_graph == nullptr) {
-        return {std::string(), -1};
+        return out;
     }
-    pos_t p = make_pos_t(node_id, rev, offset);
-    auto offs = algorithms::nearest_offsets_in_paths(g_graph, p, 200);
-    if (offs.empty()) {
-        return {std::string(), -1};
+    static const std::string BODY_PREFIX = "__txbody__|";
+
+    bool in_ref_gene = false, in_alt_gene = false;
+    std::string ref_gene_id, alt_gene_id;
+    std::vector<std::string> exon_chain_bases;   // transcript ids whose exon-chain covers this node
+    bool on_ref_asm = false, on_hap_asm = false;
+    std::string ref_name = ".", hap_name = ".";
+    bool have_ref_name = false, have_hap_name = false;
+
+    for (bool orient : {false, true}) {
+        handle_t h = g_graph->get_handle(node_id, orient);
+        g_graph->for_each_step_on_handle(h, [&](const step_handle_t& step) {
+            path_handle_t ph = g_graph->get_path_handle_of_step(step);
+            std::string name = g_graph->get_path_name(ph);
+            if (sj_starts_with(name, BODY_PREFIX)) {
+                // __txbody__|PROV|txid|gene|k
+                std::vector<std::string> parts;
+                std::stringstream ss(name);
+                std::string tok;
+                while (std::getline(ss, tok, '|')) parts.push_back(tok);
+                if (parts.size() >= 3) {
+                    const std::string& prov = parts[1];
+                    const std::string& txid = parts[2];
+                    if (prov == "REF") { in_ref_gene = true; if (ref_gene_id.empty()) ref_gene_id = txid; }
+                    else               { in_alt_gene = true; if (alt_gene_id.empty()) alt_gene_id = txid; }
+                }
+                return;
+            }
+            PathSense sense = g_graph->get_sense(ph);
+            if (sense == PathSense::GENERIC) {
+                exon_chain_bases.push_back(sj_exon_chain_base(name));
+                return;
+            }
+            if (sense == PathSense::REFERENCE) {
+                on_ref_asm = true;
+                // Exact node-local reference coordinate of the (node, offset, rev) base.
+                handle_t step_h = g_graph->get_handle_of_step(step);
+                size_t node_len = g_graph->get_length(step_h);
+                size_t step_start = g_graph->get_position_of_step(step);
+                size_t fwd_off = rev ? (node_len - 1 - (size_t) offset) : (size_t) offset;
+                size_t within = g_graph->get_is_reverse(step_h) ? (node_len - 1 - fwd_off) : fwd_off;
+                int64_t pos = (int64_t) (step_start + within);
+                if (sj_name_better(name, ref_name, have_ref_name)) {
+                    ref_name = name; have_ref_name = true; out.ref_pos = pos;
+                }
+            } else {  // PathSense::HAPLOTYPE
+                on_hap_asm = true;
+                if (sj_name_better(name, hap_name, have_hap_name)) { hap_name = name; have_hap_name = true; }
+            }
+        });
     }
-    bool have = false;
-    path_handle_t best{};
-    std::string best_name;
-    for (const auto& kv : offs) {
-        if (kv.second.empty()) {
-            continue;
-        }
-        std::string nm = g_graph->get_path_name(kv.first);
-        bool better;
-        if (!have) {
-            better = true;
-        } else {
-            bool cur_chm = best_name.find("CHM13") != std::string::npos;
-            bool new_chm = nm.find("CHM13") != std::string::npos;
-            better = (new_chm != cur_chm) ? new_chm : (nm < best_name);
-        }
-        if (better) {
-            have = true;
-            best = kv.first;
-            best_name = std::move(nm);
-        }
+
+    // priority: reference gene > non-reference gene > reference genomic > non-reference genomic.
+    if (in_ref_gene || in_alt_gene) {
+        bool is_ref = in_ref_gene;
+        out.cls = is_ref ? "ref_gene" : "nonref_gene";
+        out.path_name = is_ref ? ref_gene_id : alt_gene_id;
+        bool exonic = false;
+        for (const auto& b : exon_chain_bases) if (b == out.path_name) { exonic = true; break; }
+        out.region = exonic ? "exon" : "intron";
+    } else if (on_ref_asm) {
+        out.cls = "ref_genomic"; out.path_name = ref_name;
+    } else if (on_hap_asm) {
+        out.cls = "nonref_genomic"; out.path_name = hap_name;
     }
-    if (!have) {
-        return {std::string(), -1};
-    }
-    return {best_name, (int64_t) offs.at(best).front().first};
+    return out;
 }
 
 void open_reads(const std::string& path) {
@@ -189,6 +258,11 @@ void close() {
     // Graph-native SJ table (one row per junction), written when --sj-out was given. Columns:
     //   donor_node donor_offset donor_strand  acceptor_node acceptor_offset acceptor_strand
     //   motif  annotated(0/1)  unique_reads  multi_reads  max_overhang
+    //   donor_path donor_class donor_region donor_ref_pos  acceptor_path acceptor_class acceptor_region acceptor_ref_pos
+    // where *_path is the covering gene (transcript id) or assembly path, *_class is one of
+    // ref_gene/nonref_gene/ref_genomic/nonref_genomic/none, *_region is exon/intron/. (only meaningful
+    // for gene classes), and *_ref_pos is the linear reference-assembly coordinate ("." off-reference).
+    // See classify_endpoint: classification is embedded-path membership, not a proximity search.
     if (!g_path.empty()) {
         std::ofstream out(g_path);
         if (!out.is_open()) {
@@ -196,7 +270,8 @@ void close() {
         } else {
             out << "#donor_node\tdonor_offset\tdonor_strand\tacceptor_node\tacceptor_offset"
                    "\tacceptor_strand\tmotif\tannotated\tunique_reads\tmulti_reads\tmax_overhang"
-                   "\tdonor_ref_path\tdonor_ref_pos\tacceptor_ref_path\tacceptor_ref_pos\n";
+                   "\tdonor_path\tdonor_class\tdonor_region\tdonor_ref_pos"
+                   "\tacceptor_path\tacceptor_class\tacceptor_region\tacceptor_ref_pos\n";
             for (const auto& kv : g_junctions) {
                 const JKey& k = kv.first;
                 const JVal& v = kv.second;
@@ -204,21 +279,20 @@ void close() {
                 if (g_min_unique > 0 && !v.annotated && v.unique_reads < g_min_unique) {
                     continue;
                 }
-                // project each endpoint onto a reference/generic path so the row is self-sufficient
-                // (linear coordinates, no surjection); "." columns mean the endpoint is off-reference
-                // and only the node coordinates apply.
-                auto dref = project_to_path(std::get<0>(k), std::get<1>(k), std::get<2>(k));
-                auto aref = project_to_path(std::get<3>(k), std::get<4>(k), std::get<5>(k));
-                std::string d_path = dref.second < 0 ? "." : dref.first;
-                std::string d_pos  = dref.second < 0 ? "." : std::to_string(dref.second);
-                std::string a_path = aref.second < 0 ? "." : aref.first;
-                std::string a_pos  = aref.second < 0 ? "." : std::to_string(aref.second);
+                // classify each endpoint by best-overlapping path (reference gene > non-reference gene
+                // > reference genomic > non-reference genomic), keeping a reference-assembly coordinate
+                // when the endpoint lies on the reference.
+                auto dref = classify_endpoint(std::get<0>(k), std::get<1>(k), std::get<2>(k));
+                auto aref = classify_endpoint(std::get<3>(k), std::get<4>(k), std::get<5>(k));
+                std::string d_pos = dref.ref_pos < 0 ? "." : std::to_string(dref.ref_pos);
+                std::string a_pos = aref.ref_pos < 0 ? "." : std::to_string(aref.ref_pos);
                 out << std::get<0>(k) << '\t' << std::get<1>(k) << '\t' << (std::get<2>(k) ? '-' : '+')
                     << '\t' << std::get<3>(k) << '\t' << std::get<4>(k) << '\t' << (std::get<5>(k) ? '-' : '+')
                     << '\t' << (v.motif.empty() ? "." : v.motif)
                     << '\t' << (v.annotated ? 1 : 0)
                     << '\t' << v.unique_reads << '\t' << v.multi_reads << '\t' << v.max_overhang
-                    << '\t' << d_path << '\t' << d_pos << '\t' << a_path << '\t' << a_pos << '\n';
+                    << '\t' << dref.path_name << '\t' << dref.cls << '\t' << dref.region << '\t' << d_pos
+                    << '\t' << aref.path_name << '\t' << aref.cls << '\t' << aref.region << '\t' << a_pos << '\n';
             }
             out.flush();
             out.close();

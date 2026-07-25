@@ -2836,6 +2836,157 @@ void Transcriptome::embed_transcript_paths(const bool add_reference_transcripts,
     if (show_progress) { cerr << "\tEmbedded " << num_embedded_paths << " paths in graph" << endl; };
 }
 
+namespace {
+
+// Two body walks are the same iff identical node-id + orientation sequence.
+bool same_body_walk(const vector<handle_t> & a, const vector<handle_t> & b, const HandleGraph & graph) {
+    if (a.size() != b.size()) { return false; }
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (graph.get_id(a[i]) != graph.get_id(b[i]) || graph.get_is_reverse(a[i]) != graph.get_is_reverse(b[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Walk embedded path `path_handle` from node `n0` to node `n1` (inclusive), in
+// genomic order, following the assembly THROUGH the introns. Returns the handle
+// sequence, or empty if either anchor is absent from the path or the walk breaks.
+vector<handle_t> walk_embedded_body(const PathHandleGraph & graph, const path_handle_t & path_handle,
+                                    nid_t n0, nid_t n1, const bdsg::PositionOverlay & pos_overlay) {
+
+    // Locate the (single, for an acyclic assembly) step of each anchor node on this path.
+    step_handle_t s0, s1;
+    bool found0 = false, found1 = false;
+    for (bool orient : {false, true}) {
+        graph.for_each_step_on_handle(graph.get_handle(n0, orient), [&](const step_handle_t & step) {
+            if (graph.get_path_handle_of_step(step) == path_handle) { s0 = step; found0 = true; }
+        });
+        graph.for_each_step_on_handle(graph.get_handle(n1, orient), [&](const step_handle_t & step) {
+            if (graph.get_path_handle_of_step(step) == path_handle) { s1 = step; found1 = true; }
+        });
+    }
+    if (!found0 || !found1) { return {}; }
+
+    // Walk from the genomically-earlier anchor to the later one.
+    step_handle_t begin_step = s0, end_step = s1;
+    if (pos_overlay.get_position_of_step(s0) > pos_overlay.get_position_of_step(s1)) {
+        begin_step = s1; end_step = s0;
+    }
+
+    vector<handle_t> body;
+    step_handle_t cur = begin_step;
+    while (true) {
+        body.emplace_back(graph.get_handle_of_step(cur));
+        if (cur == end_step) { break; }
+        if (!graph.has_next_step(cur)) { return {}; }
+        cur = graph.get_next_step(cur);
+    }
+    return body;
+}
+
+// Walk GBWT haplotype thread `path_id` from node `n0` to node `n1` (inclusive),
+// following that haplotype THROUGH its own introns (including haplotype-specific
+// insertions). Returns the handle sequence, or empty if either anchor is absent.
+vector<handle_t> walk_gbwt_body(const HandleGraph & graph, const gbwt::GBWT & gbwt_index,
+                                gbwt::size_type path_id, nid_t n0, nid_t n1) {
+
+    gbwt::vector_type thread = gbwt_index.extract(gbwt::Path::encode(path_id, false));
+    if (thread.empty()) { return {}; }
+
+    // First occurrence of each anchor (either orientation) along the thread.
+    int64_t i0 = -1, i1 = -1;
+    for (size_t i = 0; i < thread.size(); ++i) {
+        nid_t node = gbwt::Node::id(thread[i]);
+        if (node == n0 && i0 < 0) { i0 = i; }
+        if (node == n1 && i1 < 0) { i1 = i; }
+    }
+    if (i0 < 0 || i1 < 0) { return {}; }
+    if (i0 > i1) { std::swap(i0, i1); }
+
+    vector<handle_t> body;
+    body.reserve(i1 - i0 + 1);
+    for (int64_t i = i0; i <= i1; ++i) {
+        body.emplace_back(gbwt_to_handle(graph, thread[i]));
+    }
+    return body;
+}
+
+} // anonymous namespace
+
+void Transcriptome::embed_transcript_body_paths(const gbwt::GBWT & haplotype_index, const bool add_reference_bodies, const bool add_haplotype_bodies) {
+
+    assert(add_reference_bodies || add_haplotype_bodies);
+
+    // Position overlay for genomic-order walking of embedded assembly paths.
+    // Built once, before any graph mutation, and only queried on pre-existing paths.
+    bdsg::PositionOverlay pos_overlay(_graph.get());
+
+    // Phase 1 (read-only): compute the distinct body walks for every transcript.
+    vector<pair<string, vector<handle_t> > > bodies_to_embed;
+
+    for (auto & transcript_path: _transcript_paths) {
+
+        if (transcript_path.path.empty()) { continue; }
+
+        // Gene provenance is a construction-time property of the transcript: REF if
+        // it has a reference projection at all, else ALT (non-reference-only gene).
+        const string provenance = transcript_path.is_reference ? "REF" : "ALT";
+        const string & transcript_id = transcript_path.transcript_names.front();
+
+        // Terminal exon anchors (node ids). The body spans these on each carrying
+        // assembly, following the assembly (not the splice edge) between them.
+        const nid_t anchor_first = _graph->get_id(transcript_path.path.front());
+        const nid_t anchor_last = _graph->get_id(transcript_path.path.back());
+
+        vector<vector<handle_t> > distinct_bodies;
+        auto add_distinct = [&](vector<handle_t> && body) {
+            if (body.empty()) { return; }
+            for (auto & existing: distinct_bodies) {
+                if (same_body_walk(existing, body, *_graph)) { return; }
+            }
+            distinct_bodies.emplace_back(std::move(body));
+        };
+
+        // Reference / embedded-path bodies.
+        if (add_reference_bodies) {
+            for (auto & embedded_path_name: transcript_path.embedded_path_names) {
+                if (!_graph->has_path(embedded_path_name.first)) { continue; }
+                add_distinct(walk_embedded_body(*_graph, _graph->get_path_handle(embedded_path_name.first),
+                                                anchor_first, anchor_last, pos_overlay));
+            }
+        }
+
+        // Haplotype (GBWT thread) bodies: capture haplotype-specific intron structure.
+        if (add_haplotype_bodies) {
+            for (auto & haplotype_gbwt_id: transcript_path.haplotype_gbwt_ids) {
+                add_distinct(walk_gbwt_body(*_graph, haplotype_index, haplotype_gbwt_id.first,
+                                            anchor_first, anchor_last));
+            }
+        }
+
+        for (size_t k = 0; k < distinct_bodies.size(); ++k) {
+            // Reserved GENERIC name namespace: __txbody__|PROV|txid|gene|variant.
+            // gene is a placeholder ('.') until gene_id parsing lands.
+            string body_name = "__txbody__|" + provenance + "|" + transcript_id + "|.|" + to_string(k);
+            bodies_to_embed.emplace_back(std::move(body_name), std::move(distinct_bodies[k]));
+        }
+    }
+
+    // Phase 2 (mutate): embed the computed body paths.
+    int32_t num_embedded_bodies = 0;
+    for (auto & body: bodies_to_embed) {
+        if (_graph->has_path(body.first)) { continue; }
+        auto path_handle = _graph->create_path_handle(body.first);
+        for (auto & handle: body.second) {
+            _graph->append_step(path_handle, handle);
+        }
+        ++num_embedded_bodies;
+    }
+
+    if (show_progress) { cerr << "\tEmbedded " << num_embedded_bodies << " transcript body paths in graph" << endl; };
+}
+
 void Transcriptome::add_transcripts_to_gbwt(gbwt::GBWTBuilder * gbwt_builder, const bool add_bidirectional, const bool exclude_reference_transcripts) const {
 
     int32_t num_added_threads = 0;

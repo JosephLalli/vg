@@ -820,7 +820,10 @@ $(INC_DIR)/dynamic/dynamic.hpp: $(DYNAMIC_DIR)/include/dynamic/*.hpp $(DYNAMIC_D
 	+mkdir -p $(INC_DIR)/dynamic && cp -r $(CWD)/$(DYNAMIC_DIR)/include/dynamic/* $(INC_DIR)/dynamic/
 
 $(INC_DIR)/sparsehash/sparse_hash_map: $(wildcard $(SPARSEHASH_DIR)/**/*.cc) $(wildcard $(SPARSEHASH_DIR)/**/*.h)
-	+cd $(SPARSEHASH_DIR) && ./autogen.sh && LDFLAGS="$(LD_LIB_DIR_FLAGS) $(LDFLAGS)" ./configure --prefix=$(CWD) $(FILTER) && $(MAKE) $(FILTER) && $(MAKE) install
+	# sparsehash's old test suite directly uses std::allocator::rebind, which was
+	# removed in C++20.  Build this header-only dependency with C++17 while vg and
+	# its protobuf/abseil toolchain continue to use C++20.
+	+cd $(SPARSEHASH_DIR) && ./autogen.sh && CXXFLAGS="$(filter-out -std=c++20,$(CXXFLAGS)) -std=c++17" LDFLAGS="$(LD_LIB_DIR_FLAGS) $(LDFLAGS)" ./configure --prefix=$(CWD) $(FILTER) && $(MAKE) $(FILTER) && $(MAKE) install
 
 $(INC_DIR)/sparsepp/spp.h: $(wildcard $(SPARSEPP_DIR)/sparsepp/*.h)
 	+cp -r $(SPARSEPP_DIR)/sparsepp $(INC_DIR)/
@@ -940,8 +943,11 @@ $(LIB_DIR)/libxg.a: $(XG_DIR)/src/*.hpp $(XG_DIR)/src/*.cpp $(INC_DIR)/mmmultima
 VG_GIT_VERSION ?= unknown
 # Clean old path
 $(shell rm -f $(INC_DIR)/vg_git_version.hpp)
-# Decide if .git exists and needs to be watched
-ifeq ($(shell if [ -d .git ]; then echo present; else echo absent; fi),present)
+# Decide if this is a Git checkout and the version can be refreshed. In a Git
+# worktree, .git is a file pointing at the common repository rather than a
+# directory, so testing only with "-d .git" incorrectly treated worktrees as
+# source archives.
+ifeq ($(shell if git rev-parse --git-dir >/dev/null 2>&1; then echo present; else echo absent; fi),present)
     # If so, try and make a git version file.
     # We used to do this by having a phony target to depend on, but Make won't
     # detect that the phony target is altering a different file, so it would
@@ -957,7 +963,7 @@ ifeq ($(shell if [ -d .git ]; then echo present; else echo absent; fi),present)
 else
     # Just use the version file we have, if any.
     $(info Do not check Git)
-    $(shell if [ ! -e $(SRC_DIR)/vg_git_version.hpp] ; then echo "#define VG_GIT_VERSION \"$(VG_GIT_VERSION)\"" > $(SRC_DIR)/vg_git_version.hpp ; fi)
+    $(shell if [ ! -e $(SRC_DIR)/vg_git_version.hpp ]; then echo "#define VG_GIT_VERSION \"$(VG_GIT_VERSION)\"" > $(SRC_DIR)/vg_git_version.hpp; fi)
 endif
 
 

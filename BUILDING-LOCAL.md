@@ -125,6 +125,9 @@ Small, deliberate changes vs. upstream v1.75.1 (kept minimal):
 
 - **`Makefile`**: the `libbdsg` recipe pre-creates its object dir (`mkdir -p
   bdsg/obj lib bin`) — fixes a `-j` build race in that dependency.
+- **`Makefile`**: the vendored sparsehash configure/build step uses C++17 — its
+  legacy self-tests call `std::allocator::rebind`, which was removed in C++20;
+  `vg` itself and the protobuf/abseil toolchain still compile as C++20.
 - **`src/subcommand/inject_main.cpp`, `src/readfilter.hpp`,
   `src/minimizer_mapper_from_chains.cpp`**: qualify `vg::identity(...)` — v1.75.1's
   unqualified `identity` is ambiguous with C++20's `std::identity`.

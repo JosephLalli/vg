@@ -86,4 +86,6 @@ PATH="$TOOLCHAIN/bin:$PATH" \
     make -j"$JOBS" --jobserver-style=pipe CC=gcc-13 CXX=g++-15 CXX_STANDARD=20 "$@"
 
 echo "Build finished."
-[ -x "$VGL/bin/vg" ] && "$VGL/bin/vg" version
+if [ -x "$VGL/bin/vg" ]; then
+    "$VGL/bin/vg" version
+fi

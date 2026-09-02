@@ -79,6 +79,12 @@ if ! systemctl --user show-environment >/dev/null 2>&1; then
     exit 2
 fi
 
+# Bind executable provenance before launching. The path may be atomically
+# replaced by an independent build while this long-running process continues
+# to execute the old inode; recomputing the hash at shutdown would then record
+# a binary that never ran.
+vg_sha256="$(sha256sum "$vg_binary" | awk '{print $1}')"
+
 mkdir -p "$run_directory"
 run_directory="$(cd "$run_directory" && pwd)"
 work_directory="$run_directory/index.gcsa-work"
@@ -88,6 +94,7 @@ stderr_log="$run_directory/stderr.log"
 stdout_log="$run_directory/stdout.log"
 samples="$run_directory/resource_samples.tsv"
 summary="$run_directory/summary.tsv"
+phase_summary="$run_directory/phase_summary.tsv"
 command_file="$run_directory/command.txt"
 unit="vg-gcsa-$USER-$(date +%Y%m%dT%H%M%S)-$$"
 
@@ -113,7 +120,7 @@ command+=("$graph")
 
 {
     printf 'unit=%q\n' "$unit.scope"
-    printf 'vg_sha256=%s\n' "$(sha256sum "$vg_binary" | awk '{print $1}')"
+    printf 'vg_sha256=%s\n' "$vg_sha256"
     printf 'command='
     printf '%q ' "${command[@]}"
     printf '\n'
@@ -130,7 +137,7 @@ command+=("$graph")
     fi
 } > "$run_directory/inputs.tsv"
 
-printf 'unix_time\trun_bytes\tmemory_current\tmemory_peak\tmem_available_kib\n' > "$samples"
+printf 'unix_time\tphase\trun_bytes\tmemory_current\tmemory_peak\tmemory_anon\tmemory_file\tmemory_file_dirty\tcpu_usage_usec\tio_read_bytes\tio_write_bytes\ttasks_current\tmem_available_kib\n' > "$samples"
 
 runner_pid=""
 cleanup_runner() {
@@ -151,9 +158,71 @@ while kill -0 "$runner_pid" 2>/dev/null; do
     run_bytes="$(du -sb "$run_directory" 2>/dev/null | awk '{print $1}')"
     memory_current="$(systemctl --user show "$unit.scope" -p MemoryCurrent --value 2>/dev/null || true)"
     memory_peak="$(systemctl --user show "$unit.scope" -p MemoryPeak --value 2>/dev/null || true)"
+    tasks_current="$(systemctl --user show "$unit.scope" -p TasksCurrent --value 2>/dev/null || true)"
+    control_group="$(systemctl --user show "$unit.scope" -p ControlGroup --value 2>/dev/null || true)"
+    cgroup_directory="/sys/fs/cgroup${control_group:-/__not_running__}"
+    memory_anon=0
+    memory_file=0
+    memory_file_dirty=0
+    cpu_usage_usec=0
+    io_read_bytes=0
+    io_write_bytes=0
+    if [[ -r "$cgroup_directory/memory.stat" ]]; then
+        read -r memory_anon memory_file memory_file_dirty < <(
+            awk '
+                $1 == "anon" { anon = $2 }
+                $1 == "file" { file = $2 }
+                $1 == "file_dirty" { dirty = $2 }
+                END { print anon + 0, file + 0, dirty + 0 }
+            ' "$cgroup_directory/memory.stat"
+        )
+    fi
+    if [[ -r "$cgroup_directory/cpu.stat" ]]; then
+        cpu_usage_usec="$(awk '$1 == "usage_usec" { print $2 + 0 }' "$cgroup_directory/cpu.stat")"
+    fi
+    if [[ -r "$cgroup_directory/io.stat" ]]; then
+        read -r io_read_bytes io_write_bytes < <(
+            awk '
+                {
+                    for(i = 2; i <= NF; i++) {
+                        split($i, value, "=")
+                        if(value[1] == "rbytes") { reads += value[2] }
+                        if(value[1] == "wbytes") { writes += value[2] }
+                    }
+                }
+                END { print reads + 0, writes + 0 }
+            ' "$cgroup_directory/io.stat"
+        )
+    fi
+    # Phase names come from the existing stable progress messages. Sampling
+    # them here keeps instrumentation observational and lets one benchmark
+    # distinguish CPU-bound scans from I/O-bound merges without changing the
+    # index format or construction schedule.
+    phase="$(awk '
+        /Validating and restoring durable kmer files/ { phase = "restore" }
+        /Building the GCSA2 index/ { phase = "preprocess" }
+        /Prefix-doubling from path length/ { phase = "prefix" }
+        /GCSA::GCSA\(\): Step [0-9]+/ {
+            for(i = 1; i <= NF; i++) {
+                if($i == "Step") {
+                    step = $(i + 1); gsub(/[^0-9]/, "", step)
+                    phase = "step-" step
+                }
+            }
+        }
+        /GCSA::GCSA\(\): Merging the paths/ { phase = "merge" }
+        /GCSA::GCSA\(\): Building the index/ { phase = "index" }
+        /Saving GCSA to/ { phase = "serialize" }
+        /Verifying the index/ { phase = "verify" }
+        END { print (phase == "" ? "startup" : phase) }
+    ' "$stderr_log" 2>/dev/null || printf 'startup')"
     mem_available="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)"
-    printf '%s\t%s\t%s\t%s\t%s\n' "$(date +%s)" "${run_bytes:-0}" \
-        "${memory_current:-0}" "${memory_peak:-0}" "${mem_available:-0}" >> "$samples"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$(date +%s)" "${phase:-startup}" "${run_bytes:-0}" \
+        "${memory_current:-0}" "${memory_peak:-0}" "${memory_anon:-0}" \
+        "${memory_file:-0}" "${memory_file_dirty:-0}" "${cpu_usage_usec:-0}" \
+        "${io_read_bytes:-0}" "${io_write_bytes:-0}" "${tasks_current:-0}" \
+        "${mem_available:-0}" >> "$samples"
     sleep "$sample_seconds"
 done
 
@@ -163,8 +232,60 @@ exit_code=$?
 set -e
 runner_pid=""
 
-peak_run_bytes="$(awk 'NR > 1 && $2 > max {max=$2} END {print max+0}' "$samples")"
-peak_cgroup_bytes="$(awk 'NR > 1 && $4 ~ /^[0-9]+$/ && $4 > max {max=$4} END {print max+0}' "$samples")"
+peak_run_bytes="$(awk 'NR > 1 && $3 > max {max=$3} END {print max+0}' "$samples")"
+peak_cgroup_bytes="$(awk 'NR > 1 && $5 ~ /^[0-9]+$/ && $5 > max {max=$5} END {print max+0}' "$samples")"
+peak_anon_bytes="$(awk 'NR > 1 && $6 > max {max=$6} END {print max+0}' "$samples")"
+peak_file_bytes="$(awk 'NR > 1 && $7 > max {max=$7} END {print max+0}' "$samples")"
+peak_file_dirty_bytes="$(awk 'NR > 1 && $8 > max {max=$8} END {print max+0}' "$samples")"
+cgroup_cpu_usage_usec="$(awk 'NR > 1 && $9 ~ /^[0-9]+$/ {last=$9} END {print last+0}' "$samples")"
+cgroup_io_read_bytes="$(awk 'NR > 1 && $10 ~ /^[0-9]+$/ {last=$10} END {print last+0}' "$samples")"
+cgroup_io_write_bytes="$(awk 'NR > 1 && $11 ~ /^[0-9]+$/ {last=$11} END {print last+0}' "$samples")"
+
+# Summarize contiguous construction phases from the cgroup counters. The first
+# and last sample in a phase bracket the measured interval, so short phases may
+# have a zero sampled span; whole-run /usr/bin/time remains the exact authority.
+awk -F '\t' '
+    BEGIN { OFS = "\t" }
+    NR == 1 { next }
+    {
+        phase = $2
+        if(!(phase in seen)) {
+            seen[phase] = 1
+            order[++phases] = phase
+            first_time[phase] = $1
+            first_cpu[phase] = $9
+            first_read[phase] = $10
+            first_write[phase] = $11
+        }
+        last_time[phase] = $1
+        last_cpu[phase] = $9
+        last_read[phase] = $10
+        last_write[phase] = $11
+        samples[phase]++
+        if($3 > peak_run[phase]) { peak_run[phase] = $3 }
+        if($4 ~ /^[0-9]+$/ && $4 > peak_memory[phase]) { peak_memory[phase] = $4 }
+        if($6 > peak_anon[phase]) { peak_anon[phase] = $6 }
+        if($7 > peak_file[phase]) { peak_file[phase] = $7 }
+        if($8 > peak_dirty[phase]) { peak_dirty[phase] = $8 }
+    }
+    END {
+        print "phase", "samples", "sampled_span_seconds", "peak_run_bytes", \
+            "peak_memory_current", "peak_memory_anon", "peak_memory_file", \
+            "peak_memory_file_dirty", "cpu_usage_delta_usec", \
+            "io_read_delta_bytes", "io_write_delta_bytes"
+        for(i = 1; i <= phases; i++) {
+            phase = order[i]
+            printf "%s\t%d\t%.0f\t%.0f\t%.0f\t%.0f\t%.0f\t%.0f\t%.0f\t%.0f\t%.0f\n", \
+                phase, samples[phase], last_time[phase] - first_time[phase], \
+                peak_run[phase], peak_memory[phase], peak_anon[phase], \
+                peak_file[phase], peak_dirty[phase], \
+                last_cpu[phase] - first_cpu[phase], \
+                last_read[phase] - first_read[phase], \
+                last_write[phase] - first_write[phase]
+        }
+    }
+' "$samples" > "$phase_summary"
+
 max_rss_kib="$(awk -F: '/Maximum resident set size/ {gsub(/[[:space:]]/, "", $2); print $2}' "$time_log" 2>/dev/null || true)"
 elapsed_seconds="$(awk '/Elapsed \(wall clock\) time/ {sub(/^.*\):[[:space:]]*/, ""); print}' "$time_log" 2>/dev/null || true)"
 read_blocks="$(awk -F: '/File system inputs/ {gsub(/[[:space:]]/, "", $2); print $2}' "$time_log" 2>/dev/null || true)"
@@ -186,9 +307,15 @@ fi
     printf 'disk_limit\t%s\n' "$disk_limit"
     printf 'sort_run_size\t%s\n' "$sort_run_size"
     printf 'join_partition_size\t%s\n' "$join_partition_size"
-    printf 'vg_sha256\t%s\n' "$(sha256sum "$vg_binary" | awk '{print $1}')"
+    printf 'vg_sha256\t%s\n' "$vg_sha256"
     printf 'max_rss_kib\t%s\n' "${max_rss_kib:-unknown}"
     printf 'sampled_cgroup_memory_peak_bytes\t%s\n' "$peak_cgroup_bytes"
+    printf 'sampled_cgroup_anon_peak_bytes\t%s\n' "$peak_anon_bytes"
+    printf 'sampled_cgroup_file_peak_bytes\t%s\n' "$peak_file_bytes"
+    printf 'sampled_cgroup_file_dirty_peak_bytes\t%s\n' "$peak_file_dirty_bytes"
+    printf 'sampled_cgroup_cpu_usage_usec\t%s\n' "$cgroup_cpu_usage_usec"
+    printf 'sampled_cgroup_io_read_bytes\t%s\n' "$cgroup_io_read_bytes"
+    printf 'sampled_cgroup_io_write_bytes\t%s\n' "$cgroup_io_write_bytes"
     printf 'peak_live_run_bytes\t%s\n' "$peak_run_bytes"
     printf 'elapsed_wall\t%s\n' "${elapsed_seconds:-unknown}"
     printf 'filesystem_input_blocks\t%s\n' "${read_blocks:-unknown}"

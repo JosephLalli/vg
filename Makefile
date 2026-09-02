@@ -648,13 +648,14 @@ $(LIB_DIR)/libssw.a: $(SSW_DIR)/*.c $(SSW_DIR)/*.cpp $(SSW_DIR)/*.h
 $(LIB_DIR)/libsnappy.a: $(SNAPPY_DIR)/*.cc $(SNAPPY_DIR)/*.h
 	+cd $(SNAPPY_DIR) && ./autogen.sh && CXXFLAGS="-fPIC $(filter-out -Xpreprocessor -fopenmp,$(CXXFLAGS))" ./configure --prefix=$(CWD) $(FILTER) && CXXFLAGS="-fPIC $(filter-out -Xpreprocessor -fopenmp,$(CXXFLAGS))" $(MAKE) libsnappy.la $(FILTER) && cp .libs/libsnappy.a $(CWD)/lib/ && cp snappy-c.h snappy-sinksource.h snappy-stubs-public.h snappy.h $(CWD)/include/
 
-$(INC_DIR)/gcsa/gcsa.h: $(LIB_DIR)/libgcsa2.a
+$(INC_DIR)/gcsa/gcsa.h: $(wildcard $(GCSA2_DIR)/include/gcsa/*.h)
+	+mkdir -p $(INC_DIR) && cp -r $(GCSA2_DIR)/include/gcsa $(CWD)/$(INC_DIR)/
 
 $(LIB_DIR)/libgcsa2.a: $(LIB_DIR)/libsdsl.a $(LIB_DIR)/libdivsufsort.a $(LIB_DIR)/libdivsufsort64.a $(wildcard $(GCSA2_DIR)/src/*.cpp) $(wildcard $(GCSA2_DIR)/include/gcsa/*.h)
 ifeq ($(shell uname -s),Darwin)
-	+cp -r $(GCSA2_DIR)/include/gcsa $(CWD)/$(INC_DIR)/ && cd $(GCSA2_DIR) && $(MAKE) clean && make directories && CFLAGS="-fPIC $(CFLAGS)" CXXFLAGS="-fPIC $(CXXFLAGS)" AS_INTEGRATED_ASSEMBLER=1 $(MAKE) lib/libgcsa2.a $(FILTER) && mv lib/libgcsa2.a $(CWD)/$(LIB_DIR)
+	+cd $(GCSA2_DIR) && $(MAKE) clean && make directories && CFLAGS="-fPIC $(CFLAGS)" CXXFLAGS="-fPIC $(CXXFLAGS)" AS_INTEGRATED_ASSEMBLER=1 $(MAKE) lib/libgcsa2.a $(FILTER) && mv lib/libgcsa2.a $(CWD)/$(LIB_DIR)
 else
-	+cp -r $(GCSA2_DIR)/include/gcsa $(CWD)/$(INC_DIR)/ && cd $(GCSA2_DIR) && $(MAKE) clean && make directories && CFLAGS="-fPIC $(CFLAGS)" CXXFLAGS="-fPIC $(CXXFLAGS)" $(MAKE) lib/libgcsa2.a $(FILTER) && mv lib/libgcsa2.a $(CWD)/$(LIB_DIR)
+	+cd $(GCSA2_DIR) && $(MAKE) clean && make directories && CFLAGS="-fPIC $(CFLAGS)" CXXFLAGS="-fPIC $(CXXFLAGS)" $(MAKE) lib/libgcsa2.a $(FILTER) && mv lib/libgcsa2.a $(CWD)/$(LIB_DIR)
 endif
 
 $(INC_DIR)/gbwt/dynamic_gbwt.h: $(LIB_DIR)/libgbwt.a

@@ -64,9 +64,10 @@ void help_index(char** argv) {
          << "      --gcsa-work-dir DIR   durable disk-first construction workspace" << endl
          << "      --gcsa-resume         resume committed GCSA2 workspace phases" << endl
          << "      --gcsa-memory-limit S external working-set ceiling (for example 25G)" << endl
-         << "      --gcsa-disk-limit S   external workspace disk ceiling (for example 4T)" << endl
+         << "      --gcsa-disk-limit S   spill-generation disk budget (for example 4T)" << endl
          << "      --gcsa-sort-run-size S max workspace for one label-sort run" << endl
          << "      --gcsa-join-partition-size S max workspace for one join sorter" << endl
+         << "      --gcsa-process-workers N fork-free parallel join worker processes" << endl
          << "GAM indexing options:" << endl
          << "  -l, --index-sorted-gam    input is sorted .gam format alignments," << endl
          << "                            store a GAI index of the sorted GAM in INPUT.gam.gai" << endl
@@ -104,6 +105,7 @@ int main_index(int argc, char** argv) {
     constexpr int OPT_GCSA_DISK_LIMIT = 1007;
     constexpr int OPT_GCSA_SORT_RUN_SIZE = 1008;
     constexpr int OPT_GCSA_JOIN_PARTITION_SIZE = 1009;
+    constexpr int OPT_GCSA_PROCESS_WORKERS = 1010;
 
     // Which indexes to build.
     bool build_xg = false, build_gcsa = false, build_dist = false;
@@ -122,6 +124,7 @@ int main_index(int argc, char** argv) {
     // GCSA
     gcsa::size_type kmer_size = gcsa::Key::MAX_LENGTH;
     gcsa::ConstructionParameters params;
+    params.setWorkerExecutable(argv[0]);
     bool verify_gcsa = false;
     
     // Gam index (GAI)
@@ -191,6 +194,7 @@ int main_index(int argc, char** argv) {
             {"gcsa-disk-limit", required_argument, 0, OPT_GCSA_DISK_LIMIT},
             {"gcsa-sort-run-size", required_argument, 0, OPT_GCSA_SORT_RUN_SIZE},
             {"gcsa-join-partition-size", required_argument, 0, OPT_GCSA_JOIN_PARTITION_SIZE},
+            {"gcsa-process-workers", required_argument, 0, OPT_GCSA_PROCESS_WORKERS},
             
             // GAM index (GAI)
             {"index-sorted-gam", no_argument, 0, 'l'},
@@ -302,6 +306,9 @@ int main_index(int argc, char** argv) {
             break;
         case OPT_GCSA_JOIN_PARTITION_SIZE:
             params.setJoinPartitionSize(gcsa::parseBytes(optarg));
+            break;
+        case OPT_GCSA_PROCESS_WORKERS:
+            params.setProcessWorkers(parse<size_t>(optarg));
             break;
             
         // Gam index (GAI)

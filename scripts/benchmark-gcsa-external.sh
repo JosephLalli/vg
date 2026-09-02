@@ -15,6 +15,7 @@ disk_limit="4T"
 sort_run_size=""
 join_partition_size=""
 threads="32"
+process_workers="1"
 kmer_length="16"
 doubling_steps="4"
 sample_seconds="30"
@@ -29,6 +30,7 @@ usage() {
     echo "  --sort-run-size SIZE   label-sort workspace [memory limit]" >&2
     echo "  --join-partition-size SIZE join-sort workspace [memory limit]" >&2
     echo "  --threads N            construction threads [32]" >&2
+    echo "  --process-workers N    independent join partition workers [1]" >&2
     echo "  --kmer-length N        initial k-mer length [16]" >&2
     echo "  --doubling-steps N     prefix-doubling steps [4]" >&2
     echo "  --sample-seconds N     resource sampling interval [30]" >&2
@@ -47,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         --sort-run-size) sort_run_size="$2"; shift 2 ;;
         --join-partition-size) join_partition_size="$2"; shift 2 ;;
         --threads) threads="$2"; shift 2 ;;
+        --process-workers) process_workers="$2"; shift 2 ;;
         --kmer-length) kmer_length="$2"; shift 2 ;;
         --doubling-steps) doubling_steps="$2"; shift 2 ;;
         --sample-seconds) sample_seconds="$2"; shift 2 ;;
@@ -109,7 +112,8 @@ command=("$vg_binary" index -p -V -g "$output_name" -k "$kmer_length"
     --gcsa-memory-limit "$memory_limit"
     --gcsa-disk-limit "$disk_limit"
     --gcsa-sort-run-size "$sort_run_size"
-    --gcsa-join-partition-size "$join_partition_size")
+    --gcsa-join-partition-size "$join_partition_size"
+    --gcsa-process-workers "$process_workers")
 if [[ -n "$mapping" ]]; then
     command+=(-f "$mapping")
 fi
@@ -307,6 +311,7 @@ fi
     printf 'disk_limit\t%s\n' "$disk_limit"
     printf 'sort_run_size\t%s\n' "$sort_run_size"
     printf 'join_partition_size\t%s\n' "$join_partition_size"
+    printf 'process_workers\t%s\n' "$process_workers"
     printf 'vg_sha256\t%s\n' "$vg_sha256"
     printf 'max_rss_kib\t%s\n' "${max_rss_kib:-unknown}"
     printf 'sampled_cgroup_memory_peak_bytes\t%s\n' "$peak_cgroup_bytes"

@@ -24,8 +24,9 @@ vg index -g external.gcsa -k 2 -X 2 -V \
     --gcsa-work-dir gcsa-external-work \
     --gcsa-memory-limit 1M --gcsa-disk-limit 1G \
     --gcsa-sort-run-size 1M --gcsa-join-partition-size 1M \
+    --gcsa-process-workers 2 \
     x.vg y.vg >/dev/null 2>&1
-is $? 0 "disk-first GCSA2 construction succeeds with a tiny byte budget"
+is $? 0 "disk-first GCSA2 construction succeeds through fork-free workers with a tiny byte budget"
 
 cmp legacy.gcsa external.gcsa
 is $? 0 "disk-first GCSA is byte-identical to the legacy index"

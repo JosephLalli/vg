@@ -17,9 +17,12 @@ is $(ls auto.gcsa* | wc -l) 2 "autoindexing makes a GCSA2/LCP pair for vg map"
 vg sim -x auto.xg -n 20 -a -l 10 | vg map -d auto -t 1 -G - > /dev/null
 is $(echo $?) 0 "basic autoindexing results can be used by vg map"
 
-old_xg_creation_time=`ls -l --time-style=full-is auto.xg | tr -s ' ' | cut -d ' ' -f7`
+# Query the timestamp directly. Parsing fields from `ls -l` breaks when an
+# account provider exposes a group name containing a space (for example
+# "domain users"), because every following field shifts by one.
+old_xg_creation_time=`stat -c %y auto.xg`
 vg autoindex -p auto -w map -r tiny/tiny.fa -v tiny/tiny.vcf.gz --force-unphased --no-guessing
-cur_xg_creation_time=`ls -l --time-style=full-is auto.xg | tr -s ' ' | cut -d ' ' -f7`
+cur_xg_creation_time=`stat -c %y auto.xg`
 same_time="no"
 if [ "$old_xg_creation_time" == "$cur_xg_creation_time" ]; then
     same_time="yes"

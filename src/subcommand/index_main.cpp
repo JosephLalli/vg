@@ -5,6 +5,7 @@
 #include <getopt.h>
 
 #include <random>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,7 @@
 #include "../source_sink_overlay.hpp"
 #include "../gbwtgraph_helper.hpp"
 #include "../gcsa_helper.hpp"
+#include "../gcsa_workspace.hpp"
 
 #include <gcsa/algorithms.h>
 #include <bdsg/overlays/packed_subgraph_overlay.hpp>
@@ -59,6 +61,10 @@ void help_index(char** argv) {
                                      << "[" << gcsa::ConstructionParameters::SIZE_LIMIT << "]" << endl
          << "  -V, --verify-index        validate the GCSA2 index using the input kmers" << endl
          << "                            (important for testing)" << endl
+         << "      --gcsa-work-dir DIR   durable disk-first construction workspace" << endl
+         << "      --gcsa-resume         resume committed GCSA2 workspace phases" << endl
+         << "      --gcsa-memory-limit S external working-set ceiling (for example 25G)" << endl
+         << "      --gcsa-disk-limit S   external workspace disk ceiling (for example 4T)" << endl
          << "GAM indexing options:" << endl
          << "  -l, --index-sorted-gam    input is sorted .gam format alignments," << endl
          << "                            store a GAI index of the sorted GAM in INPUT.gam.gai" << endl
@@ -90,9 +96,14 @@ int main_index(int argc, char** argv) {
     constexpr int OPT_RENAME_VARIANTS = 1001;
     constexpr int OPT_DISTANCE_SNARL_LIMIT = 1002;
     constexpr int OPT_DISTANCE_NESTING = 1003;
+    constexpr int OPT_GCSA_WORK_DIR = 1004;
+    constexpr int OPT_GCSA_RESUME = 1005;
+    constexpr int OPT_GCSA_MEMORY_LIMIT = 1006;
+    constexpr int OPT_GCSA_DISK_LIMIT = 1007;
 
     // Which indexes to build.
     bool build_xg = false, build_gcsa = false, build_dist = false;
+    bool gcsa_resume_requested = false;
 
     // Files we should read.
     string vcf_name, mapping_name;
@@ -170,6 +181,10 @@ int main_index(int argc, char** argv) {
             {"doubling-steps", required_argument, 0, 'X'},
             {"size-limit", required_argument, 0, 'Z'},
             {"verify-index", no_argument, 0, 'V'},
+            {"gcsa-work-dir", required_argument, 0, OPT_GCSA_WORK_DIR},
+            {"gcsa-resume", no_argument, 0, OPT_GCSA_RESUME},
+            {"gcsa-memory-limit", required_argument, 0, OPT_GCSA_MEMORY_LIMIT},
+            {"gcsa-disk-limit", required_argument, 0, OPT_GCSA_DISK_LIMIT},
             
             // GAM index (GAI)
             {"index-sorted-gam", no_argument, 0, 'l'},
@@ -263,6 +278,19 @@ int main_index(int argc, char** argv) {
         case 'V':
             verify_gcsa = true;
             break;
+        case OPT_GCSA_WORK_DIR:
+            params.setWorkDirectory(optarg);
+            break;
+        case OPT_GCSA_RESUME:
+            gcsa_resume_requested = true;
+            params.setResume();
+            break;
+        case OPT_GCSA_MEMORY_LIMIT:
+            params.setMemoryLimitBytes(gcsa::parseBytes(optarg));
+            break;
+        case OPT_GCSA_DISK_LIMIT:
+            params.setLimitBytes(gcsa::parseBytes(optarg));
+            break;
             
         // Gam index (GAI)
         case 'l':
@@ -337,6 +365,38 @@ int main_index(int argc, char** argv) {
         logger.error() << "GCSA2 cannot index with kmer size greater than "
                        << gcsa::Key::MAX_LENGTH << endl;
     }
+    if (params.getResume() && params.getWorkDirectory().empty()) {
+        logger.error() << "--gcsa-resume requires --gcsa-work-dir" << endl;
+    }
+    if (params.externalMemory()) {
+        std::error_code error;
+        std::filesystem::create_directories(params.getWorkDirectory(), error);
+        if (error) {
+            logger.error() << "cannot create GCSA2 workspace " << params.getWorkDirectory()
+                           << ": " << error.message() << endl;
+        }
+        params.setWorkDirectory(std::filesystem::absolute(params.getWorkDirectory())
+                                    .lexically_normal().string());
+        // A workspace explicitly selects disk-first construction. Path growth
+        // is limited by the disk budget, not by the RAM ceiling.
+        params.setAllowPathExplosion();
+        bool has_construction_manifest = std::filesystem::is_regular_file(
+            std::filesystem::path(params.getWorkDirectory()) / "build.json");
+        if (!gcsa_resume_requested && has_construction_manifest) {
+            logger.error() << "GCSA2 workspace already contains a build; use --gcsa-resume: "
+                           << params.getWorkDirectory() << endl;
+        }
+        if (gcsa_resume_requested && !has_construction_manifest) {
+            // A crash may occur after vg commits durable k-mers but before
+            // GCSA2 creates build.json. Continue as a new GCSA2 frontier while
+            // still reusing a compatible vg input manifest below.
+            params.setResume(false);
+            if (show_progress) {
+                logger.info() << "No GCSA2 build manifest exists; resuming from durable input generation" << endl;
+            }
+        }
+        gcsa::TempFile::setDirectory(params.getWorkDirectory());
+    }
 
     if (!build_dist && !extra_node_weight.empty()) {
         logger.error() << "cannot up-weight nodes for snarl finding if not building distance index" << endl;
@@ -383,14 +443,41 @@ int main_index(int argc, char** argv) {
     if (build_gcsa) {
 
         // Configure GCSA2 verbosity so it doesn't spit out loads of extra info
-        if (!show_progress) {
-            gcsa::Verbosity::set(gcsa::Verbosity::SILENT);
-        }
+        gcsa::Verbosity::set(show_progress
+            ? gcsa::Verbosity::EXTENDED
+            : gcsa::Verbosity::SILENT);
 
         double start = gcsa::readTimer();
 
         // Generate temporary kmer files
         bool delete_kmer_files = false;
+        bool generated_kmer_inputs = dbg_names.empty();
+        vector<string> semantic_sources;
+        if (!file_names.empty()) {
+            semantic_sources = file_names;
+        } else if (!xg_name.empty()) {
+            semantic_sources.push_back(xg_name);
+        }
+
+        if (generated_kmer_inputs && params.externalMemory() &&
+            persistent_gcsa_kmers_exist(params.getWorkDirectory())) {
+            if (!gcsa_resume_requested) {
+                logger.error() << "GCSA2 workspace already contains durable k-mer inputs; "
+                               << "use --gcsa-resume: " << params.getWorkDirectory() << endl;
+            }
+            if (show_progress) {
+                logger.info() << "Validating and restoring durable kmer files..." << endl;
+            }
+            PersistentGcsaKmers persistent = restore_gcsa_kmers(
+                params.getWorkDirectory(), semantic_sources, kmer_size);
+            dbg_names = std::move(persistent.filenames);
+            params.reduceLimit(persistent.bytes);
+        }
+        if (generated_kmer_inputs && params.getResume() && dbg_names.empty()) {
+            logger.error() << "GCSA2 build manifest exists but its durable k-mer input manifest is missing: "
+                           << params.getWorkDirectory() << endl;
+        }
+
         if (dbg_names.empty()) {
             if (show_progress) {
                 logger.info() << "Generating kmer files..." << endl;
@@ -470,6 +557,18 @@ int main_index(int argc, char** argv) {
             } else {
                 logger.error() << "cannot generate GCSA index without either a VG or an XG" << endl;
             }
+        }
+
+        if (generated_kmer_inputs && params.externalMemory() && delete_kmer_files) {
+            if (show_progress) {
+                logger.info() << "Committing durable kmer inputs..." << endl;
+            }
+            PersistentGcsaKmers persistent = persist_gcsa_kmers(
+                params.getWorkDirectory(), semantic_sources, kmer_size, dbg_names);
+            dbg_names = std::move(persistent.filenames);
+            // persist_gcsa_kmers() unregisters/removes the anonymous temporary
+            // names. The committed workspace inputs must survive this process.
+            delete_kmer_files = false;
         }
 
         // Build the index

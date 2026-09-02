@@ -51,6 +51,7 @@
 #include "gbwt_helper.hpp"
 #include "gbwtgraph_helper.hpp"
 #include "gcsa_helper.hpp"
+#include "gcsa_workspace.hpp"
 #include "flat_file_back_translation.hpp"
 #include "kmer.hpp"
 #include "transcriptome.hpp"
@@ -108,6 +109,9 @@ double IndexingParameters::pruning_max_node_degree_decrease_factor = 0.75;
 int IndexingParameters::gcsa_initial_kmer_length = gcsa::Key::MAX_LENGTH;
 int IndexingParameters::gcsa_doubling_steps = gcsa::ConstructionParameters::DOUBLING_STEPS;
 int64_t IndexingParameters::gcsa_size_limit = 2ll * 1024ll * 1024ll * 1024ll * 1024ll;
+string IndexingParameters::gcsa_work_directory;
+bool IndexingParameters::gcsa_resume = false;
+int64_t IndexingParameters::gcsa_memory_limit = 0;
 int64_t IndexingParameters::gbwt_insert_batch_size = gbwt::DynamicGBWT::INSERT_BATCH_SIZE;
 int IndexingParameters::gbwt_insert_batch_size_increase_factor = 10;
 int IndexingParameters::gbwt_sampling_interval = gbwt::DynamicGBWT::SAMPLE_INTERVAL;
@@ -3708,7 +3712,17 @@ IndexRegistry VGIndexes::get_vg_index_registry() {
         params.setSteps(IndexingParameters::gcsa_doubling_steps);
         params.setLimitBytes(IndexingParameters::gcsa_size_limit);
         // we use the literal limit here because this is a measurement of memory use, not an estimate
-        params.setMemoryLimitBytes(plan->literal_target_memory_usage());
+        params.setMemoryLimitBytes(IndexingParameters::gcsa_memory_limit > 0
+            ? IndexingParameters::gcsa_memory_limit
+            : plan->literal_target_memory_usage());
+        if (!IndexingParameters::gcsa_work_directory.empty()) {
+            params.setWorkDirectory(IndexingParameters::gcsa_work_directory);
+            bool has_build_manifest = filesystem::is_regular_file(
+                filesystem::path(params.getWorkDirectory()) / "build.json");
+            params.setResume(IndexingParameters::gcsa_resume && has_build_manifest);
+            params.setAllowPathExplosion();
+            gcsa::TempFile::setDirectory(params.getWorkDirectory());
+        }
                 
 #ifdef debug_index_registry_recipes
         cerr << "enumerating k-mers for input pruned graphs:" << endl;
@@ -3722,16 +3736,42 @@ IndexRegistry VGIndexes::get_vg_index_registry() {
         VGset graph_set(graph_filenames);
         size_t kmer_bytes = params.getLimitBytes();
         vector<string> dbg_names;
-        try {
-            dbg_names = graph_set.write_gcsa_kmers_binary(IndexingParameters::gcsa_initial_kmer_length, kmer_bytes);
-        }
-        catch (SizeLimitExceededException& ex) {
-            // update pruning params
-            IndexingParameters::pruning_walk_length *= IndexingParameters::pruning_walk_length_increase_factor;
-            IndexingParameters::pruning_max_node_degree *= IndexingParameters::pruning_max_node_degree_decrease_factor;
-            string msg = context + ": Exceeded disk use limit while generating k-mers. "
-                         "Rewinding to pruning step with more aggressive pruning to simplify the graph.";
-            throw RewindPlanException(msg, pruned_graphs);
+        bool persistent_kmers = false;
+        if (params.externalMemory() &&
+            persistent_gcsa_kmers_exist(params.getWorkDirectory())) {
+            if (!IndexingParameters::gcsa_resume) {
+                throw runtime_error("GCSA workspace already has durable inputs; enable --gcsa-resume");
+            }
+            PersistentGcsaKmers restored = restore_gcsa_kmers(
+                params.getWorkDirectory(), graph_filenames,
+                IndexingParameters::gcsa_initial_kmer_length);
+            dbg_names = std::move(restored.filenames);
+            params.reduceLimit(restored.bytes);
+            persistent_kmers = true;
+        } else {
+            if (params.getResume()) {
+                throw runtime_error("GCSA build manifest exists but durable k-mer inputs are missing");
+            }
+            try {
+                dbg_names = graph_set.write_gcsa_kmers_binary(
+                    IndexingParameters::gcsa_initial_kmer_length, kmer_bytes);
+            }
+            catch (SizeLimitExceededException& ex) {
+                // update pruning params
+                IndexingParameters::pruning_walk_length *= IndexingParameters::pruning_walk_length_increase_factor;
+                IndexingParameters::pruning_max_node_degree *= IndexingParameters::pruning_max_node_degree_decrease_factor;
+                string msg = context + ": Exceeded disk use limit while generating k-mers. "
+                             "Rewinding to pruning step with more aggressive pruning to simplify the graph.";
+                throw RewindPlanException(msg, pruned_graphs);
+            }
+            if (params.externalMemory()) {
+                PersistentGcsaKmers committed = persist_gcsa_kmers(
+                    params.getWorkDirectory(), graph_filenames,
+                    IndexingParameters::gcsa_initial_kmer_length, dbg_names);
+                dbg_names = std::move(committed.filenames);
+                params.reduceLimit(committed.bytes);
+                persistent_kmers = true;
+            }
         }
         
         // it seems to only keep the lowest 8 bits of the exit code, so only use the lowest 8 bits.
@@ -3761,11 +3801,18 @@ IndexRegistry VGIndexes::get_vg_index_registry() {
         });
         
         // clean up the k-mer files
-        for (auto dbg_name : dbg_names) {
-            temp_file::remove(dbg_name);
+        if (!persistent_kmers) {
+            for (auto dbg_name : dbg_names) {
+                temp_file::remove(dbg_name);
+            }
         }
         
         if (code == size_code) {
+            if (params.externalMemory()) {
+                info(context) << "GCSA2 reached its explicit disk limit; preserving workspace "
+                              << params.getWorkDirectory() << endl;
+                exit(code);
+            }
             // the indexing was not successful, presumably because of exponential disk explosion
             
             // update pruning params
@@ -6488,4 +6535,3 @@ const IndexGroup& RewindPlanException::get_indexes() const noexcept {
 }
 
 }
-

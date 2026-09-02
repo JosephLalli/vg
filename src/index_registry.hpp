@@ -87,6 +87,12 @@ struct IndexingParameters {
     static int gcsa_doubling_steps;
     // disk limit for temporary files in bytes [2TB]
     static int64_t gcsa_size_limit;
+    // durable external-memory GCSA workspace; empty selects the legacy route
+    static string gcsa_work_directory;
+    // resume a compatible durable GCSA workspace
+    static bool gcsa_resume;
+    // explicit GCSA memory ceiling in bytes; 0 uses the plan's literal target
+    static int64_t gcsa_memory_limit;
     // number of gbwt nodes inserted at a time in dynamic gbwt [100M]
     static int64_t gbwt_insert_batch_size;
     // factor by which the batch size is increased if construction fails [10]

@@ -6,8 +6,11 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <unistd.h>
 #include <getopt.h>
+
+#include <gcsa/utils.h>
 
 #include <htslib/hts.h>
 #include <htslib/vcf.h>
@@ -119,6 +122,10 @@ void help_autoindex(char** argv) {
          << "  -T, --tmp-dir DIR      temporary directory to use for intermediate files" << endl
          << "  -M, --target-mem MEM   target max memory usage (not exact, formatted INT[kMG])" << endl
          << "                         [1/2 of available]" << endl
+         << "      --gcsa-work-dir DIR durable disk-first GCSA2 workspace" << endl
+         << "      --gcsa-resume       resume compatible committed GCSA2 work" << endl
+         << "      --gcsa-memory-limit SIZE strict GCSA2 working-set ceiling" << endl
+         << "      --gcsa-disk-limit SIZE   GCSA2 workspace/output disk ceiling" << endl
 // TODO: hiding this now that we have rewinding options, since detailed args aren't really in the spirit of this subcommand
 //    << "  --gbwt-buffer-size NUM GBWT construction buffer size in millions of nodes; may need to be" << endl
 //    << "                              increased for graphs with long haplotypes "
@@ -144,6 +151,10 @@ int main_autoindex(int argc, char** argv) {
     constexpr int OPT_FORCE_PHASED = 1002;
     constexpr int OPT_GBWT_BUFFER_SIZE = 1003;
     constexpr int OPT_GCSA_SIZE_LIMIT = 1004;
+    constexpr int OPT_GCSA_WORK_DIR = 1005;
+    constexpr int OPT_GCSA_RESUME = 1006;
+    constexpr int OPT_GCSA_MEMORY_LIMIT = 1007;
+    constexpr int OPT_GCSA_DISK_LIMIT = 1008;
     
     // load the registry
     IndexRegistry registry = VGIndexes::get_vg_index_registry();
@@ -180,6 +191,10 @@ int main_autoindex(int argc, char** argv) {
             {"target-mem", required_argument, 0, 'M'},
             {"gbwt-buffer-size", required_argument, 0, OPT_GBWT_BUFFER_SIZE},
             {"gcsa-size-limit", required_argument, 0, OPT_GCSA_SIZE_LIMIT},
+            {"gcsa-work-dir", required_argument, 0, OPT_GCSA_WORK_DIR},
+            {"gcsa-resume", no_argument, 0, OPT_GCSA_RESUME},
+            {"gcsa-memory-limit", required_argument, 0, OPT_GCSA_MEMORY_LIMIT},
+            {"gcsa-disk-limit", required_argument, 0, OPT_GCSA_DISK_LIMIT},
             {"tmp-dir", required_argument, 0, 'T'},
             {"threads", required_argument, 0, 't'},
             {"verbosity", required_argument, 0, 'V'},
@@ -318,6 +333,19 @@ int main_autoindex(int argc, char** argv) {
             case OPT_GCSA_SIZE_LIMIT:
                 IndexingParameters::gcsa_size_limit = parse<int64_t>(optarg);
                 break;
+            case OPT_GCSA_WORK_DIR:
+                IndexingParameters::gcsa_work_directory =
+                    filesystem::absolute(optarg).lexically_normal().string();
+                break;
+            case OPT_GCSA_RESUME:
+                IndexingParameters::gcsa_resume = true;
+                break;
+            case OPT_GCSA_MEMORY_LIMIT:
+                IndexingParameters::gcsa_memory_limit = gcsa::parseBytes(optarg);
+                break;
+            case OPT_GCSA_DISK_LIMIT:
+                IndexingParameters::gcsa_size_limit = gcsa::parseBytes(optarg);
+                break;
             case '?':
             case 'h':
             default:
@@ -429,4 +457,3 @@ int main_autoindex(int argc, char** argv) {
 // Register subcommand
 static Subcommand vg_autoindex("autoindex", "mapping tool-oriented index construction from interchange formats", 
                                PIPELINE, 1, main_autoindex);
-

@@ -23,6 +23,7 @@ is $? 0 "legacy GCSA2 construction succeeds on two logical inputs"
 vg index -g external.gcsa -k 2 -X 2 -V \
     --gcsa-work-dir gcsa-external-work \
     --gcsa-memory-limit 1M --gcsa-disk-limit 1G \
+    --gcsa-sort-run-size 1M --gcsa-join-partition-size 1M \
     x.vg y.vg >/dev/null 2>&1
 is $? 0 "disk-first GCSA2 construction succeeds with a tiny byte budget"
 
@@ -42,8 +43,9 @@ is $? 0 "GCSA2 commits a durable construction manifest"
 vg index -g resumed.gcsa -k 2 -X 2 -V \
     --gcsa-work-dir gcsa-external-work --gcsa-resume \
     --gcsa-memory-limit 768K --gcsa-disk-limit 1G \
+    --gcsa-sort-run-size 768K --gcsa-join-partition-size 768K \
     x.vg y.vg >/dev/null 2>&1
-is $? 0 "construction resumes with a different operational memory budget"
+is $? 0 "construction resumes with different operational memory and run budgets"
 cmp legacy.gcsa resumed.gcsa && cmp legacy.gcsa.lcp resumed.gcsa.lcp
 is $? 0 "resumed indexes are byte-identical to legacy construction"
 test ! -e gcsa-external-work/inputs/orphan.partial

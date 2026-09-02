@@ -12,6 +12,8 @@ run_directory=""
 memory_limit="23G"
 cgroup_limit="25G"
 disk_limit="4T"
+sort_run_size=""
+join_partition_size=""
 threads="32"
 kmer_length="16"
 doubling_steps="4"
@@ -24,6 +26,8 @@ usage() {
     echo "  --memory-limit SIZE    internal GCSA2 budget [23G]" >&2
     echo "  --cgroup-limit SIZE    hard systemd MemoryMax [25G]" >&2
     echo "  --disk-limit SIZE      GCSA2 disk budget [4T]" >&2
+    echo "  --sort-run-size SIZE   label-sort workspace [memory limit]" >&2
+    echo "  --join-partition-size SIZE join-sort workspace [memory limit]" >&2
     echo "  --threads N            construction threads [32]" >&2
     echo "  --kmer-length N        initial k-mer length [16]" >&2
     echo "  --doubling-steps N     prefix-doubling steps [4]" >&2
@@ -40,6 +44,8 @@ while [[ $# -gt 0 ]]; do
         --memory-limit) memory_limit="$2"; shift 2 ;;
         --cgroup-limit) cgroup_limit="$2"; shift 2 ;;
         --disk-limit) disk_limit="$2"; shift 2 ;;
+        --sort-run-size) sort_run_size="$2"; shift 2 ;;
+        --join-partition-size) join_partition_size="$2"; shift 2 ;;
         --threads) threads="$2"; shift 2 ;;
         --kmer-length) kmer_length="$2"; shift 2 ;;
         --doubling-steps) doubling_steps="$2"; shift 2 ;;
@@ -53,6 +59,16 @@ done
 if [[ -z "$vg_binary" || -z "$graph" || -z "$run_directory" ]]; then
     usage
     exit 2
+fi
+
+# These are independent GCSA2 operational caps. Defaulting them to the
+# benchmark's memory ceiling makes a larger benchmark budget actually trade
+# RAM for fewer merge passes; GCSA2 still reserves only the active phase.
+if [[ -z "$sort_run_size" ]]; then
+    sort_run_size="$memory_limit"
+fi
+if [[ -z "$join_partition_size" ]]; then
+    join_partition_size="$memory_limit"
 fi
 if [[ ! -x "$vg_binary" || ! -r "$graph" || ( -n "$mapping" && ! -r "$mapping" ) ]]; then
     echo "vg, graph, or mapping is not executable/readable" >&2
@@ -84,7 +100,9 @@ command=("$vg_binary" index -p -V -g "$output_name" -k "$kmer_length"
     -X "$doubling_steps" -t "$threads"
     --gcsa-work-dir "$work_directory"
     --gcsa-memory-limit "$memory_limit"
-    --gcsa-disk-limit "$disk_limit")
+    --gcsa-disk-limit "$disk_limit"
+    --gcsa-sort-run-size "$sort_run_size"
+    --gcsa-join-partition-size "$join_partition_size")
 if [[ -n "$mapping" ]]; then
     command+=(-f "$mapping")
 fi
@@ -95,6 +113,7 @@ command+=("$graph")
 
 {
     printf 'unit=%q\n' "$unit.scope"
+    printf 'vg_sha256=%s\n' "$(sha256sum "$vg_binary" | awk '{print $1}')"
     printf 'command='
     printf '%q ' "${command[@]}"
     printf '\n'
@@ -148,8 +167,16 @@ peak_run_bytes="$(awk 'NR > 1 && $2 > max {max=$2} END {print max+0}' "$samples"
 peak_cgroup_bytes="$(awk 'NR > 1 && $4 ~ /^[0-9]+$/ && $4 > max {max=$4} END {print max+0}' "$samples")"
 max_rss_kib="$(awk -F: '/Maximum resident set size/ {gsub(/[[:space:]]/, "", $2); print $2}' "$time_log" 2>/dev/null || true)"
 elapsed_seconds="$(awk '/Elapsed \(wall clock\) time/ {sub(/^.*\):[[:space:]]*/, ""); print}' "$time_log" 2>/dev/null || true)"
-read_kib="$(awk -F: '/File system inputs/ {gsub(/[[:space:]]/, "", $2); print $2}' "$time_log" 2>/dev/null || true)"
-write_kib="$(awk -F: '/File system outputs/ {gsub(/[[:space:]]/, "", $2); print $2}' "$time_log" 2>/dev/null || true)"
+read_blocks="$(awk -F: '/File system inputs/ {gsub(/[[:space:]]/, "", $2); print $2}' "$time_log" 2>/dev/null || true)"
+write_blocks="$(awk -F: '/File system outputs/ {gsub(/[[:space:]]/, "", $2); print $2}' "$time_log" 2>/dev/null || true)"
+read_bytes="unknown"
+write_bytes="unknown"
+if [[ "$read_blocks" =~ ^[0-9]+$ ]]; then
+    read_bytes=$((read_blocks * 512))
+fi
+if [[ "$write_blocks" =~ ^[0-9]+$ ]]; then
+    write_bytes=$((write_blocks * 512))
+fi
 
 {
     printf 'metric\tvalue\n'
@@ -157,12 +184,17 @@ write_kib="$(awk -F: '/File system outputs/ {gsub(/[[:space:]]/, "", $2); print 
     printf 'internal_memory_limit\t%s\n' "$memory_limit"
     printf 'cgroup_memory_max\t%s\n' "$cgroup_limit"
     printf 'disk_limit\t%s\n' "$disk_limit"
+    printf 'sort_run_size\t%s\n' "$sort_run_size"
+    printf 'join_partition_size\t%s\n' "$join_partition_size"
+    printf 'vg_sha256\t%s\n' "$(sha256sum "$vg_binary" | awk '{print $1}')"
     printf 'max_rss_kib\t%s\n' "${max_rss_kib:-unknown}"
     printf 'sampled_cgroup_memory_peak_bytes\t%s\n' "$peak_cgroup_bytes"
     printf 'peak_live_run_bytes\t%s\n' "$peak_run_bytes"
     printf 'elapsed_wall\t%s\n' "${elapsed_seconds:-unknown}"
-    printf 'filesystem_input_kib\t%s\n' "${read_kib:-unknown}"
-    printf 'filesystem_output_kib\t%s\n' "${write_kib:-unknown}"
+    printf 'filesystem_input_blocks\t%s\n' "${read_blocks:-unknown}"
+    printf 'filesystem_output_blocks\t%s\n' "${write_blocks:-unknown}"
+    printf 'filesystem_input_bytes\t%s\n' "$read_bytes"
+    printf 'filesystem_output_bytes\t%s\n' "$write_bytes"
 } > "$summary"
 
 echo "benchmark summary: $summary"

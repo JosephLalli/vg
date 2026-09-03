@@ -370,5 +370,34 @@ TEST_CASE("SourceSinkOverlay agrees with VG::add_start_end_markers in a random g
 
 }
 
+TEST_CASE("SourceSinkOverlay handles a sparse node ID space without a max-ID allocation", "[overlay]") {
+
+    VG graph;
+    const id_t low_id = 1;
+    const id_t high_id = 1000000000000LL;
+    graph.create_node("A", low_id);
+    graph.create_node("C", high_id);
+
+    // A dense visited vector indexed through max_node_id() would require over
+    // 100 GiB for this two-node graph. The overlay must select its sparse
+    // traversal representation and still connect both isolated components.
+    SourceSinkOverlay overlay(&graph, 4, high_id + 1, high_id + 2);
+
+    unordered_set<id_t> from_source;
+    overlay.follow_edges(overlay.get_source_handle(), false,
+                         [&](const handle_t& handle) {
+        from_source.insert(overlay.get_id(handle));
+    });
+    const unordered_set<id_t> expected{low_id, high_id};
+    REQUIRE(from_source == expected);
+
+    unordered_set<id_t> into_sink;
+    overlay.follow_edges(overlay.get_sink_handle(), true,
+                         [&](const handle_t& handle) {
+        into_sink.insert(overlay.get_id(handle));
+    });
+    REQUIRE(into_sink == expected);
+}
+
 }
 }

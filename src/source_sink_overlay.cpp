@@ -2,12 +2,75 @@
 
 #include <handlegraph/util.hpp>
 
+#include <cstdint>
+#include <limits>
+#include <vector>
+
 //#define debug
 
 namespace vg {
 
 using namespace std;
 using namespace handlegraph;
+
+namespace {
+
+/**
+ * Tracks component traversal without retaining every component's node set.
+ *
+ * Pangenome graph identifiers are normally dense. In that case one bit per
+ * possible identifier is substantially smaller than an unordered_set entry
+ * per node. Sparse identifier spaces use a hash set instead, avoiding an
+ * allocation proportional to max_node_id().
+ */
+class ComponentVisited {
+public:
+    explicit ComponentVisited(const HandleGraph* graph) : first(0), span(0) {
+        const size_t nodes = graph->get_node_count();
+        if (nodes == 0) {
+            return;
+        }
+
+        const id_t minimum = graph->min_node_id();
+        const id_t maximum = graph->max_node_id();
+        const __int128 wide_span = static_cast<__int128>(maximum) -
+                                   static_cast<__int128>(minimum) + 1;
+        const __int128 dense_limit = static_cast<__int128>(nodes) * 8;
+        if (wide_span > 0 && wide_span <= dense_limit &&
+            wide_span <= static_cast<__int128>(numeric_limits<size_t>::max())) {
+            first = minimum;
+            span = static_cast<size_t>(wide_span);
+            bits.assign((span + 63) / 64, 0);
+        }
+    }
+
+    /// Marks an ID and returns true exactly once for each graph node.
+    bool mark(id_t id) {
+        if (!bits.empty()) {
+            const __int128 wide_offset = static_cast<__int128>(id) -
+                                         static_cast<__int128>(first);
+            if (wide_offset >= 0 && wide_offset < static_cast<__int128>(span)) {
+                const size_t offset = static_cast<size_t>(wide_offset);
+                const uint64_t mask = uint64_t(1) << (offset & 63);
+                uint64_t& word = bits[offset >> 6];
+                if (word & mask) {
+                    return false;
+                }
+                word |= mask;
+                return true;
+            }
+        }
+        return sparse.insert(id).second;
+    }
+
+private:
+    id_t first;
+    size_t span;
+    vector<uint64_t> bits;
+    unordered_set<id_t> sparse;
+};
+
+}
 
 SourceSinkOverlay::SourceSinkOverlay(const HandleGraph* backing, size_t length, id_t source_id, id_t sink_id,
     bool break_disconnected) : node_length(length), backing(backing), source_id(source_id), sink_id(sink_id) {
@@ -27,54 +90,64 @@ SourceSinkOverlay::SourceSinkOverlay(const HandleGraph* backing, size_t length, 
     cerr << "Make overlay for kmer size " << length << " with source " << this->source_id << " and sink " << this->sink_id << endl;
 #endif
     
-    // We have to divide the graph into connected components and get ahold of the tips.
-    vector<pair<unordered_set<id_t>, vector<handle_t>>> components = handlealgs::weakly_connected_components_with_tips(backing);
-    
-    for (auto& component : components) {
-        // Unpack each component
-        auto& component_ids = component.first;
-        auto& component_tips = component.second;
-        
-#ifdef debug
-        cerr << "Weakly connected component of " << component_ids.size() << " has " << component_tips.size() << " tips:" << endl;
-        for (auto& tip : component_tips) {
-            cerr << "\t" << backing->get_id(tip) << " orientation " << backing->get_is_reverse(tip) << endl;
+    // Discover tips one component at a time. The old implementation retained
+    // both a global visited set and an unordered_set of every node in every
+    // component. On a whole pangenome that transient could rival the graph
+    // itself. We only need actual tips plus one representative for a tipless
+    // component, so retain one traversal stack and one visited bit/set.
+    ComponentVisited traversed(backing);
+    backing->for_each_handle([&](const handle_t& initial) {
+        const handle_t root = backing->forward(initial);
+        if (!traversed.mark(backing->get_id(root))) {
+            return;
         }
-#endif
-        
-        // All the components need to be nonempty
-        assert(!component_ids.empty());
-        
-        for (auto& handle : component_tips) {
-            // We need to cache the heads and tails as sets of handles, so we know to
-            // make edges to all of them when reading out of our synthetic source and
-            // sink nodes.
-            
-            if (backing->get_is_reverse(handle)) {
-                // It's a tail. Insert it forward as a tail.
-                backing_tails.insert(backing->flip(handle));
-            } else {
-                // It's a head
-                backing_heads.insert(handle);
+
+        vector<handle_t> stack(1, root);
+        bool component_has_tip = false;
+        while (!stack.empty()) {
+            const handle_t here = stack.back();
+            stack.pop_back();
+
+            auto visit_neighbor = [&](const handle_t& neighbor) {
+                const handle_t forward = backing->forward(neighbor);
+                if (traversed.mark(backing->get_id(forward))) {
+                    stack.push_back(forward);
+                }
+                return true;
+            };
+
+            size_t degree = 0;
+            backing->follow_edges(here, false, [&](const handle_t& neighbor) {
+                ++degree;
+                return visit_neighbor(neighbor);
+            });
+            if (degree == 0) {
+                // `here` reads out of this component in forward orientation.
+                backing_tails.insert(here);
+                component_has_tip = true;
             }
-            
+
+            degree = 0;
+            backing->follow_edges(here, true, [&](const handle_t& neighbor) {
+                ++degree;
+                return visit_neighbor(neighbor);
+            });
+            if (degree == 0) {
+                backing_heads.insert(here);
+                component_has_tip = true;
+            }
         }
-        
-        if (component_tips.empty() && break_disconnected) {
-            // If we're supposed to break open cycles, we also mix in an arbitrary node
-            // from each tipless component as a head, and each handle that reads into
-            // it as a tail.
-            
-            // Choose a fake head arbitrarily
-            handle_t fake_head = backing->get_handle(*component_ids.begin(), false);
-            backing_heads.insert(fake_head);
-            
-            // Find the fake tails that are to the left of it
-            backing->follow_edges(fake_head, true, [&](const handle_t& fake_tail) {
+
+        if (!component_has_tip && break_disconnected) {
+            // As historically allowed, choose an arbitrary node in a tipless
+            // component; using the traversal root makes that choice repeatable
+            // for a backing graph with stable for_each_handle() order.
+            backing_heads.insert(root);
+            backing->follow_edges(root, true, [&](const handle_t& fake_tail) {
                 backing_tails.insert(fake_tail);
             });
         }
-    }
+    });
     
     
 }

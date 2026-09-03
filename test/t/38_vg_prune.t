@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH # for vg
 
-plan tests 21
+plan tests 26
 
 
 # Build a graph with one path and two threads
@@ -17,7 +17,18 @@ vg prune -e 1 x.vg > y.vg
 is $(vg stats -s y.vg | wc -l) 5 "pruning produces the correct number of components"
 is $(vg stats -N y.vg) 51 "pruning leaves the correct number of nodes"
 is $(vg stats -E y.vg) 51 "pruning leaves the correct number of edges"
-rm -f y.vg
+
+# Exercise the PackedGraph-specific bulk deletion path on the same input.
+vg convert -p x.vg > x.pg
+vg prune -e 1 x.pg > y.pg
+is $(vg stats -s y.pg | wc -l) 5 "PackedGraph pruning produces the correct number of components"
+is $(vg stats -N y.pg) 51 "PackedGraph pruning leaves the correct number of nodes"
+is $(vg stats -E y.pg) 51 "PackedGraph pruning leaves the correct number of edges"
+vg view y.vg | sort > y.vg.gfa
+vg view y.pg | sort > y.pg.gfa
+is "$(diff y.vg.gfa y.pg.gfa)" "" "PackedGraph bulk pruning matches fallback pruning topology"
+is "$(vg validate y.pg >/dev/null 2>&1; echo $?)" 0 "PackedGraph bulk-pruned output validates"
+rm -f x.pg y.pg y.vg y.pg.gfa y.vg.gfa
 
 # Remove high-degree nodes: 6 components, 50 nodes, 47 edges
 vg prune -e 1 -M 3 x.vg > y.vg

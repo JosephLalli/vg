@@ -3,6 +3,8 @@
 #include "position.hpp"
 #include "source_sink_overlay.hpp"
 
+#include <bdsg/packed_graph.hpp>
+
 #include <stack>
 
 namespace vg {
@@ -25,6 +27,26 @@ struct walk_t {
 };
 
 constexpr size_t PRUNE_THREAD_BUFFER_SIZE = 1024 * 1024;
+
+/// Delete every edge emitted by produce_edges. PackedGraph implementations can
+/// unlink the batch serially and defer their expensive defragmentation check;
+/// other DeletableHandleGraph implementations retain the ordinary per-edge API.
+/// The producer contract avoids materializing a second copy of a potentially
+/// enormous pruning set.
+template<typename EdgeProducer>
+void destroy_edges(DeletableHandleGraph& graph, const EdgeProducer& produce_edges) {
+    if (auto* packed_graph = dynamic_cast<bdsg::PackedGraph*>(&graph)) {
+        packed_graph->destroy_edges_bulk(produce_edges);
+    }
+    else if (auto* mapped_packed_graph = dynamic_cast<bdsg::MappedPackedGraph*>(&graph)) {
+        mapped_packed_graph->destroy_edges_bulk(produce_edges);
+    }
+    else {
+        produce_edges([&](const edge_t& edge) {
+            graph.destroy_edge(edge);
+        });
+    }
+}
 
 pair_hash_set<edge_t> find_edges_to_prune(const HandleGraph& graph, size_t k, size_t edge_max) {
     
@@ -126,9 +148,11 @@ size_t prune_complex(DeletableHandleGraph& graph,
                      int path_length, int edge_max) {
     
     auto edges_to_destroy = find_edges_to_prune(graph, path_length, edge_max);
-    for (auto& edge : edges_to_destroy) {
-        graph.destroy_edge(edge);
-    }
+    destroy_edges(graph, [&](const auto& emit) {
+        for (const edge_t& edge : edges_to_destroy) {
+            emit(edge);
+        }
+    });
     return edges_to_destroy.size();
 }
 
@@ -141,19 +165,21 @@ size_t prune_complex_with_head_tail(DeletableHandleGraph& graph,
                                                 path_length,
                                                 edge_max);
     
-    for (auto& edge : edges_to_destroy) {
-        auto ss_handle_1 = source_sink_graph.forward(edge.first);
-        auto ss_handle_2 = source_sink_graph.forward(edge.second);
-        if (ss_handle_1 != source_sink_graph.get_source_handle()
-            && ss_handle_1 != source_sink_graph.get_sink_handle()
-            && ss_handle_2 != source_sink_graph.get_source_handle()
-            && ss_handle_2 != source_sink_graph.get_sink_handle()) {
-            // this is not an edge involving the artificial source/sink nodes
-            graph.destroy_edge(source_sink_graph.get_underlying_handle(edge.first),
-                               source_sink_graph.get_underlying_handle(edge.second));
-            
+    destroy_edges(graph, [&](const auto& emit) {
+        for (const edge_t& edge : edges_to_destroy) {
+            auto ss_handle_1 = source_sink_graph.forward(edge.first);
+            auto ss_handle_2 = source_sink_graph.forward(edge.second);
+            if (ss_handle_1 != source_sink_graph.get_source_handle()
+                && ss_handle_1 != source_sink_graph.get_sink_handle()
+                && ss_handle_2 != source_sink_graph.get_source_handle()
+                && ss_handle_2 != source_sink_graph.get_sink_handle()) {
+                // This is not an edge involving the artificial source/sink
+                // nodes. Translate both oriented handles before emitting it.
+                emit(make_pair(source_sink_graph.get_underlying_handle(edge.first),
+                               source_sink_graph.get_underlying_handle(edge.second)));
+            }
         }
-    }
+    });
     return edges_to_destroy.size();
 }
 

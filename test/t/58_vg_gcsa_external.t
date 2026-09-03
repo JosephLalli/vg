@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH
 
-plan tests 23
+plan tests 25
 
 # Keep autoindex's external-memory controls wired through the parent vg source
 # without requiring a relink of the binary used by the integration checks below.
@@ -27,6 +27,10 @@ grep -Fq 'params.setJoinPartitionSize(IndexingParameters::gcsa_join_partition_si
 is $? 0 "index registry forwards the join-partition workspace override"
 grep -Fq 'aggregate external-construction working-set target' ../src/subcommand/index_main.cpp
 is $? 0 "index help describes memory as an aggregate operational target"
+grep -Fq '(K/M/G/T or KiB/GiB; default 1 TiB; not a hard whole-process cap)' ../src/subcommand/index_main.cpp
+is $? 0 "index help states the memory grammar, default, and RSS limitation"
+grep -Fq '(K/M/G/T or KiB/GiB; defaults to --target-mem; not a hard process cap)' ../src/subcommand/autoindex_main.cpp
+is $? 0 "autoindex help states the GCSA override fallback and RSS limitation"
 grep -Fq 'gcsa::LCPArray::buildAndStore(input_graph, params, gcsa_name + ".lcp");' ../src/subcommand/index_main.cpp
 is $? 0 "index streams external LCP directly to its final file"
 grep -Fq 'gcsa::LCPArray::buildAndStore(input_graph, params, lcp_output_name);' ../src/index_registry.cpp

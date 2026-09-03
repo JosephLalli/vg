@@ -124,7 +124,8 @@ void help_autoindex(char** argv) {
          << "                         [1/2 of available]" << endl
          << "      --gcsa-work-dir DIR durable disk-first GCSA2 workspace" << endl
          << "      --gcsa-resume       resume compatible committed GCSA2 work" << endl
-         << "      --gcsa-memory-limit SIZE aggregate external-construction working-set target, not a hard whole-process cap" << endl
+         << "      --gcsa-memory-limit SIZE aggregate external-construction working-set target" << endl
+         << "                               (K/M/G/T or KiB/GiB; defaults to --target-mem; not a hard process cap)" << endl
          << "      --gcsa-disk-limit SIZE   GCSA2 spill-generation disk budget" << endl
          << "      --gcsa-sort-run-size SIZE max workspace for one GCSA2 label-sort run" << endl
          << "      --gcsa-join-partition-size SIZE max workspace for one GCSA2 join sorter" << endl

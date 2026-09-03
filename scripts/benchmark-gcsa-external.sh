@@ -225,6 +225,7 @@ while kill -0 "$runner_pid" 2>/dev/null; do
     phase="$(awk '
         /Validating and restoring durable kmer files/ { phase = "restore" }
         /Building the GCSA2 index/ { phase = "preprocess" }
+        /GCSA::GCSA\(\): Restoring checkpoint/ { phase = "restore" }
         /Prefix-doubling from path length/ { phase = "prefix" }
         /GCSA::GCSA\(\): Step [0-9]+/ {
             for(i = 1; i <= NF; i++) {

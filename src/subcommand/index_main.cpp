@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <getopt.h>
 
+#include <algorithm>
 #include <random>
 #include <filesystem>
 #include <string>
@@ -614,7 +615,17 @@ int main_index(int argc, char** argv) {
             if (show_progress) {
                 logger.info() << "Verifying the index..." << endl;
             }
-            if (!gcsa::verifyIndex(gcsa_index, &lcp_array, input_graph)) {
+            bool verified = false;
+            if (params.externalMemory()) {
+                const gcsa::size_type verification_budget = std::max(
+                    gcsa::verifyIndexMinimumBudget(),
+                    std::min(params.getMemoryLimitBytes(), static_cast<gcsa::size_type>(64 * gcsa::MEGABYTE)));
+                verified = gcsa::verifyIndex(gcsa_index, &lcp_array, input_graph,
+                    verification_budget, params.getMergeFanIn());
+            } else {
+                verified = gcsa::verifyIndex(gcsa_index, &lcp_array, input_graph);
+            }
+            if (!verified) {
                 logger.warn() << "GCSA2 index verification failed" << endl;
             }
         }

@@ -113,11 +113,29 @@ context, not real build errors.  The only authoritative check is a real
 | Setting | Reason |
 |---|---|
 | `PKG_CONFIG_PATH`/`PATH` → local toolchain first | use the local static protobuf + its matching `protoc`, not Homebrew's 33.4 |
-| vg's `include/` + `lib/` prepended to `CPLUS_INCLUDE_PATH`/`LIBRARY_PATH`/`LDFLAGS` | Homebrew ships its own `sdsl`/`divsufsort` that otherwise shadow vg's vendored ones (gbwt then fails to link: `sdsl::simple_sds` undefined) |
+| narrow Homebrew `bzip2`/`jansson` `pkgconfig` paths after the toolchain | satisfy htslib/libvgio dependencies without exposing Homebrew's protobuf/SDSL metadata; `zlib` and `liblzma` remain the system versions used by the local libhts build |
+| explicit `CPPFLAGS=-I$checkout/include` | selects vg's vendored SDSL headers before incompatible Homebrew copies; the path is intentionally *not* put in `CPLUS_INCLUDE_PATH`, because GCC demotes duplicate include paths to system-header order |
+| explicit checkout/Jansson `-L` and legacy `RPATH` arguments | selects checkout libraries first and the same Homebrew Jansson used for compilation at runtime; legacy `RPATH` cannot be silently preceded by an ambient `LD_LIBRARY_PATH` entry |
+| empty default `CPLUS_INCLUDE_PATH`, `CPATH`, and `LIBRARY_PATH` | prevents malformed or stale shell settings from changing dependency selection; opt in to additions with the corresponding `VG_EXTRA_*` variables |
 | `CC=gcc-13` | Homebrew gcc-15 rejects the vendored elfutils (`-Werror=unterminated-string-initialization`); the Ubuntu system `gcc-13` (at `/usr/bin/gcc-13`, v13.3.0) builds it cleanly |
 | `CXX=g++-15 CXX_STANDARD=20` | abseil (a protobuf dependency) needs C++20's `std::*_ordering` under this libstdc++; `g++-15` is Homebrew GCC 15.2.0 at `/mnt/ssd/lalli/.linuxbrew/bin/g++-15` |
 | `--jobserver-style=pipe` | some dependency sub-makes can't read make 4.4's default *fifo* jobserver (`invalid --jobserver-auth 'fifo:...'`) |
 | pre-creates `obj/*` and `lib/` dirs | under `-j` the compiler can race ahead of the Makefile's `mkdir` and fail writing `.d` files |
+
+The GCSA2 sub-build also passes its local library selection explicitly on every
+link command:
+
+```text
+-L<checkout>/lib -Wl,-rpath,<checkout>/lib -Wl,--disable-new-dtags \
+  -lsdsl -ldivsufsort -ldivsufsort64
+```
+
+Use `VG_EXTRA_CPPFLAGS`, `VG_EXTRA_LDFLAGS`,
+`VG_EXTRA_CPLUS_INCLUDE_PATH`, `VG_EXTRA_CPATH`,
+`VG_EXTRA_LIBRARY_PATH`, `VG_EXTRA_LD_LIBRARY_PATH`, or
+`VG_EXTRA_PKG_CONFIG_PATH` only when an additional dependency is intentional.
+Ambient values of the standard compiler variables are not inherited by the
+wrapper.
 
 ## Fork patches that make this compile
 

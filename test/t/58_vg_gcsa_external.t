@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH
 
-plan tests 25
+plan tests 27
 
 # Keep autoindex's external-memory controls wired through the parent vg source
 # without requiring a relink of the binary used by the integration checks below.
@@ -52,10 +52,15 @@ is $? 0 "legacy GCSA2 construction succeeds on two logical inputs"
 vg index -g external.gcsa -k 2 -X 2 -V \
     --gcsa-work-dir gcsa-external-work \
     --gcsa-memory-limit 1M --gcsa-disk-limit 1G \
-    --gcsa-sort-run-size 1M --gcsa-join-partition-size 1M \
     --gcsa-process-workers 2 \
     x.vg y.vg >/dev/null 2>&1
 is $? 0 "disk-first GCSA2 construction succeeds through fork-free workers with a tiny byte budget"
+
+grep -Fq '"sort_run_size":"786432"' gcsa-external-work/build.json && \
+    grep -Fq '"join_partition_size":"262144"' gcsa-external-work/build.json && \
+    grep -Fq '"sort_run_size_mode":"auto"' gcsa-external-work/build.json && \
+    grep -Fq '"join_partition_size_mode":"auto"' gcsa-external-work/build.json
+is $? 0 "the aggregate memory goal derives the automatic 75/25 spill plan"
 
 cmp legacy.gcsa external.gcsa
 is $? 0 "disk-first GCSA is byte-identical to the legacy index"
@@ -76,6 +81,11 @@ vg index -g resumed.gcsa -k 2 -X 2 -V \
     --gcsa-sort-run-size 768K --gcsa-join-partition-size 768K \
     x.vg y.vg >/dev/null 2>&1
 is $? 0 "construction resumes with different operational memory and run budgets"
+grep -Fq '"sort_run_size":"786432"' gcsa-external-work/build.json && \
+    grep -Fq '"join_partition_size":"786432"' gcsa-external-work/build.json && \
+    grep -Fq '"sort_run_size_mode":"explicit"' gcsa-external-work/build.json && \
+    grep -Fq '"join_partition_size_mode":"explicit"' gcsa-external-work/build.json
+is $? 0 "explicit spill caps remain operational overrides across resume"
 cmp legacy.gcsa resumed.gcsa && cmp legacy.gcsa.lcp resumed.gcsa.lcp
 is $? 0 "resumed indexes are byte-identical to legacy construction"
 test ! -e gcsa-external-work/inputs/orphan.partial

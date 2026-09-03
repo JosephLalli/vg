@@ -3802,12 +3802,15 @@ IndexRegistry VGIndexes::get_vg_index_registry() {
             gcsa::InputGraph input_graph(dbg_names, true, params, gcsa::Alphabet(),
                                          mapping_filename);
             gcsa::GCSA gcsa_index;
+            gcsa::LCPArray lcp_array;
             if (params.externalMemory()) {
                 gcsa::GCSA::buildAndStore(input_graph, params, gcsa_output_name);
+                // Keep the external path disk-first for both index components.
+                gcsa::LCPArray::buildAndStore(input_graph, params, lcp_output_name);
             } else {
                 gcsa_index = gcsa::GCSA(input_graph, params);
+                lcp_array = gcsa::LCPArray(input_graph, params);
             }
-            gcsa::LCPArray lcp_array(input_graph, params);
             
 #ifdef debug_index_registry_recipes
             cerr << "saving GCSA/LCP pair" << endl;
@@ -3816,8 +3819,9 @@ IndexRegistry VGIndexes::get_vg_index_registry() {
             if (!params.externalMemory()) {
                 save_gcsa(gcsa_index, gcsa_output_name,
                           IndexingParameters::verbosity == IndexingParameters::Debug);
+                save_lcp(lcp_array, lcp_output_name,
+                         IndexingParameters::verbosity == IndexingParameters::Debug);
             }
-            save_lcp(lcp_array, lcp_output_name, IndexingParameters::verbosity == IndexingParameters::Debug);
         });
         
         // clean up the k-mer files

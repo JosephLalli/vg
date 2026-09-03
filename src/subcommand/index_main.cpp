@@ -603,7 +603,14 @@ int main_index(int argc, char** argv) {
         } else {
             gcsa_index = gcsa::GCSA(input_graph, params);
         }
-        gcsa::LCPArray lcp_array(input_graph, params);
+        gcsa::LCPArray lcp_array;
+        if (params.externalMemory()) {
+            // Stream the LCP hierarchy directly to its final representation so
+            // external construction does not retain it in memory.
+            gcsa::LCPArray::buildAndStore(input_graph, params, gcsa_name + ".lcp");
+        } else {
+            lcp_array = gcsa::LCPArray(input_graph, params);
+        }
         if (show_progress) {
             double seconds = gcsa::readTimer() - start;
             logger.info() << "GCSA2 index built in " << seconds << " seconds, "
@@ -619,7 +626,12 @@ int main_index(int argc, char** argv) {
             logger.info() << "GCSA2 components were published directly to "
                           << gcsa_name << endl;
         }
-        save_lcp(lcp_array, gcsa_name + ".lcp", show_progress);
+        if (!params.externalMemory()) {
+            save_lcp(lcp_array, gcsa_name + ".lcp", show_progress);
+        } else if (show_progress) {
+            logger.info() << "LCP components were published directly to "
+                          << gcsa_name + ".lcp" << endl;
+        }
 
         // Verify the index
         if (verify_gcsa) {
@@ -634,6 +646,10 @@ int main_index(int argc, char** argv) {
                 if (!sdsl::load_from_file(gcsa_index, gcsa_name)) {
                     throw runtime_error("cannot reload the staged GCSA2 index for verification: " +
                                         gcsa_name);
+                }
+                if (!sdsl::load_from_file(lcp_array, gcsa_name + ".lcp")) {
+                    throw runtime_error("cannot reload the staged LCP array for verification: " +
+                                        gcsa_name + ".lcp");
                 }
                 const gcsa::size_type verification_budget = std::max(
                     gcsa::verifyIndexMinimumBudget(),

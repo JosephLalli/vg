@@ -112,6 +112,8 @@ int64_t IndexingParameters::gcsa_size_limit = 2ll * 1024ll * 1024ll * 1024ll * 1
 string IndexingParameters::gcsa_work_directory;
 bool IndexingParameters::gcsa_resume = false;
 int64_t IndexingParameters::gcsa_memory_limit = 0;
+int64_t IndexingParameters::gcsa_sort_run_size = 0;
+int64_t IndexingParameters::gcsa_join_partition_size = 0;
 int IndexingParameters::gcsa_process_workers = 1;
 string IndexingParameters::gcsa_worker_executable;
 int64_t IndexingParameters::gbwt_insert_batch_size = gbwt::DynamicGBWT::INSERT_BATCH_SIZE;
@@ -3717,6 +3719,12 @@ IndexRegistry VGIndexes::get_vg_index_registry() {
         params.setMemoryLimitBytes(IndexingParameters::gcsa_memory_limit > 0
             ? IndexingParameters::gcsa_memory_limit
             : plan->literal_target_memory_usage());
+        if (IndexingParameters::gcsa_sort_run_size > 0) {
+            params.setSortRunSize(IndexingParameters::gcsa_sort_run_size);
+        }
+        if (IndexingParameters::gcsa_join_partition_size > 0) {
+            params.setJoinPartitionSize(IndexingParameters::gcsa_join_partition_size);
+        }
         params.setProcessWorkers(IndexingParameters::gcsa_process_workers);
         params.setWorkerExecutable(IndexingParameters::gcsa_worker_executable);
         if (!IndexingParameters::gcsa_work_directory.empty()) {

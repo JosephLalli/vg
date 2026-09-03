@@ -5,7 +5,28 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH
 
-plan tests 12
+plan tests 21
+
+# Keep autoindex's external-memory controls wired through the parent vg source
+# without requiring a relink of the binary used by the integration checks below.
+grep -Fq 'params.setWorkerExecutable(argv[0]);' ../src/subcommand/index_main.cpp
+is $? 0 "index passes argv[0] to external join workers"
+grep -Fq 'IndexingParameters::gcsa_worker_executable = argv[0];' ../src/subcommand/autoindex_main.cpp
+is $? 0 "autoindex records argv[0] for external join workers"
+grep -Fq '{"gcsa-sort-run-size", required_argument, 0, OPT_GCSA_SORT_RUN_SIZE}' ../src/subcommand/autoindex_main.cpp
+is $? 0 "autoindex parses the sort-run workspace override"
+grep -Fq '{"gcsa-join-partition-size", required_argument, 0, OPT_GCSA_JOIN_PARTITION_SIZE}' ../src/subcommand/autoindex_main.cpp
+is $? 0 "autoindex parses the join-partition workspace override"
+grep -Fq 'IndexingParameters::gcsa_sort_run_size = gcsa::parseBytes(optarg);' ../src/subcommand/autoindex_main.cpp
+is $? 0 "autoindex propagates the sort-run workspace override"
+grep -Fq 'IndexingParameters::gcsa_join_partition_size = gcsa::parseBytes(optarg);' ../src/subcommand/autoindex_main.cpp
+is $? 0 "autoindex propagates the join-partition workspace override"
+grep -Fq 'params.setSortRunSize(IndexingParameters::gcsa_sort_run_size);' ../src/index_registry.cpp
+is $? 0 "index registry forwards the sort-run workspace override"
+grep -Fq 'params.setJoinPartitionSize(IndexingParameters::gcsa_join_partition_size);' ../src/index_registry.cpp
+is $? 0 "index registry forwards the join-partition workspace override"
+grep -Fq 'aggregate external-construction working-set target' ../src/subcommand/index_main.cpp
+is $? 0 "index help describes memory as an aggregate operational target"
 
 rm -rf gcsa-external-work legacy.gcsa* external.gcsa* resumed.gcsa* \
     refused.gcsa* changed.gcsa* corrupt.gcsa* x.vg y.vg

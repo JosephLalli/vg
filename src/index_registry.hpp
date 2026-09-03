@@ -91,8 +91,11 @@ struct IndexingParameters {
     static string gcsa_work_directory;
     // resume a compatible durable GCSA workspace
     static bool gcsa_resume;
-    // explicit GCSA memory ceiling in bytes; 0 uses the plan's literal target
+    // aggregate external-construction working-set target in bytes; 0 uses the plan's literal target
     static int64_t gcsa_memory_limit;
+    // optional external-construction workspace overrides; 0 uses GCSA2 defaults
+    static int64_t gcsa_sort_run_size;
+    static int64_t gcsa_join_partition_size;
     // parallel fork-free external join workers and their current executable
     static int gcsa_process_workers;
     static string gcsa_worker_executable;

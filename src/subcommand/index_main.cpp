@@ -64,7 +64,7 @@ void help_index(char** argv) {
          << "                            (important for testing)" << endl
          << "      --gcsa-work-dir DIR   durable disk-first construction workspace" << endl
          << "      --gcsa-resume         resume committed GCSA2 workspace phases" << endl
-         << "      --gcsa-memory-limit S external working-set goal; more RAM reduces spill I/O" << endl
+         << "      --gcsa-memory-limit S aggregate external-construction working-set target, not a hard whole-process cap" << endl
          << "      --gcsa-disk-limit S   spill-generation disk budget (for example 4T)" << endl
          << "      --gcsa-sort-run-size S max workspace for one label-sort run" << endl
          << "      --gcsa-join-partition-size S max workspace for one join sorter" << endl

@@ -124,8 +124,10 @@ void help_autoindex(char** argv) {
          << "                         [1/2 of available]" << endl
          << "      --gcsa-work-dir DIR durable disk-first GCSA2 workspace" << endl
          << "      --gcsa-resume       resume compatible committed GCSA2 work" << endl
-         << "      --gcsa-memory-limit SIZE GCSA2 working-set goal; more RAM reduces spill I/O" << endl
+         << "      --gcsa-memory-limit SIZE aggregate external-construction working-set target, not a hard whole-process cap" << endl
          << "      --gcsa-disk-limit SIZE   GCSA2 spill-generation disk budget" << endl
+         << "      --gcsa-sort-run-size SIZE max workspace for one GCSA2 label-sort run" << endl
+         << "      --gcsa-join-partition-size SIZE max workspace for one GCSA2 join sorter" << endl
          << "      --gcsa-process-workers N fork-free parallel GCSA2 join workers" << endl
 // TODO: hiding this now that we have rewinding options, since detailed args aren't really in the spirit of this subcommand
 //    << "  --gbwt-buffer-size NUM GBWT construction buffer size in millions of nodes; may need to be" << endl
@@ -157,6 +159,8 @@ int main_autoindex(int argc, char** argv) {
     constexpr int OPT_GCSA_MEMORY_LIMIT = 1007;
     constexpr int OPT_GCSA_DISK_LIMIT = 1008;
     constexpr int OPT_GCSA_PROCESS_WORKERS = 1009;
+    constexpr int OPT_GCSA_SORT_RUN_SIZE = 1010;
+    constexpr int OPT_GCSA_JOIN_PARTITION_SIZE = 1011;
     
     // load the registry
     IndexRegistry registry = VGIndexes::get_vg_index_registry();
@@ -198,6 +202,8 @@ int main_autoindex(int argc, char** argv) {
             {"gcsa-resume", no_argument, 0, OPT_GCSA_RESUME},
             {"gcsa-memory-limit", required_argument, 0, OPT_GCSA_MEMORY_LIMIT},
             {"gcsa-disk-limit", required_argument, 0, OPT_GCSA_DISK_LIMIT},
+            {"gcsa-sort-run-size", required_argument, 0, OPT_GCSA_SORT_RUN_SIZE},
+            {"gcsa-join-partition-size", required_argument, 0, OPT_GCSA_JOIN_PARTITION_SIZE},
             {"gcsa-process-workers", required_argument, 0, OPT_GCSA_PROCESS_WORKERS},
             {"tmp-dir", required_argument, 0, 'T'},
             {"threads", required_argument, 0, 't'},
@@ -349,6 +355,12 @@ int main_autoindex(int argc, char** argv) {
                 break;
             case OPT_GCSA_DISK_LIMIT:
                 IndexingParameters::gcsa_size_limit = gcsa::parseBytes(optarg);
+                break;
+            case OPT_GCSA_SORT_RUN_SIZE:
+                IndexingParameters::gcsa_sort_run_size = gcsa::parseBytes(optarg);
+                break;
+            case OPT_GCSA_JOIN_PARTITION_SIZE:
+                IndexingParameters::gcsa_join_partition_size = gcsa::parseBytes(optarg);
                 break;
             case OPT_GCSA_PROCESS_WORKERS:
                 IndexingParameters::gcsa_process_workers = std::max(parse<int>(optarg), 1);

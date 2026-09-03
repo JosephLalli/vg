@@ -91,6 +91,7 @@ vg_sha256="$(sha256sum "$vg_binary" | awk '{print $1}')"
 mkdir -p "$run_directory"
 run_directory="$(cd "$run_directory" && pwd)"
 work_directory="$run_directory/index.gcsa-work"
+temp_directory="$run_directory/vg-tmp"
 output_name="$run_directory/index.gcsa"
 time_log="$run_directory/time.txt"
 stderr_log="$run_directory/stderr.log"
@@ -106,7 +107,11 @@ if [[ $resume -eq 0 && ( -e "$work_directory/build.json" || -s "$summary" ) ]]; 
     exit 2
 fi
 
-command=("$vg_binary" index -p -V -g "$output_name" -k "$kmer_length"
+# vg first enumerates de Bruijn records before GCSA2 can commit them into the
+# durable workspace. Keep that spool on the benchmark filesystem so it is
+# included in peak-live-disk accounting and cannot silently fill /tmp.
+mkdir -p "$temp_directory"
+command=("$vg_binary" index -b "$temp_directory" -p -V -g "$output_name" -k "$kmer_length"
     -X "$doubling_steps" -t "$threads"
     --gcsa-work-dir "$work_directory"
     --gcsa-memory-limit "$memory_limit"

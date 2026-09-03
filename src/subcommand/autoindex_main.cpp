@@ -124,7 +124,7 @@ void help_autoindex(char** argv) {
          << "                         [1/2 of available]" << endl
          << "      --gcsa-work-dir DIR durable disk-first GCSA2 workspace" << endl
          << "      --gcsa-resume       resume compatible committed GCSA2 work" << endl
-         << "      --gcsa-memory-limit SIZE GCSA2 external working-set byte budget" << endl
+         << "      --gcsa-memory-limit SIZE GCSA2 working-set goal; more RAM reduces spill I/O" << endl
          << "      --gcsa-disk-limit SIZE   GCSA2 spill-generation disk budget" << endl
          << "      --gcsa-process-workers N fork-free parallel GCSA2 join workers" << endl
 // TODO: hiding this now that we have rewinding options, since detailed args aren't really in the spirit of this subcommand

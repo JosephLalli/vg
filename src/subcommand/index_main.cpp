@@ -64,7 +64,7 @@ void help_index(char** argv) {
          << "                            (important for testing)" << endl
          << "      --gcsa-work-dir DIR   durable disk-first construction workspace" << endl
          << "      --gcsa-resume         resume committed GCSA2 workspace phases" << endl
-         << "      --gcsa-memory-limit S external working-set ceiling (for example 25G)" << endl
+         << "      --gcsa-memory-limit S external working-set goal; more RAM reduces spill I/O" << endl
          << "      --gcsa-disk-limit S   spill-generation disk budget (for example 4T)" << endl
          << "      --gcsa-sort-run-size S max workspace for one label-sort run" << endl
          << "      --gcsa-join-partition-size S max workspace for one join sorter" << endl
@@ -596,7 +596,13 @@ int main_index(int argc, char** argv) {
             logger.info() << "Building the GCSA2 index..." << endl;
         }
         gcsa::InputGraph input_graph(dbg_names, true, params, gcsa::Alphabet(), mapping_name);
-        gcsa::GCSA gcsa_index(input_graph, params);
+        gcsa::GCSA gcsa_index;
+        bool gcsa_stored_directly = params.externalMemory();
+        if (gcsa_stored_directly) {
+            gcsa::GCSA::buildAndStore(input_graph, params, gcsa_name);
+        } else {
+            gcsa_index = gcsa::GCSA(input_graph, params);
+        }
         gcsa::LCPArray lcp_array(input_graph, params);
         if (show_progress) {
             double seconds = gcsa::readTimer() - start;
@@ -607,7 +613,12 @@ int main_index(int argc, char** argv) {
         }
 
         // Save the indexes
-        save_gcsa(gcsa_index, gcsa_name, show_progress);
+        if (!gcsa_stored_directly) {
+            save_gcsa(gcsa_index, gcsa_name, show_progress);
+        } else if (show_progress) {
+            logger.info() << "GCSA2 components were published directly to "
+                          << gcsa_name << endl;
+        }
         save_lcp(lcp_array, gcsa_name + ".lcp", show_progress);
 
         // Verify the index
@@ -617,6 +628,13 @@ int main_index(int argc, char** argv) {
             }
             bool verified = false;
             if (params.externalMemory()) {
+                // External verification bounds its occurrence streams, but
+                // querying still requires the final succinct index itself.
+                // Reload only when the user explicitly requested -V.
+                if (!sdsl::load_from_file(gcsa_index, gcsa_name)) {
+                    throw runtime_error("cannot reload the staged GCSA2 index for verification: " +
+                                        gcsa_name);
+                }
                 const gcsa::size_type verification_budget = std::max(
                     gcsa::verifyIndexMinimumBudget(),
                     std::min(params.getMemoryLimitBytes(), static_cast<gcsa::size_type>(64 * gcsa::MEGABYTE)));

@@ -3793,14 +3793,22 @@ IndexRegistry VGIndexes::get_vg_index_registry() {
             // indexing skip the unfolded code path)
             gcsa::InputGraph input_graph(dbg_names, true, params, gcsa::Alphabet(),
                                          mapping_filename);
-            gcsa::GCSA gcsa_index(input_graph, params);
+            gcsa::GCSA gcsa_index;
+            if (params.externalMemory()) {
+                gcsa::GCSA::buildAndStore(input_graph, params, gcsa_output_name);
+            } else {
+                gcsa_index = gcsa::GCSA(input_graph, params);
+            }
             gcsa::LCPArray lcp_array(input_graph, params);
             
 #ifdef debug_index_registry_recipes
             cerr << "saving GCSA/LCP pair" << endl;
 #endif
             
-            save_gcsa(gcsa_index, gcsa_output_name, IndexingParameters::verbosity == IndexingParameters::Debug);
+            if (!params.externalMemory()) {
+                save_gcsa(gcsa_index, gcsa_output_name,
+                          IndexingParameters::verbosity == IndexingParameters::Debug);
+            }
             save_lcp(lcp_array, lcp_output_name, IndexingParameters::verbosity == IndexingParameters::Debug);
         });
         

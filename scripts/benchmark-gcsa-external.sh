@@ -93,13 +93,28 @@ run_directory="$(cd "$run_directory" && pwd)"
 work_directory="$run_directory/index.gcsa-work"
 temp_directory="$run_directory/vg-tmp"
 output_name="$run_directory/index.gcsa"
-time_log="$run_directory/time.txt"
-stderr_log="$run_directory/stderr.log"
-stdout_log="$run_directory/stdout.log"
-samples="$run_directory/resource_samples.tsv"
-summary="$run_directory/summary.tsv"
-phase_summary="$run_directory/phase_summary.tsv"
-command_file="$run_directory/command.txt"
+
+# A resumed benchmark is a new measured attempt over the same immutable
+# workspace frontier. Never truncate the evidence from the attempt that was
+# interrupted: select the first unused deterministic resume suffix instead.
+attempt_suffix=""
+if [[ $resume -eq 1 && -e "$run_directory/command.txt" ]]; then
+    attempt_number=1
+    while :; do
+        printf -v attempt_suffix '.resume-%02d' "$attempt_number"
+        [[ ! -e "$run_directory/command${attempt_suffix}.txt" ]] && break
+        ((attempt_number += 1))
+    done
+fi
+
+time_log="$run_directory/time${attempt_suffix}.txt"
+stderr_log="$run_directory/stderr${attempt_suffix}.log"
+stdout_log="$run_directory/stdout${attempt_suffix}.log"
+samples="$run_directory/resource_samples${attempt_suffix}.tsv"
+summary="$run_directory/summary${attempt_suffix}.tsv"
+phase_summary="$run_directory/phase_summary${attempt_suffix}.tsv"
+command_file="$run_directory/command${attempt_suffix}.txt"
+inputs_file="$run_directory/inputs${attempt_suffix}.tsv"
 unit="vg-gcsa-$USER-$(date +%Y%m%dT%H%M%S)-$$"
 
 if [[ $resume -eq 0 && ( -e "$work_directory/build.json" || -s "$summary" ) ]]; then
@@ -144,7 +159,7 @@ command+=("$graph")
         mapping_sha="$(sha256sum "$mapping" | awk '{print $1}')"
         printf 'mapping\t%s\t%s\t%s\n' "$mapping" "$mapping_bytes" "$mapping_sha"
     fi
-} > "$run_directory/inputs.tsv"
+} > "$inputs_file"
 
 printf 'unix_time\tphase\trun_bytes\tmemory_current\tmemory_peak\tmemory_anon\tmemory_file\tmemory_file_dirty\tcpu_usage_usec\tio_read_bytes\tio_write_bytes\ttasks_current\tmem_available_kib\n' > "$samples"
 

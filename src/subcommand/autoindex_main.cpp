@@ -127,8 +127,8 @@ void help_autoindex(char** argv) {
          << "      --gcsa-memory-limit SIZE aggregate external-construction working-set target" << endl
          << "                               (K/M/G/T or KiB/GiB; defaults to --target-mem; not a hard process cap)" << endl
          << "      --gcsa-disk-limit SIZE   GCSA2 spill-generation disk budget" << endl
-         << "      --gcsa-sort-run-size SIZE max workspace for one GCSA2 label-sort run" << endl
-         << "      --gcsa-join-partition-size SIZE max workspace for one GCSA2 join sorter" << endl
+         << "      --gcsa-sort-run-size SIZE max label-sort workspace (default 75% of GCSA memory target)" << endl
+         << "      --gcsa-join-partition-size SIZE max join workspace (default 25% of GCSA memory target)" << endl
          << "      --gcsa-process-workers N fork-free parallel GCSA2 join workers" << endl
 // TODO: hiding this now that we have rewinding options, since detailed args aren't really in the spirit of this subcommand
 //    << "  --gbwt-buffer-size NUM GBWT construction buffer size in millions of nodes; may need to be" << endl

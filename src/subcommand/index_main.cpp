@@ -67,8 +67,8 @@ void help_index(char** argv) {
          << "      --gcsa-memory-limit S aggregate external-construction working-set target" << endl
          << "                            (K/M/G/T or KiB/GiB; default 1 TiB; not a hard whole-process cap)" << endl
          << "      --gcsa-disk-limit S   spill-generation disk budget (for example 4T)" << endl
-         << "      --gcsa-sort-run-size S max workspace for one label-sort run" << endl
-         << "      --gcsa-join-partition-size S max workspace for one join sorter" << endl
+         << "      --gcsa-sort-run-size S max label-sort workspace (default 75% of memory target)" << endl
+         << "      --gcsa-join-partition-size S max join workspace (default 25% of memory target)" << endl
          << "      --gcsa-process-workers N fork-free parallel join worker processes" << endl
          << "GAM indexing options:" << endl
          << "  -l, --index-sorted-gam    input is sorted .gam format alignments," << endl

@@ -99,6 +99,13 @@ struct IndexingParameters {
     // parallel fork-free external join workers and their current executable
     static int gcsa_process_workers;
     static string gcsa_worker_executable;
+    // Operational temporary artifact compression. Completed workspaces may
+    // contain a mix of raw and framed artifacts across resume boundaries.
+    static string gcsa_temp_compression;
+    static int64_t gcsa_compression_block_size;
+    static int gcsa_compression_workers;
+    static int gcsa_compression_level;
+    static bool gcsa_clean_obsolete;
     // number of gbwt nodes inserted at a time in dynamic gbwt [100M]
     static int64_t gbwt_insert_batch_size;
     // factor by which the batch size is increased if construction fails [10]

@@ -130,6 +130,11 @@ void help_autoindex(char** argv) {
          << "      --gcsa-sort-run-size SIZE max label-sort workspace (default 75% of GCSA memory target)" << endl
          << "      --gcsa-join-partition-size SIZE max join workspace (default 25% of GCSA memory target)" << endl
          << "      --gcsa-process-workers N fork-free parallel GCSA2 join workers" << endl
+         << "      --gcsa-temp-compression MODE temporary codec: auto, none, or zstd" << endl
+         << "      --gcsa-compression-block-size SIZE independent compressed block size" << endl
+         << "      --gcsa-compression-workers N zstd threads per active stream" << endl
+         << "      --gcsa-compression-level N zstd level -5..22 (default 1)" << endl
+         << "      --gcsa-clean-obsolete safely retire committed predecessor artifacts" << endl
 // TODO: hiding this now that we have rewinding options, since detailed args aren't really in the spirit of this subcommand
 //    << "  --gbwt-buffer-size NUM GBWT construction buffer size in millions of nodes; may need to be" << endl
 //    << "                              increased for graphs with long haplotypes "
@@ -162,6 +167,11 @@ int main_autoindex(int argc, char** argv) {
     constexpr int OPT_GCSA_PROCESS_WORKERS = 1009;
     constexpr int OPT_GCSA_SORT_RUN_SIZE = 1010;
     constexpr int OPT_GCSA_JOIN_PARTITION_SIZE = 1011;
+    constexpr int OPT_GCSA_TEMP_COMPRESSION = 1012;
+    constexpr int OPT_GCSA_COMPRESSION_BLOCK_SIZE = 1013;
+    constexpr int OPT_GCSA_COMPRESSION_WORKERS = 1014;
+    constexpr int OPT_GCSA_COMPRESSION_LEVEL = 1015;
+    constexpr int OPT_GCSA_CLEAN_OBSOLETE = 1016;
     
     // load the registry
     IndexRegistry registry = VGIndexes::get_vg_index_registry();
@@ -206,6 +216,11 @@ int main_autoindex(int argc, char** argv) {
             {"gcsa-sort-run-size", required_argument, 0, OPT_GCSA_SORT_RUN_SIZE},
             {"gcsa-join-partition-size", required_argument, 0, OPT_GCSA_JOIN_PARTITION_SIZE},
             {"gcsa-process-workers", required_argument, 0, OPT_GCSA_PROCESS_WORKERS},
+            {"gcsa-temp-compression", required_argument, 0, OPT_GCSA_TEMP_COMPRESSION},
+            {"gcsa-compression-block-size", required_argument, 0, OPT_GCSA_COMPRESSION_BLOCK_SIZE},
+            {"gcsa-compression-workers", required_argument, 0, OPT_GCSA_COMPRESSION_WORKERS},
+            {"gcsa-compression-level", required_argument, 0, OPT_GCSA_COMPRESSION_LEVEL},
+            {"gcsa-clean-obsolete", no_argument, 0, OPT_GCSA_CLEAN_OBSOLETE},
             {"tmp-dir", required_argument, 0, 'T'},
             {"threads", required_argument, 0, 't'},
             {"verbosity", required_argument, 0, 'V'},
@@ -365,6 +380,21 @@ int main_autoindex(int argc, char** argv) {
                 break;
             case OPT_GCSA_PROCESS_WORKERS:
                 IndexingParameters::gcsa_process_workers = std::max(parse<int>(optarg), 1);
+                break;
+            case OPT_GCSA_TEMP_COMPRESSION:
+                IndexingParameters::gcsa_temp_compression = optarg;
+                break;
+            case OPT_GCSA_COMPRESSION_BLOCK_SIZE:
+                IndexingParameters::gcsa_compression_block_size = gcsa::parseBytes(optarg);
+                break;
+            case OPT_GCSA_COMPRESSION_WORKERS:
+                IndexingParameters::gcsa_compression_workers = std::max(parse<int>(optarg), 1);
+                break;
+            case OPT_GCSA_COMPRESSION_LEVEL:
+                IndexingParameters::gcsa_compression_level = parse<int>(optarg);
+                break;
+            case OPT_GCSA_CLEAN_OBSOLETE:
+                IndexingParameters::gcsa_clean_obsolete = true;
                 break;
             case '?':
             case 'h':

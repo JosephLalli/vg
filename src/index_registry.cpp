@@ -116,6 +116,14 @@ int64_t IndexingParameters::gcsa_sort_run_size = 0;
 int64_t IndexingParameters::gcsa_join_partition_size = 0;
 int IndexingParameters::gcsa_process_workers = 1;
 string IndexingParameters::gcsa_worker_executable;
+string IndexingParameters::gcsa_temp_compression = "auto";
+int64_t IndexingParameters::gcsa_compression_block_size =
+    gcsa::ConstructionParameters::COMPRESSION_BLOCK_SIZE;
+int IndexingParameters::gcsa_compression_workers =
+    gcsa::ConstructionParameters::COMPRESSION_WORKERS;
+int IndexingParameters::gcsa_compression_level =
+    gcsa::ConstructionParameters::COMPRESSION_LEVEL;
+bool IndexingParameters::gcsa_clean_obsolete = false;
 int64_t IndexingParameters::gbwt_insert_batch_size = gbwt::DynamicGBWT::INSERT_BATCH_SIZE;
 int IndexingParameters::gbwt_insert_batch_size_increase_factor = 10;
 int IndexingParameters::gbwt_sampling_interval = gbwt::DynamicGBWT::SAMPLE_INTERVAL;
@@ -3726,6 +3734,11 @@ IndexRegistry VGIndexes::get_vg_index_registry() {
             params.setJoinPartitionSize(IndexingParameters::gcsa_join_partition_size);
         }
         params.setProcessWorkers(IndexingParameters::gcsa_process_workers);
+        params.setTempCompression(IndexingParameters::gcsa_temp_compression);
+        params.setCompressionBlockSize(IndexingParameters::gcsa_compression_block_size);
+        params.setCompressionWorkers(IndexingParameters::gcsa_compression_workers);
+        params.setCompressionLevel(IndexingParameters::gcsa_compression_level);
+        params.setCleanObsolete(IndexingParameters::gcsa_clean_obsolete);
         params.setWorkerExecutable(IndexingParameters::gcsa_worker_executable);
         if (!IndexingParameters::gcsa_work_directory.empty()) {
             params.setWorkDirectory(IndexingParameters::gcsa_work_directory);

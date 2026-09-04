@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH
 
-plan tests 27
+plan tests 35
 
 # Keep autoindex's external-memory controls wired through the parent vg source
 # without requiring a relink of the binary used by the integration checks below.
@@ -25,6 +25,14 @@ grep -Fq 'params.setSortRunSize(IndexingParameters::gcsa_sort_run_size);' ../src
 is $? 0 "index registry forwards the sort-run workspace override"
 grep -Fq 'params.setJoinPartitionSize(IndexingParameters::gcsa_join_partition_size);' ../src/index_registry.cpp
 is $? 0 "index registry forwards the join-partition workspace override"
+grep -Fq '{"gcsa-temp-compression", required_argument, 0, OPT_GCSA_TEMP_COMPRESSION}' ../src/subcommand/autoindex_main.cpp
+is $? 0 "autoindex parses the temporary compression mode"
+grep -Fq 'params.setTempCompression(IndexingParameters::gcsa_temp_compression);' ../src/index_registry.cpp
+is $? 0 "index registry forwards temporary compression"
+grep -Fq '{"gcsa-clean-obsolete", no_argument, 0, OPT_GCSA_CLEAN_OBSOLETE}' ../src/subcommand/index_main.cpp
+is $? 0 "index parses safe obsolete-artifact retirement"
+grep -Fq 'params.setCleanObsolete(IndexingParameters::gcsa_clean_obsolete);' ../src/index_registry.cpp
+is $? 0 "index registry forwards safe obsolete-artifact retirement"
 grep -Fq 'aggregate external-construction working-set target' ../src/subcommand/index_main.cpp
 is $? 0 "index help describes memory as an aggregate operational target"
 grep -Fq '(K/M/G/T or KiB/GiB; default 1 TiB; not a hard whole-process cap)' ../src/subcommand/index_main.cpp
@@ -36,7 +44,8 @@ is $? 0 "index streams external LCP directly to its final file"
 grep -Fq 'gcsa::LCPArray::buildAndStore(input_graph, params, lcp_output_name);' ../src/index_registry.cpp
 is $? 0 "index registry streams external LCP directly to its final file"
 
-rm -rf gcsa-external-work legacy.gcsa* external.gcsa* resumed.gcsa* \
+rm -rf gcsa-external-work gcsa-compressed-work legacy.gcsa* external.gcsa* \
+    compressed.gcsa* resumed.gcsa* \
     refused.gcsa* changed.gcsa* corrupt.gcsa* x.vg y.vg
 
 # Two named graph files are important here: they are two semantic GCSA2 input
@@ -71,6 +80,27 @@ test -s gcsa-external-work/inputs/kmers.manifest
 is $? 0 "vg commits a durable semantic-input manifest"
 test -s gcsa-external-work/build.json
 is $? 0 "GCSA2 commits a durable construction manifest"
+
+# Explicit zstd retains one context per simultaneously open final-event stream.
+# 64M is still tiny but admits that fixed codec floor; the independent 1M route
+# above remains the forced-spill test.
+vg index -g compressed.gcsa -k 2 -X 2 -V \
+    --gcsa-work-dir gcsa-compressed-work \
+    --gcsa-memory-limit 64M --gcsa-disk-limit 1G \
+    --gcsa-process-workers 2 \
+    --gcsa-temp-compression zstd \
+    --gcsa-compression-block-size 64K \
+    --gcsa-compression-workers 1 --gcsa-compression-level 1 \
+    --gcsa-clean-obsolete \
+    x.vg y.vg >/dev/null 2>&1
+is $? 0 "vg constructs with explicit framed compression and safe cleanup"
+find gcsa-compressed-work -type f -name '*.bin' \
+    -exec grep -al '^GCSABLK1' {} + | grep -q .
+is $? 0 "the vg-facing route commits framed temporary artifacts"
+find gcsa-compressed-work -type f -name '*.retired' | grep -q .
+is $? 0 "clean-obsolete leaves durable retirement journals"
+cmp legacy.gcsa compressed.gcsa && cmp legacy.gcsa.lcp compressed.gcsa.lcp
+is $? 0 "compressed temporary artifacts preserve byte-identical public indexes"
 
 # Operational settings may change across resume. The durable input files and
 # completed prefix-doubling checkpoints are validated and reused.
@@ -110,5 +140,6 @@ vg index -g corrupt.gcsa -k 2 -X 2 \
     x.vg y.vg >/dev/null 2>&1
 isnt $? 0 "resume refuses a truncated durable k-mer artifact"
 
-rm -rf gcsa-external-work legacy.gcsa* external.gcsa* resumed.gcsa* \
+rm -rf gcsa-external-work gcsa-compressed-work legacy.gcsa* external.gcsa* \
+    compressed.gcsa* resumed.gcsa* \
     refused.gcsa* changed.gcsa* corrupt.gcsa* x.vg y.vg

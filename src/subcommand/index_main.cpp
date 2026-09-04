@@ -70,6 +70,11 @@ void help_index(char** argv) {
          << "      --gcsa-sort-run-size S max label-sort workspace (default 75% of memory target)" << endl
          << "      --gcsa-join-partition-size S max join workspace (default 25% of memory target)" << endl
          << "      --gcsa-process-workers N fork-free parallel join worker processes" << endl
+         << "      --gcsa-temp-compression M temporary codec: auto, none, or zstd" << endl
+         << "      --gcsa-compression-block-size S independent compressed block size" << endl
+         << "      --gcsa-compression-workers N zstd threads per active stream" << endl
+         << "      --gcsa-compression-level N zstd level -5..22 (default 1)" << endl
+         << "      --gcsa-clean-obsolete safely retire committed predecessor artifacts" << endl
          << "GAM indexing options:" << endl
          << "  -l, --index-sorted-gam    input is sorted .gam format alignments," << endl
          << "                            store a GAI index of the sorted GAM in INPUT.gam.gai" << endl
@@ -108,6 +113,11 @@ int main_index(int argc, char** argv) {
     constexpr int OPT_GCSA_SORT_RUN_SIZE = 1008;
     constexpr int OPT_GCSA_JOIN_PARTITION_SIZE = 1009;
     constexpr int OPT_GCSA_PROCESS_WORKERS = 1010;
+    constexpr int OPT_GCSA_TEMP_COMPRESSION = 1011;
+    constexpr int OPT_GCSA_COMPRESSION_BLOCK_SIZE = 1012;
+    constexpr int OPT_GCSA_COMPRESSION_WORKERS = 1013;
+    constexpr int OPT_GCSA_COMPRESSION_LEVEL = 1014;
+    constexpr int OPT_GCSA_CLEAN_OBSOLETE = 1015;
 
     // Which indexes to build.
     bool build_xg = false, build_gcsa = false, build_dist = false;
@@ -197,6 +207,11 @@ int main_index(int argc, char** argv) {
             {"gcsa-sort-run-size", required_argument, 0, OPT_GCSA_SORT_RUN_SIZE},
             {"gcsa-join-partition-size", required_argument, 0, OPT_GCSA_JOIN_PARTITION_SIZE},
             {"gcsa-process-workers", required_argument, 0, OPT_GCSA_PROCESS_WORKERS},
+            {"gcsa-temp-compression", required_argument, 0, OPT_GCSA_TEMP_COMPRESSION},
+            {"gcsa-compression-block-size", required_argument, 0, OPT_GCSA_COMPRESSION_BLOCK_SIZE},
+            {"gcsa-compression-workers", required_argument, 0, OPT_GCSA_COMPRESSION_WORKERS},
+            {"gcsa-compression-level", required_argument, 0, OPT_GCSA_COMPRESSION_LEVEL},
+            {"gcsa-clean-obsolete", no_argument, 0, OPT_GCSA_CLEAN_OBSOLETE},
             
             // GAM index (GAI)
             {"index-sorted-gam", no_argument, 0, 'l'},
@@ -311,6 +326,21 @@ int main_index(int argc, char** argv) {
             break;
         case OPT_GCSA_PROCESS_WORKERS:
             params.setProcessWorkers(parse<size_t>(optarg));
+            break;
+        case OPT_GCSA_TEMP_COMPRESSION:
+            params.setTempCompression(optarg);
+            break;
+        case OPT_GCSA_COMPRESSION_BLOCK_SIZE:
+            params.setCompressionBlockSize(gcsa::parseBytes(optarg));
+            break;
+        case OPT_GCSA_COMPRESSION_WORKERS:
+            params.setCompressionWorkers(parse<size_t>(optarg));
+            break;
+        case OPT_GCSA_COMPRESSION_LEVEL:
+            params.setCompressionLevel(parse<int>(optarg));
+            break;
+        case OPT_GCSA_CLEAN_OBSOLETE:
+            params.setCleanObsolete();
             break;
             
         // Gam index (GAI)

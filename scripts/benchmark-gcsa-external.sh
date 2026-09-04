@@ -16,10 +16,15 @@ sort_run_size=""
 join_partition_size=""
 threads="32"
 process_workers="1"
+temp_compression="auto"
+compression_block_size="16M"
+compression_workers="4"
+compression_level="1"
 kmer_length="16"
 doubling_steps="4"
 sample_seconds="30"
 resume=0
+clean_obsolete=0
 
 usage() {
     echo "usage: $0 --vg PATH --graph PATH --run-dir DIR [options]" >&2
@@ -31,10 +36,15 @@ usage() {
     echo "  --join-partition-size SIZE join-sort workspace [memory limit]" >&2
     echo "  --threads N            construction threads [32]" >&2
     echo "  --process-workers N    independent join partition workers [1]" >&2
+    echo "  --temp-compression M   temporary codec: auto, none, or zstd [auto]" >&2
+    echo "  --compression-block-size SIZE independent frame size [16M]" >&2
+    echo "  --compression-workers N zstd threads per active stream [4]" >&2
+    echo "  --compression-level N  zstd compression level [1]" >&2
     echo "  --kmer-length N        initial k-mer length [16]" >&2
     echo "  --doubling-steps N     prefix-doubling steps [4]" >&2
     echo "  --sample-seconds N     resource sampling interval [30]" >&2
     echo "  --resume               reuse committed workspace tasks" >&2
+    echo "  --clean-obsolete       journal and retire committed predecessors" >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -50,10 +60,15 @@ while [[ $# -gt 0 ]]; do
         --join-partition-size) join_partition_size="$2"; shift 2 ;;
         --threads) threads="$2"; shift 2 ;;
         --process-workers) process_workers="$2"; shift 2 ;;
+        --temp-compression) temp_compression="$2"; shift 2 ;;
+        --compression-block-size) compression_block_size="$2"; shift 2 ;;
+        --compression-workers) compression_workers="$2"; shift 2 ;;
+        --compression-level) compression_level="$2"; shift 2 ;;
         --kmer-length) kmer_length="$2"; shift 2 ;;
         --doubling-steps) doubling_steps="$2"; shift 2 ;;
         --sample-seconds) sample_seconds="$2"; shift 2 ;;
         --resume) resume=1; shift ;;
+        --clean-obsolete) clean_obsolete=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage; exit 2 ;;
     esac
@@ -133,12 +148,19 @@ command=("$vg_binary" index -b "$temp_directory" -p -V -g "$output_name" -k "$km
     --gcsa-disk-limit "$disk_limit"
     --gcsa-sort-run-size "$sort_run_size"
     --gcsa-join-partition-size "$join_partition_size"
-    --gcsa-process-workers "$process_workers")
+    --gcsa-process-workers "$process_workers"
+    --gcsa-temp-compression "$temp_compression"
+    --gcsa-compression-block-size "$compression_block_size"
+    --gcsa-compression-workers "$compression_workers"
+    --gcsa-compression-level "$compression_level")
 if [[ -n "$mapping" ]]; then
     command+=(-f "$mapping")
 fi
 if [[ $resume -eq 1 ]]; then
     command+=(--gcsa-resume)
+fi
+if [[ $clean_obsolete -eq 1 ]]; then
+    command+=(--gcsa-clean-obsolete)
 fi
 command+=("$graph")
 
@@ -333,6 +355,11 @@ fi
     printf 'sort_run_size\t%s\n' "$sort_run_size"
     printf 'join_partition_size\t%s\n' "$join_partition_size"
     printf 'process_workers\t%s\n' "$process_workers"
+    printf 'temp_compression\t%s\n' "$temp_compression"
+    printf 'compression_block_size\t%s\n' "$compression_block_size"
+    printf 'compression_workers\t%s\n' "$compression_workers"
+    printf 'compression_level\t%s\n' "$compression_level"
+    printf 'clean_obsolete\t%s\n' "$clean_obsolete"
     printf 'vg_sha256\t%s\n' "$vg_sha256"
     printf 'max_rss_kib\t%s\n' "${max_rss_kib:-unknown}"
     printf 'sampled_cgroup_memory_peak_bytes\t%s\n' "$peak_cgroup_bytes"

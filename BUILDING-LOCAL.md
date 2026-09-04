@@ -113,9 +113,9 @@ context, not real build errors.  The only authoritative check is a real
 | Setting | Reason |
 |---|---|
 | `PKG_CONFIG_PATH`/`PATH` → local toolchain first | use the local static protobuf + its matching `protoc`, not Homebrew's 33.4 |
-| narrow Homebrew `bzip2`/`jansson` `pkgconfig` paths after the toolchain | satisfy htslib/libvgio dependencies without exposing Homebrew's protobuf/SDSL metadata; `zlib` and `liblzma` remain the system versions used by the local libhts build |
+| narrow Homebrew `bzip2`/`jansson`/`zstd` `pkgconfig` paths after the toolchain | satisfy htslib/libvgio and GCSA2 framed-spill dependencies without exposing Homebrew's protobuf/SDSL metadata; `zlib` and `liblzma` remain the system versions used by the local libhts build |
 | explicit `CPPFLAGS=-I$checkout/include` | selects vg's vendored SDSL headers before incompatible Homebrew copies; the path is intentionally *not* put in `CPLUS_INCLUDE_PATH`, because GCC demotes duplicate include paths to system-header order |
-| explicit checkout/Jansson `-L` and legacy `RPATH` arguments | selects checkout libraries first and the same Homebrew Jansson used for compilation at runtime; legacy `RPATH` cannot be silently preceded by an ambient `LD_LIBRARY_PATH` entry |
+| explicit checkout/Jansson/zstd `-L` and legacy `RPATH` arguments | selects checkout libraries first and the same Homebrew Jansson/zstd used for compilation at runtime; legacy `RPATH` cannot be silently preceded by an ambient `LD_LIBRARY_PATH` entry |
 | empty default `CPLUS_INCLUDE_PATH`, `CPATH`, and `LIBRARY_PATH` | prevents malformed or stale shell settings from changing dependency selection; opt in to additions with the corresponding `VG_EXTRA_*` variables |
 | `CC=gcc-13` | Homebrew gcc-15 rejects the vendored elfutils (`-Werror=unterminated-string-initialization`); the Ubuntu system `gcc-13` (at `/usr/bin/gcc-13`, v13.3.0) builds it cleanly |
 | `CXX=g++-15 CXX_STANDARD=20` | abseil (a protobuf dependency) needs C++20's `std::*_ordering` under this libstdc++; `g++-15` is Homebrew GCC 15.2.0 at `/mnt/ssd/lalli/.linuxbrew/bin/g++-15` |
@@ -126,9 +126,15 @@ The GCSA2 sub-build also passes its local library selection explicitly on every
 link command:
 
 ```text
--L<checkout>/lib -Wl,-rpath,<checkout>/lib -Wl,--disable-new-dtags \
-  -lsdsl -ldivsufsort -ldivsufsort64
+-L<checkout>/lib -L<homebrew>/opt/zstd/lib \
+  -Wl,-rpath,<checkout>/lib -Wl,-rpath,<homebrew>/opt/zstd/lib \
+  -Wl,--disable-new-dtags -lsdsl -ldivsufsort -ldivsufsort64 -lzstd
 ```
+
+This is intentional library selection, not an ambient Homebrew search. Verify a
+new GCSA2 test binary with `readelf -d deps/gcsa2/bin/test_external_join` and
+`ldd deps/gcsa2/bin/test_external_join`; `libzstd.so.1` should resolve from
+`<homebrew>/opt/zstd/lib`.
 
 Use `VG_EXTRA_CPPFLAGS`, `VG_EXTRA_LDFLAGS`,
 `VG_EXTRA_CPLUS_INCLUDE_PATH`, `VG_EXTRA_CPATH`,

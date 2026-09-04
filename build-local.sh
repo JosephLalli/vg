@@ -50,12 +50,13 @@ VGL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Work-directory-specific protobuf(29.3)+abseil toolchain (static, PIC, C++20).
 TOOLCHAIN="${VG_TOOLCHAIN:-/mnt/ssd/lalli/vg-latest-toolchain}"
 # htslib's pkg-config metadata names bzip2 (which Ubuntu does not ship as a .pc
-# file), while libvgio names jansson. Keep those pkg-config directories explicit
-# and narrow so that adding the Homebrew prefix cannot make Homebrew's
-# incompatible protobuf/SDSL packages authoritative. zlib and liblzma continue
-# to resolve from the system pkg-config directories used to build libhts.
+# file), while libvgio names jansson and GCSA2 uses zstd for framed spill
+# artifacts. Keep those pkg-config directories explicit and narrow so that
+# adding the Homebrew prefix cannot make Homebrew's incompatible protobuf/SDSL
+# packages authoritative. zlib and liblzma continue to resolve from the system
+# pkg-config directories used to build libhts.
 HOMEBREW_PREFIX="${VG_HOMEBREW_PREFIX:-/mnt/ssd/lalli/.linuxbrew}"
-DEPENDENCY_PKG_CONFIG_PATH="$HOMEBREW_PREFIX/opt/bzip2/lib/pkgconfig:$HOMEBREW_PREFIX/opt/jansson/lib/pkgconfig"
+DEPENDENCY_PKG_CONFIG_PATH="$HOMEBREW_PREFIX/opt/bzip2/lib/pkgconfig:$HOMEBREW_PREFIX/opt/jansson/lib/pkgconfig:$HOMEBREW_PREFIX/opt/zstd/lib/pkgconfig"
 
 if [ ! -f "$TOOLCHAIN/lib/libprotobuf.a" ]; then
     echo "ERROR: toolchain not found at $TOOLCHAIN (run build-toolchain.sh first)" >&2
@@ -91,12 +92,12 @@ mkdir -p bin bin/unittest lib lib/pkgconfig include \
 # joined -L/-I options. Inheriting them makes configure tests select unrelated
 # Homebrew libraries. Additional flags remain available through explicit
 # VG_EXTRA_* variables, while the default build is deterministic.
-CPPFLAGS="-I$VGL/include ${VG_EXTRA_CPPFLAGS:-}" \
+CPPFLAGS="-I$VGL/include -I$HOMEBREW_PREFIX/opt/zstd/include ${VG_EXTRA_CPPFLAGS:-}" \
 CPLUS_INCLUDE_PATH="${VG_EXTRA_CPLUS_INCLUDE_PATH:-}" \
 CPATH="${VG_EXTRA_CPATH:-}" \
 LIBRARY_PATH="${VG_EXTRA_LIBRARY_PATH:-}" \
-LDFLAGS="-L$VGL/lib -L$HOMEBREW_PREFIX/opt/jansson/lib -Wl,-rpath,$VGL/lib -Wl,-rpath,$HOMEBREW_PREFIX/opt/jansson/lib -Wl,--disable-new-dtags ${VG_EXTRA_LDFLAGS:-}" \
-LD_LIBRARY_PATH="$VGL/lib${VG_EXTRA_LD_LIBRARY_PATH:+:$VG_EXTRA_LD_LIBRARY_PATH}" \
+LDFLAGS="-L$VGL/lib -L$HOMEBREW_PREFIX/opt/jansson/lib -L$HOMEBREW_PREFIX/opt/zstd/lib -Wl,-rpath,$VGL/lib -Wl,-rpath,$HOMEBREW_PREFIX/opt/jansson/lib -Wl,-rpath,$HOMEBREW_PREFIX/opt/zstd/lib -Wl,--disable-new-dtags ${VG_EXTRA_LDFLAGS:-}" \
+LD_LIBRARY_PATH="$VGL/lib:$HOMEBREW_PREFIX/opt/zstd/lib${VG_EXTRA_LD_LIBRARY_PATH:+:$VG_EXTRA_LD_LIBRARY_PATH}" \
 PKG_CONFIG_PATH="$TOOLCHAIN/lib/pkgconfig:$DEPENDENCY_PKG_CONFIG_PATH${VG_EXTRA_PKG_CONFIG_PATH:+:$VG_EXTRA_PKG_CONFIG_PATH}" \
 PATH="$TOOLCHAIN/bin:$PATH" \
     make -j"$JOBS" --jobserver-style=pipe CC=gcc-13 CXX=g++-15 CXX_STANDARD=20 "$@"

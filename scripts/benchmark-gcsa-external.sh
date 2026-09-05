@@ -183,7 +183,7 @@ command+=("$graph")
     fi
 } > "$inputs_file"
 
-printf 'unix_time\tphase\trun_bytes\tmemory_current\tmemory_peak\tmemory_anon\tmemory_file\tmemory_file_dirty\tcpu_usage_usec\tio_read_bytes\tio_write_bytes\ttasks_current\tmem_available_kib\n' > "$samples"
+printf 'unix_time\tphase\trun_bytes\tmemory_current\tmemory_peak\tmemory_anon\tmemory_file\tmemory_file_dirty\tcpu_usage_usec\tcpu_user_usec\tcpu_system_usec\tio_read_bytes\tio_write_bytes\tproc_rchar\tproc_wchar\tproc_read_bytes\tproc_write_bytes\tproc_syscr\tproc_syscw\ttasks_current\tmem_available_kib\n' > "$samples"
 
 runner_pid=""
 cleanup_runner() {
@@ -199,9 +199,20 @@ systemd-run --user --scope --quiet --unit="$unit" \
     /usr/bin/time -v -o "$time_log" "${command[@]}" \
     >"$stdout_log" 2>"$stderr_log" &
 runner_pid=$!
+sample_tick=0
+last_run_bytes=0
 
 while kill -0 "$runner_pid" 2>/dev/null; do
-    run_bytes="$(du -sb "$run_directory" 2>/dev/null | awk '{print $1}')"
+    # du -sb walks a workspace with hundreds of files on the same device the
+    # run is using. At a 5 s interval that is not free, so sample it every
+    # sixth tick and carry the previous value between.
+    if (( sample_tick % 6 == 0 )); then
+        run_bytes="$(du -sb "$run_directory" 2>/dev/null | awk '{print $1}')"
+        last_run_bytes="${run_bytes:-0}"
+    else
+        run_bytes="${last_run_bytes:-0}"
+    fi
+    sample_tick=$(( sample_tick + 1 ))
     memory_current="$(systemctl --user show "$unit.scope" -p MemoryCurrent --value 2>/dev/null || true)"
     memory_peak="$(systemctl --user show "$unit.scope" -p MemoryPeak --value 2>/dev/null || true)"
     tasks_current="$(systemctl --user show "$unit.scope" -p TasksCurrent --value 2>/dev/null || true)"
@@ -223,8 +234,40 @@ while kill -0 "$runner_pid" 2>/dev/null; do
             ' "$cgroup_directory/memory.stat"
         )
     fi
+    cpu_user_usec=0
+    cpu_system_usec=0
     if [[ -r "$cgroup_directory/cpu.stat" ]]; then
-        cpu_usage_usec="$(awk '$1 == "usage_usec" { print $2 + 0 }' "$cgroup_directory/cpu.stat")"
+        # The user/system split is what says whether a serial phase is burning
+        # cycles in its own code or in the kernel on syscalls and reclaim.
+        read -r cpu_usage_usec cpu_user_usec cpu_system_usec < <(
+            awk '
+                $1 == "usage_usec" { usage = $2 }
+                $1 == "user_usec" { user = $2 }
+                $1 == "system_usec" { system = $2 }
+                END { print usage + 0, user + 0, system + 0 }
+            ' "$cgroup_directory/cpu.stat"
+        )
+    fi
+    # The io controller is not delegated to a user scope on this host, so
+    # io.stat reads zero for every sample. The kernel still accounts the
+    # process itself: rchar/wchar are logical bytes, read_bytes/write_bytes are
+    # what reached the device, and their ratio is the page-cache hit rate that
+    # cgroup accounting cannot give us.
+    proc_rchar=0; proc_wchar=0; proc_read_bytes=0; proc_write_bytes=0
+    proc_syscr=0; proc_syscw=0
+    vg_pid="$(pgrep -x vg 2>/dev/null | head -1 || true)"
+    if [[ -n "$vg_pid" && -r "/proc/$vg_pid/io" ]]; then
+        read -r proc_rchar proc_wchar proc_syscr proc_syscw proc_read_bytes proc_write_bytes < <(
+            awk '
+                $1 == "rchar:" { rchar = $2 }
+                $1 == "wchar:" { wchar = $2 }
+                $1 == "syscr:" { syscr = $2 }
+                $1 == "syscw:" { syscw = $2 }
+                $1 == "read_bytes:" { rb = $2 }
+                $1 == "write_bytes:" { wb = $2 }
+                END { print rchar + 0, wchar + 0, syscr + 0, syscw + 0, rb + 0, wb + 0 }
+            ' "/proc/$vg_pid/io" 2>/dev/null
+        )
     fi
     if [[ -r "$cgroup_directory/io.stat" ]]; then
         read -r io_read_bytes io_write_bytes < <(
@@ -264,11 +307,15 @@ while kill -0 "$runner_pid" 2>/dev/null; do
         END { print (phase == "" ? "startup" : phase) }
     ' "$stderr_log" 2>/dev/null || printf 'startup')"
     mem_available="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$(date +%s)" "${phase:-startup}" "${run_bytes:-0}" \
         "${memory_current:-0}" "${memory_peak:-0}" "${memory_anon:-0}" \
         "${memory_file:-0}" "${memory_file_dirty:-0}" "${cpu_usage_usec:-0}" \
-        "${io_read_bytes:-0}" "${io_write_bytes:-0}" "${tasks_current:-0}" \
+        "${cpu_user_usec:-0}" "${cpu_system_usec:-0}" \
+        "${io_read_bytes:-0}" "${io_write_bytes:-0}" \
+        "${proc_rchar:-0}" "${proc_wchar:-0}" \
+        "${proc_read_bytes:-0}" "${proc_write_bytes:-0}" \
+        "${proc_syscr:-0}" "${proc_syscw:-0}" "${tasks_current:-0}" \
         "${mem_available:-0}" >> "$samples"
     sleep "$sample_seconds"
 done

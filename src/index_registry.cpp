@@ -3745,7 +3745,6 @@ IndexRegistry VGIndexes::get_vg_index_registry() {
             bool has_build_manifest = filesystem::is_regular_file(
                 filesystem::path(params.getWorkDirectory()) / "build.json");
             params.setResume(IndexingParameters::gcsa_resume && has_build_manifest);
-            params.setAllowPathExplosion();
             gcsa::TempFile::setDirectory(params.getWorkDirectory());
         }
                 

@@ -428,9 +428,6 @@ int main_index(int argc, char** argv) {
         }
         params.setWorkDirectory(std::filesystem::absolute(params.getWorkDirectory())
                                     .lexically_normal().string());
-        // A workspace explicitly selects disk-first construction. Path growth
-        // is limited by the disk budget, not by the RAM ceiling.
-        params.setAllowPathExplosion();
         bool has_construction_manifest = std::filesystem::is_regular_file(
             std::filesystem::path(params.getWorkDirectory()) / "build.json");
         if (!gcsa_resume_requested && has_construction_manifest) {

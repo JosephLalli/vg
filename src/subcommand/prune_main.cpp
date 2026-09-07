@@ -370,14 +370,24 @@ int main_prune(int argc, char** argv) {
         }
     }
     
-    // Destroy all remaining paths
+    // Destroy all remaining paths. Deleting them one at a time is not merely
+    // unbatched, it is quadratic in path depth: destroy_path() on the packed
+    // graphs forwards to destroy_paths({path}), and the single-element case
+    // cannot use either of that function's two economies. It skips the
+    // nodes_visited set, so a node covered by K paths has its membership list
+    // walked K times instead of once, and it can only match one path per walk,
+    // so each walk rescans the records the previous ones left behind. On a
+    // pangenome K is the haplotype depth, which is where this phase's time
+    // goes.
+    //
+    // The bulk call is on MutablePathHandleGraph itself, and its default
+    // implementation is exactly the loop written here, so a graph type that
+    // does not override it behaves as before.
     vector<path_handle_t> path_handles;
     graph->for_each_path_handle([&](path_handle_t path_handle) {
         path_handles.push_back(path_handle);
     });
-    for (auto path_handle : path_handles) {
-        graph->destroy_path(path_handle);
-    }
+    graph->destroy_paths(path_handles);
     
     if (show_progress) {
         logger.info() << "Removed all paths" << std::endl;

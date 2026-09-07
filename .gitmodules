@@ -18,7 +18,7 @@
 	url = https://github.com/vog/sha1.git
 [submodule "gcsa2"]
 	path = deps/gcsa2
-	url = https://github.com/jltsiren/gcsa2.git
+	url = https://github.com/JosephLalli/gcsa2.git
 [submodule "sdsl-lite"]
 	path = deps/sdsl-lite
     url = https://github.com/vgteam/sdsl-lite.git

@@ -25,6 +25,7 @@ doubling_steps="4"
 sample_seconds="30"
 resume=0
 clean_obsolete=0
+verify=1
 
 usage() {
     echo "usage: $0 --vg PATH --graph PATH --run-dir DIR [options]" >&2
@@ -43,6 +44,7 @@ usage() {
     echo "  --kmer-length N        initial k-mer length [16]" >&2
     echo "  --doubling-steps N     prefix-doubling steps [4]" >&2
     echo "  --sample-seconds N     resource sampling interval [30]" >&2
+    echo "  --no-verify            skip vg index -V (index verification)" >&2
     echo "  --resume               reuse committed workspace tasks" >&2
     echo "  --clean-obsolete       journal and retire committed predecessors" >&2
 }
@@ -67,6 +69,7 @@ while [[ $# -gt 0 ]]; do
         --kmer-length) kmer_length="$2"; shift 2 ;;
         --doubling-steps) doubling_steps="$2"; shift 2 ;;
         --sample-seconds) sample_seconds="$2"; shift 2 ;;
+        --no-verify) verify=0; shift ;;
         --resume) resume=1; shift ;;
         --clean-obsolete) clean_obsolete=1; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -141,7 +144,7 @@ fi
 # durable workspace. Keep that spool on the benchmark filesystem so it is
 # included in peak-live-disk accounting and cannot silently fill /tmp.
 mkdir -p "$temp_directory"
-command=("$vg_binary" index -b "$temp_directory" -p -V -g "$output_name" -k "$kmer_length"
+command=("$vg_binary" index -b "$temp_directory" -p -g "$output_name" -k "$kmer_length"
     -X "$doubling_steps" -t "$threads"
     --gcsa-work-dir "$work_directory"
     --gcsa-memory-limit "$memory_limit"
@@ -153,6 +156,13 @@ command=("$vg_binary" index -b "$temp_directory" -p -V -g "$output_name" -k "$km
     --gcsa-compression-block-size "$compression_block_size"
     --gcsa-compression-workers "$compression_workers"
     --gcsa-compression-level "$compression_level")
+# Verification is a separate concern from construction: on chr21 it was 47% of
+# wall clock and, unlike every other phase, did not speed up with more threads
+# or memory (4011 s at 23 GiB/32t vs 4171 s at 128 GiB/96t). Make it optional so
+# a construction benchmark is not dominated by it.
+if [[ $verify -eq 1 ]]; then
+    command+=(-V)
+fi
 if [[ -n "$mapping" ]]; then
     command+=(-f "$mapping")
 fi
@@ -242,9 +252,9 @@ while kill -0 "$runner_pid" 2>/dev/null; do
         read -r cpu_usage_usec cpu_user_usec cpu_system_usec < <(
             awk '
                 $1 == "usage_usec" { usage = $2 }
-                $1 == "user_usec" { user = $2 }
-                $1 == "system_usec" { system = $2 }
-                END { print usage + 0, user + 0, system + 0 }
+                $1 == "user_usec" { user_time = $2 }
+                $1 == "system_usec" { system_time = $2 }
+                END { print usage + 0, user_time + 0, system_time + 0 }
             ' "$cgroup_directory/cpu.stat"
         )
     fi

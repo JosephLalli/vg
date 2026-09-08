@@ -1,4 +1,6 @@
 #include "phase_unfolder.hpp"
+
+#include <omp.h>
 #include "progress_bar.hpp"
 #include "algorithms/disjoint_components.hpp"
 
@@ -16,12 +18,48 @@ PhaseUnfolder::PhaseUnfolder(const PathHandleGraph& path_graph, const gbwt::GBWT
 
 void PhaseUnfolder::unfold(MutableHandleGraph& graph, bool show_progress) {
     
-    std::list<bdsg::HashGraph> components = this->complement_components(graph, show_progress);
-    
+    std::list<bdsg::HashGraph> component_list = this->complement_components(graph, show_progress);
+    std::vector<bdsg::HashGraph> components(std::make_move_iterator(component_list.begin()),
+                                            std::make_move_iterator(component_list.end()));
+    component_list.clear();
+
     size_t haplotype_paths = 0;
     bdsg::HashGraph unfolded;
-    for (MutableHandleGraph& component : components) {
-        haplotype_paths += this->unfold_component(component, graph, unfolded);
+
+    // Unfolding a component reads the graph and the two indexes and writes only
+    // its own scratch, so the components are independent; the single thing they
+    // shared was the duplicate-id counter, and giving each worker its own
+    // mapping over the same first id removes that. Each worker therefore gets
+    // its own PhaseUnfolder -- construction only binds references -- and the
+    // ids it mints are renumbered when its log is applied.
+    //
+    // Applying is serial and in component order on purpose. Doing it that way
+    // is what keeps the output identical to a serial run rather than merely
+    // equivalent to one: the same nodes and edges are created, in the same
+    // sequence, with the same ids, whatever order the workers happened to
+    // finish in.
+    const vg::id_t base = this->mapping.begin();
+    const size_t batch = std::max<size_t>(1, 8 * static_cast<size_t>(omp_get_max_threads()));
+    for (size_t start = 0; start < components.size(); start += batch) {
+        const size_t stop = std::min(start + batch, components.size());
+        const size_t count = stop - start;
+        // Bounded so that only one batch of logs is resident at a time; the
+        // full set over every component would not fit on a pangenome graph.
+        std::vector<std::vector<UnfoldOp>> ops(count);
+        std::vector<gcsa::NodeMapping> locals(count, gcsa::NodeMapping(base));
+        std::vector<size_t> paths(count, 0);
+
+        #pragma omp parallel for schedule(dynamic, 1)
+        for (size_t i = 0; i < count; i++) {
+            PhaseUnfolder worker(this->path_graph, this->gbwt_index, base);
+            paths[i] = worker.unfold_component(components[start + i], graph, ops[i]);
+            locals[i] = worker.mapping;
+        }
+
+        for (size_t i = 0; i < count; i++) {
+            this->apply_component(ops[i], locals[i], unfolded);
+            haplotype_paths += paths[i];
+        }
     }
     if (show_progress) {
         std::cerr << "Unfolded graph: "
@@ -376,7 +414,41 @@ std::list<bdsg::HashGraph> PhaseUnfolder::complement_components(MutableHandleGra
     return components;
 }
 
-size_t PhaseUnfolder::unfold_component(MutableHandleGraph& component, MutableHandleGraph& graph, MutableHandleGraph& unfolded) {
+void PhaseUnfolder::apply_component(const std::vector<UnfoldOp>& ops, const gcsa::NodeMapping& local,
+                                    MutableHandleGraph& unfolded) {
+    // The worker minted its duplicates against a mapping that starts at the
+    // same first id as ours, so its ids are dense from base and mean nothing
+    // outside its own component. Re-mint them here, in component order, which
+    // is what makes the global numbering independent of how the work was
+    // scheduled.
+    const gcsa::size_type base = local.begin();
+    std::vector<vg::id_t> to_global(local.end() - base);
+    for (gcsa::size_type duplicate = base; duplicate < local.end(); duplicate++) {
+        to_global[duplicate - base] = this->mapping.insert(local(duplicate));
+    }
+    auto translate = [&](gbwt::node_type node) -> gbwt::node_type {
+        vg::id_t id = gbwt::Node::id(node);
+        // Ids below base are original graph nodes and are already global.
+        if (static_cast<gcsa::size_type>(id) >= base) {
+            id = to_global[id - base];
+        }
+        return gbwt::Node::encode(id, gbwt::Node::is_reverse(node));
+    };
+
+    for (const UnfoldOp& op : ops) {
+        if (op.is_edge) {
+            unfolded.create_edge(make_edge(unfolded, translate(op.a), translate(op.b)));
+        } else {
+            gbwt::node_type node = translate(op.a);
+            if (!unfolded.has_node(gbwt::Node::id(node))) {
+                handle_t temp = this->path_graph.get_handle(this->get_mapping(gbwt::Node::id(node)));
+                unfolded.create_handle(this->path_graph.get_sequence(temp), gbwt::Node::id(node));
+            }
+        }
+    }
+}
+
+size_t PhaseUnfolder::unfold_component(MutableHandleGraph& component, MutableHandleGraph& graph, std::vector<UnfoldOp>& ops) {
     // Find the border nodes shared between the component and the graph.
     component.for_each_handle([&](const handle_t& handle) {
         vg::id_t id = component.get_id(handle);
@@ -395,12 +467,13 @@ size_t PhaseUnfolder::unfold_component(MutableHandleGraph& component, MutableHan
         this->generate_threads(component, component.get_id(handle));
     });
     
+    // Record what to build rather than building it. The has_node() test that
+    // used to guard each insertion moves to apply_component, where it can be
+    // asked of the real unfolded graph; asking it here would only see this
+    // component. Recording every call rather than de-duplicating locally keeps
+    // the replayed sequence identical to what the serial code performed.
     auto insert_node = [&](gbwt::node_type node) {
-        // create a new node
-        if (!unfolded.has_node(gbwt::Node::id(node))) {
-            handle_t temp = this->path_graph.get_handle(this->get_mapping(gbwt::Node::id(node)));;
-            unfolded.create_handle(this->path_graph.get_sequence(temp), gbwt::Node::id(node));
-        }
+        ops.push_back(UnfoldOp{false, node, gbwt::node_type(0)});
     };
 
     // Create the unfolded component from the tries.
@@ -411,7 +484,7 @@ size_t PhaseUnfolder::unfold_component(MutableHandleGraph& component, MutableHan
         }
         insert_node(to);
         if (from != gbwt::ENDMARKER) {
-            unfolded.create_edge(make_edge(unfolded, from, to));
+            ops.push_back(UnfoldOp{true, from, to});
         }
     }
     for (auto mapping : this->suffixes) {
@@ -419,13 +492,13 @@ size_t PhaseUnfolder::unfold_component(MutableHandleGraph& component, MutableHan
         insert_node(from);
         if (to != gbwt::ENDMARKER) {
             insert_node(to);
-            unfolded.create_edge(make_edge(unfolded, from, to));
+            ops.push_back(UnfoldOp{true, from, to});
         }
     }
     for (auto edge : this->crossing_edges) {
         insert_node(edge.first);
         insert_node(edge.second);
-        unfolded.create_edge(make_edge(unfolded, edge.first, edge.second));
+        ops.push_back(UnfoldOp{true, edge.first, edge.second});
     }
 
     size_t haplotype_paths = this->crossing_edges.size();

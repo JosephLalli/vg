@@ -113,7 +113,28 @@ private:
      * indexes. Unfold the paths by duplicating the inner nodes so that the
      * paths become disjoint, except for their shared prefixes/suffixes.
      */
-    size_t unfold_component(MutableHandleGraph& component, MutableHandleGraph& graph, MutableHandleGraph& unfolded);
+    /**
+     * One graph-building step recorded by unfold_component instead of being
+     * applied directly. Components are unfolded concurrently but must be
+     * applied in component order, because the duplicate node ids they mint
+     * come from a single counter; replaying an ordered log rather than merging
+     * finished graphs is what keeps the result identical to a serial run,
+     * down to the order nodes and edges are created in.
+     */
+    struct UnfoldOp {
+        bool is_edge;
+        gbwt::node_type a, b;
+    };
+
+    size_t unfold_component(MutableHandleGraph& component, MutableHandleGraph& graph, std::vector<UnfoldOp>& ops);
+
+    /**
+     * Replay one component's ops into the unfolded graph, translating the
+     * task-local duplicate ids minted against `local` into ids from this
+     * unfolder's mapping. Must be called in component order.
+     */
+    void apply_component(const std::vector<UnfoldOp>& ops, const gcsa::NodeMapping& local,
+                         MutableHandleGraph& unfolded);
 
     /**
      * Generate all paths supported by the XG index passing through the given

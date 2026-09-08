@@ -119,7 +119,20 @@ struct TranscriptPath {
         copy_id = 1;
     }
 
-    virtual ~TranscriptPath() {};
+    /*
+      Spelled out because the destructor is not. A user-declared destructor
+      suppresses the implicit move constructor and move assignment, so every
+      std::move on a transcript path bound to const& and silently copied
+      instead -- the vectors below, and the Path in the derived class, were
+      duplicated on every hand-off. Declaring the moves in turn suppresses the
+      implicit copies, which are still used, so both pairs are declared.
+    */
+    TranscriptPath(const TranscriptPath &) = default;
+    TranscriptPath & operator=(const TranscriptPath &) = default;
+    TranscriptPath(TranscriptPath &&) = default;
+    TranscriptPath & operator=(TranscriptPath &&) = default;
+
+    virtual ~TranscriptPath() = default;
 
     string get_name() const;
 };
@@ -135,7 +148,14 @@ struct EditedTranscriptPath : public TranscriptPath {
     EditedTranscriptPath(const string & transcript_name, const string & embedded_path_name, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, embedded_path_name, is_reference_in, is_haplotype_in) {}
     EditedTranscriptPath(const string & transcript_name, const gbwt::size_type & haplotype_gbwt_id, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, haplotype_gbwt_id, is_reference_in, is_haplotype_in) {}
 
-    ~EditedTranscriptPath() {};
+    // See the note on TranscriptPath: the destructor suppresses the implicit
+    // moves, and this class is the one carrying a Path.
+    EditedTranscriptPath(const EditedTranscriptPath &) = default;
+    EditedTranscriptPath & operator=(const EditedTranscriptPath &) = default;
+    EditedTranscriptPath(EditedTranscriptPath &&) = default;
+    EditedTranscriptPath & operator=(EditedTranscriptPath &&) = default;
+
+    ~EditedTranscriptPath() = default;
 
     handle_t get_first_node_handle(const HandleGraph & graph) const;
 
@@ -151,7 +171,12 @@ struct CompletedTranscriptPath : public TranscriptPath {
 
     CompletedTranscriptPath(const EditedTranscriptPath & edited_transcript_path);
     CompletedTranscriptPath(const EditedTranscriptPath & edited_transcript_path, const HandleGraph & graph);
-    ~CompletedTranscriptPath() {};
+    CompletedTranscriptPath(const CompletedTranscriptPath &) = default;
+    CompletedTranscriptPath & operator=(const CompletedTranscriptPath &) = default;
+    CompletedTranscriptPath(CompletedTranscriptPath &&) = default;
+    CompletedTranscriptPath & operator=(CompletedTranscriptPath &&) = default;
+
+    ~CompletedTranscriptPath() = default;
 
     handle_t get_first_node_handle(const HandleGraph & graph) const;
 };

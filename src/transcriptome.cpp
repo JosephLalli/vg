@@ -201,7 +201,9 @@ CompletedTranscriptPath::CompletedTranscriptPath(const EditedTranscriptPath & ed
 
     path.reserve(edited_transcript_path_in.path.mapping_size());
     
-    for (auto mapping: edited_transcript_path_in.path.mapping()) {
+    // By value copied a whole protobuf Mapping -- a Position submessage and an
+    // edit list, so a heap allocation per node -- to read four fields off it.
+    for (const auto & mapping: edited_transcript_path_in.path.mapping()) {
 
         auto handle = mapping_to_handle(mapping, graph);
 
@@ -2309,7 +2311,10 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
 
         updated_transcript_paths.emplace_back(transcript_path);
 
-        for (auto mapping: transcript_path.path.mapping()) {
+        // Same copy as in CompletedTranscriptPath's constructor, on the hotter
+        // path: this runs once per node of every transcript path while the
+        // augmented graph is rewritten, and the body only reads.
+        for (const auto & mapping: transcript_path.path.mapping()) {
 
             auto mapping_handle = mapping_to_handle(mapping, *_graph);
             auto mapping_offset = mapping.position().offset();

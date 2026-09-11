@@ -2129,7 +2129,7 @@ bool Transcriptome::has_novel_exon_boundaries(const list<EditedTranscriptPath> &
     return false;
 }
 
-void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_transcript_paths, const bool is_introns, unique_ptr<gbwt::GBWT> & haplotype_index, const bool update_haplotypes, const bool add_reference_transcript_paths) {
+void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript_paths, const bool is_introns, unique_ptr<gbwt::GBWT> & haplotype_index, const bool update_haplotypes, const bool add_reference_transcript_paths) {
 
 #ifdef transcriptome_debug
     double time_convert_1 = gcsa::readTimer();
@@ -2192,6 +2192,10 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
     // Augment graph with edited paths. 
     augment(static_cast<MutablePathMutableHandleGraph *>(_graph.get()), exon_boundary_paths, "GAM", &translations, "", false, !is_introns);
 
+    // The boundary paths were only input to augment(); release them here
+    // rather than when this function returns.
+    vector<Path>().swap(exon_boundary_paths);
+
 #ifdef transcriptome_debug
     cerr << "\t\tDEBUG Augmented graph with " << translations.size() << " translations: " << gcsa::readTimer() - time_augment_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif 
@@ -2250,6 +2254,15 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
         sort(translation.second.begin(), translation.second.end());
     }
 
+    // translation_index now holds everything that is read from the
+    // translations: one (offset, handle) pair per changed node side. The
+    // translations themselves are two protobuf Translations per graph node
+    // (about 1 KB per node: 2.2 GB for chrY's 2.2M nodes, 45.9% of the peak
+    // heap in the chrY profile) and were kept alive until this function
+    // returned, across the GBWT update and the rewrite of every transcript
+    // path below. Release them now; swap, because shrink_to_fit is a request.
+    vector<Translation>().swap(translations);
+
 #ifdef transcriptome_debug
     cerr << "\t\tDEBUG Indexed " << translation_index.size() << " translated nodes: " << gcsa::readTimer() - time_index_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif 
@@ -2294,8 +2307,16 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
     list<CompletedTranscriptPath> updated_transcript_paths;
 
     // Update paths to match new augmented graph and add them
-    // as reference transcript paths.
-    for (auto & transcript_path: edited_transcript_paths) {
+    // as reference transcript paths. Each edited path is released as soon as
+    // its completed path exists, so the two representations cross over
+    // instead of stacking: the completed handle vectors (8 bytes per step of
+    // the augmented path) would otherwise sit on top of the whole edited list
+    // until this function returned.
+    auto edited_transcript_paths_it = edited_transcript_paths.begin();
+
+    while (edited_transcript_paths_it != edited_transcript_paths.end()) {
+
+        const EditedTranscriptPath & transcript_path = *edited_transcript_paths_it;
 
         updated_transcript_paths.emplace_back(transcript_path);
 
@@ -2331,6 +2352,8 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
                 updated_transcript_paths.back().path.emplace_back(mapping_handle);
             }
         }
+
+        edited_transcript_paths_it = edited_transcript_paths.erase(edited_transcript_paths_it);
     }
 
     add_splice_junction_edges(updated_transcript_paths);

@@ -1,0 +1,25 @@
+Filters: [transcriptome]
+	WARNING: Excluded 3 transcripts with overlapping exons or incorrect exon order.
+	WARNING: Excluded 2 transcripts with overlapping exons or incorrect exon order.
+	WARNING: Excluded 1 transcripts with exon overlapping a haplotype break.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+vg test is a Catch v2.13.8 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+Transcriptome can add splice-junctions and project transcripts
+  Transcriptome can parse intron BED file and add splice-junctions
+-------------------------------------------------------------------------------
+src/unittest/transcriptome.cpp:825
+...............................................................................
+
+src/unittest/transcriptome.cpp:842: FAILED:
+  REQUIRE( transcriptome.graph().get_edge_count() == 17 )
+with expansion:
+  15 == 17
+
+===============================================================================
+test cases:   1 |   0 passed | 1 failed
+assertions: 725 | 724 passed | 1 failed
+

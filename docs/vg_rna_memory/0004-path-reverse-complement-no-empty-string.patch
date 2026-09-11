@@ -1,0 +1,28 @@
+Subject: path: do not allocate an empty edit sequence when reverse complementing a Mapping in place
+
+Stage A opportunity 4. Standalone against HEAD 6ffdcb969; touches only
+src/path.cpp and is independent of 0001-0003 (0001 stops vg rna from calling
+this function at all, so with 0001 applied this patch only benefits other
+callers). Skips mutable_sequence() on the middle edit when its sequence is
+empty; reverse complementing an empty string is a no-op and vg.proto is proto3,
+so an unset and an empty string field serialize identically. See README.md.
+
+--- a/src/path.cpp
++++ b/src/path.cpp
+@@ -1856,7 +1856,15 @@
+     
+     if (m->edit_size() % 2) {
+         Edit* e = m->mutable_edit(swap_size);
+-        reverse_complement_in_place(*e->mutable_sequence());
++        // A match has no sequence, and mutable_sequence() on an unset string
++        // field allocates an empty std::string just to hand it back; that
++        // 32-byte string then lives as long as the edit does. In vg rna every
++        // reverse-strand transcript step went through here with one match
++        // edit, and a chrY heap profile showed the strings on 42% of mappings.
++        // Reverse complementing an empty sequence is a no-op, so skip it.
++        if (!e->sequence().empty()) {
++            reverse_complement_in_place(*e->mutable_sequence());
++        }
+     }
+ }
+ 

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Validation protocol for the vg rna memory patches on chrY (README.md section 6).
+#
+#   chrY_validation.sh CONTROL_VG PATCHED_VG OUTDIR
+#
+# CONTROL_VG is the pinned production binary, PATCHED_VG a binary built from a
+# separate worktree with the patches applied. OUTDIR must be on /mnt/ssd.
+# Runs, in order: control twice at -t 1 (reproducibility floor), patched at
+# -t 1 (byte gate), control and patched at -t 32 under /usr/bin/time -v (RSS
+# and digest gate), then prints the comparisons. Written for the README and
+# NOT executed here; read it before running it. About 5 x (45 s to a few
+# minutes) wall, 5.4 GB peak per run.
+set -uo pipefail
+
+CONTROL=${1:?control vg binary}
+PATCHED=${2:?patched vg binary}
+OUT=${3:?output directory on /mnt/ssd}
+
+GBZ=/mnt/ssd/lalli/hprc_v2_vg_rna/graph/hprc-v2.1-mc-chm13.full.noHG002.canonical_chunks_v1_20260802T112539-0500/chunks/hprc-v2.1-mc-chm13.full.noHG002_24_chrY.gbz
+GFF_GZ=/mnt/ssd/lalli/hprc_v2_vg_rna/annotation_runs/remaining_chr1_19_X_Y_transcript_dedup_then_correction_v1_20260823T042657-0500/chromosomes/chrY/final/retained_exons_and_bodies.gff3.gz
+
+case "$OUT" in /mnt/ssd/*) ;; *) echo "OUTDIR must be under /mnt/ssd (the default TMPDIR is a slow HDD)" >&2; exit 2;; esac
+for f in "$CONTROL" "$PATCHED" "$GBZ" "$GFF_GZ"; do [[ -r "$f" ]] || { echo "missing: $f" >&2; exit 2; }; done
+
+mkdir -p "$OUT/tmp"
+export TMPDIR="$OUT/tmp"
+GFF="$OUT/chrY.gff3"
+[[ -s "$GFF" ]] || gzip -dc "$GFF_GZ" > "$GFF"
+sha256sum "$CONTROL" "$PATCHED" "$GBZ" "$GFF_GZ" > "$OUT/inputs.sha256"
+
+# run <label> <binary> <threads>: production recipe (matches
+# tmp/rna_profile_chrY_20260910/run_profile.sh) plus -f for a FASTA digest.
+run() {
+    local label=$1 bin=$2 threads=$3
+    /usr/bin/time -v -o "$OUT/$label.time.txt" "$bin" rna -t "$threads" -p -z -j -c no -s Parent -y exon -r \
+        -v "$OUT/$label.hap.gbwt" -i "$OUT/$label.info.tsv" -f "$OUT/$label.tx.fa" -n "$GFF" "$GBZ" \
+        > "$OUT/$label.pg" 2> "$OUT/$label.stderr"
+    local rc=$?
+    echo "$label exit=$rc maxrss_kib=$(awk '/Maximum resident/{print $NF}' "$OUT/$label.time.txt") wall=$(awk '/Elapsed/{print $NF}' "$OUT/$label.time.txt")"
+    return $rc
+}
+
+run control_t1_a "$CONTROL" 1
+run control_t1_b "$CONTROL" 1
+run patched_t1   "$PATCHED" 1
+run control_t32  "$CONTROL" 32
+run patched_t32  "$PATCHED" 32
+
+sorted_fasta_digest() { paste - - < "$1" | sort | sha256sum | cut -d' ' -f1; }
+node_seq_digest()     { "$2" convert -f "$1" | awk '$1=="S"{print $3}' | sort | sha256sum | cut -d' ' -f1; }
+
+{
+    echo "# step 0: reproducibility floor (control vs control at -t 1); all four must match"
+    for ext in pg hap.gbwt info.tsv tx.fa; do
+        cmp -s "$OUT/control_t1_a.$ext" "$OUT/control_t1_b.$ext" && echo "identical  $ext" || echo "DIFFERENT  $ext"
+    done
+    echo "# step 1: byte gate (patched vs control at -t 1)"
+    for ext in pg hap.gbwt info.tsv tx.fa; do
+        cmp -s "$OUT/control_t1_a.$ext" "$OUT/patched_t1.$ext" && echo "identical  $ext" || echo "DIFFERENT  $ext"
+    done
+    echo "# step 2: digest gate at -t 32 (relabel-invariant)"
+    echo "info.tsv     control $(sha256sum < "$OUT/control_t32.info.tsv" | cut -c1-16)  patched $(sha256sum < "$OUT/patched_t32.info.tsv" | cut -c1-16)"
+    echo "sorted fasta control $(sorted_fasta_digest "$OUT/control_t32.tx.fa" | cut -c1-16)  patched $(sorted_fasta_digest "$OUT/patched_t32.tx.fa" | cut -c1-16)"
+    echo "node seqs    control $(node_seq_digest "$OUT/control_t32.pg" "$CONTROL" | cut -c1-16)  patched $(node_seq_digest "$OUT/patched_t32.pg" "$PATCHED" | cut -c1-16)"
+    echo "vg stats control: $("$CONTROL" stats -N -E -l -z "$OUT/control_t32.pg" | tr '\n' ' ')"
+    echo "vg stats patched: $("$PATCHED" stats -N -E -l -z "$OUT/patched_t32.pg" | tr '\n' ' ')"
+    echo "# step 3: max RSS (KiB) at -t 32; Stage A profile of the same recipe: 5367492"
+    grep -H "Maximum resident" "$OUT/control_t32.time.txt" "$OUT/patched_t32.time.txt"
+    echo "# step 5: vg validate"
+    "$PATCHED" validate "$OUT/patched_t32.pg" 2>&1 | tail -1
+} | tee "$OUT/REPORT.txt"

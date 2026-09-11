@@ -1,0 +1,7 @@
+Filters: [transcriptome]
+	WARNING: Excluded 3 transcripts with overlapping exons or incorrect exon order.
+	WARNING: Excluded 2 transcripts with overlapping exons or incorrect exon order.
+	WARNING: Excluded 1 transcripts with exon overlapping a haplotype break.
+===============================================================================
+All tests passed (732 assertions in 1 test case)
+

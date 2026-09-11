@@ -1,0 +1,33 @@
+# step 1: byte gate -- patched vs control at -t 1
+run        patched_t1 exit=0 maxrss_kib=1944340 wall=1:08.75
+PASS       byte-identical pg
+PASS       byte-identical prune_paths.gbwt
+PASS       byte-identical info.tsv
+PASS       byte-identical tx.fa
+# step 2: digest gate at -t 32 (relabel-invariant)
+run        control_t32 exit=0 maxrss_kib=5181880 wall=1:29.30
+run        patched_t32 exit=0 maxrss_kib=1984596 wall=0:56.39
+info.tsv      control 47267b21195838fa  patched 47267b21195838fa
+PASS       info.tsv digest
+sorted fasta  control 2fc629f1e9cb71d6  patched 2fc629f1e9cb71d6
+PASS       fasta digest (wrap-agnostic, name-sorted)
+-b gbwt paths control 94aedaf6bbbc87b3  patched 94aedaf6bbbc87b3
+PASS       -b GBWT digest (name, length, step count)
+node seqs     control 3d456ba809cc7772  patched 3d456ba809cc7772
+PASS       node sequence multiset
+vg stats      control: nodes	2232543 edges	3019918 2232543 3019918 length	73104102 
+vg stats      patched: nodes	2232543 edges	3019918 2232543 3019918 length	73104102 
+PASS       vg stats -N -E -l -z
+# step 3: max RSS (KiB); Stage A profile of the same chromosome (old -v recipe): 5367492
+control_t1_a  5226200 KiB  wall 1:06.11
+patched_t1    1944340 KiB  wall 1:08.75
+control_t32   5181880 KiB  wall 1:29.30
+patched_t32   1984596 KiB  wall 0:56.39
+patched/control at -t 32: 0.383  (run-to-run floor measured elsewhere: 0.03%)
+# step 4: unit tests
+PASS       vg test [transcriptome] (1 lines; see unit_test.log)
+# step 5: vg validate on the patched -t 32 graph
+validate      graph: valid
+PASS       vg validate
+# result
+ALL GATES PASSED

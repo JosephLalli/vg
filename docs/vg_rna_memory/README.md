@@ -401,11 +401,13 @@ unexecuted probe script `probe_t1/run_probe.sh`.
 | patches | -t 1 byte gate | -t 32 digests | unit test | validate | RSS patched/control | merged |
 |---|---|---|---|---|---|---|
 | 0001+0002 | identical (pg, prune_paths.gbwt, info.tsv, tx.fa) | all identical | pass, 732 assertions | valid | 3.03 / 5.19 GB = 0.584 | yes, at 583bfd90c |
-| +0003 | identical | all identical | FAIL: unittest/transcriptome.cpp:842, edge count != 17 (intron route) | valid | 1.98 / 5.19 GB = 0.381 | no |
+| +0003 (unscoped) | identical | all identical | FAIL: unittest/transcriptome.cpp:842, edge count 15 != 17 (intron route) | valid | 1.98 / 5.19 GB = 0.381 | no, superseded |
+| +0003 scoped to the transcript route | identical | all identical | pass, 732 assertions | valid | 1.94 / 5.06 GB = 0.383 | yes, at 28dc0b7be |
 
 Step 0 established that vg rna output is byte-reproducible at -t 1 (two control
 runs, identical .pg). Reports and /usr/bin/time -v files are under results/.
 0003's failure is on the vg rna -m intron route, which the production recipe does
-not use; the transcript route is byte-identical. The patch stays on
-vg-rna-memory-patches until add_splice_junction_edges reproduces augment's
-second-pass edge set there.
+not use; the transcript route is byte-identical. The bypass is therefore gated on is_introns: the --transcripts route takes the
+fast path, the --introns route still calls augment(). Reproducing augment's
+intron edge semantics in the first pass remains unimplemented; vg rna -m keeps
+the original memory profile.

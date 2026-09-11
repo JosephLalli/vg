@@ -151,6 +151,43 @@ handle_t mapping_to_handle(const Mapping & mapping, const HandleGraph & graph) {
     return (graph.get_handle(mapping.position().node_id(), mapping.position().is_reverse()));
 }
 
+// Reverse complements an edited transcript path in place: the steps are
+// visited in the opposite order, each on the other strand of its node, with
+// the offset re-measured from that strand's start. This is what
+// reverse_complement_path_in_place did to the protobuf Path; with a single
+// full-match edit per mapping its edit-list reversal and edit-sequence
+// reverse complement were no-ops, so only the position changed.
+static void reverse_complement_edited_path_in_place(vector<EditedMapping> * path, const HandleGraph & graph) {
+
+    for (auto & mapping: *path) {
+
+        const auto node_length = graph.get_length(mapping.handle);
+        assert(mapping.offset + mapping.length <= node_length);
+
+        mapping.offset = node_length - mapping.offset - mapping.length;
+        mapping.handle = graph.flip(mapping.handle);
+    }
+
+    std::reverse(path->begin(), path->end());
+}
+
+// Appends an edited transcript path step to a protobuf Path as the Mapping it
+// used to be: a Position and one full-match Edit, ranked by its position in
+// the path. Only used to hand exon boundaries to vg::augment.
+static void append_edited_mapping(Path * path, const EditedMapping & mapping, const HandleGraph & graph) {
+
+    auto new_mapping = path->add_mapping();
+    new_mapping->set_rank(path->mapping_size());
+
+    new_mapping->mutable_position()->set_node_id(graph.get_id(mapping.handle));
+    new_mapping->mutable_position()->set_offset(mapping.offset);
+    new_mapping->mutable_position()->set_is_reverse(graph.get_is_reverse(mapping.handle));
+
+    auto new_edit = new_mapping->add_edit();
+    new_edit->set_from_length(mapping.length);
+    new_edit->set_to_length(mapping.length);
+}
+
 string TranscriptPath::get_name() const {
 
     assert(!transcript_names.empty());
@@ -171,9 +208,9 @@ string TranscriptPath::get_name() const {
 
 handle_t EditedTranscriptPath::get_first_node_handle(const HandleGraph & graph) const {
 
-    assert(path.mapping_size() > 0);
+    assert(!path.empty());
 
-    return graph.get_handle(path.mapping()[0].position().node_id(), path.mapping()[0].position().is_reverse());
+    return path.front().handle;
 }
 
 CompletedTranscriptPath::CompletedTranscriptPath(const EditedTranscriptPath & edited_transcript_path_in) {
@@ -199,21 +236,15 @@ CompletedTranscriptPath::CompletedTranscriptPath(const EditedTranscriptPath & ed
     is_reference = edited_transcript_path_in.is_reference;
     is_haplotype = edited_transcript_path_in.is_haplotype;
 
-    path.reserve(edited_transcript_path_in.path.mapping_size());
-    
-    // By value copied a whole protobuf Mapping -- a Position submessage and an
-    // edit list, so a heap allocation per node -- to read four fields off it.
-    for (const auto & mapping: edited_transcript_path_in.path.mapping()) {
+    path.reserve(edited_transcript_path_in.path.size());
 
-        auto handle = mapping_to_handle(mapping, graph);
+    for (const auto & mapping: edited_transcript_path_in.path) {
 
-        // Check that the path only consist of whole nodes (complete).        
-        assert(mapping.edit_size() == 1);
-        assert(edit_is_match(mapping.edit(0)));
-        assert(mapping.position().offset() == 0);
-        assert(mapping.edit(0).from_length() == graph.get_length(handle));
+        // Check that the path only consist of whole nodes (complete).
+        assert(mapping.offset == 0);
+        assert(mapping.length == graph.get_length(mapping.handle));
 
-        path.emplace_back(handle);
+        path.emplace_back(mapping.handle);
     }
 }
 
@@ -1120,7 +1151,7 @@ list<EditedTranscriptPath> Transcriptome::project_transcript_embedded(const Tran
                     border_offsets.first = _graph->get_length(_graph->get_handle_of_step(haplotype_path_start_step)) - 1;
                 }
 
-                Path exon_path;
+                vector<EditedMapping> exon_path;
                 bool is_first_step = true;
 
                 while (true) {
@@ -1167,18 +1198,7 @@ list<EditedTranscriptPath> Transcriptome::project_transcript_embedded(const Tran
 
                     // Add new mapping in forward direction. Later the whole path will
                     // be reverse complemented if transcript is on the '-' strand.
-                    auto new_mapping = exon_path.add_mapping();
-                    new_mapping->set_rank(exon_path.mapping_size());
-                    
-
-                    new_mapping->mutable_position()->set_node_id(_graph->get_id(_graph->get_handle_of_step(haplotype_path_start_step)));
-                    new_mapping->mutable_position()->set_offset(offset);
-                    new_mapping->mutable_position()->set_is_reverse(_graph->get_is_reverse(_graph->get_handle_of_step(haplotype_path_start_step)));
-
-                    // Add new edit representing a complete match.
-                    auto new_edit = new_mapping->add_edit();
-                    new_edit->set_from_length(edit_length);
-                    new_edit->set_to_length(edit_length);
+                    exon_path.emplace_back(EditedMapping{_graph->get_handle_of_step(haplotype_path_start_step), static_cast<uint32_t>(offset), static_cast<uint32_t>(edit_length)});
                                         
                     if (haplotype_path_start_step == haplotype_path_end_step) { break; }
 
@@ -1192,11 +1212,7 @@ list<EditedTranscriptPath> Transcriptome::project_transcript_embedded(const Tran
 
                     while (true) {
 
-                        for (const Mapping& mapping : exon_path.mapping()) {
-                            auto new_mapping = exon_cur_edited_transcript_paths_base_it->path.add_mapping();
-                            *new_mapping = mapping;
-                            new_mapping->set_rank(exon_cur_edited_transcript_paths_base_it->path.mapping_size());
-                        }
+                        exon_cur_edited_transcript_paths_base_it->path.insert(exon_cur_edited_transcript_paths_base_it->path.end(), exon_path.begin(), exon_path.end());
 
                         if (exon_cur_edited_transcript_paths_base_it == cur_edited_transcript_paths_base_eit) { break; }
                         ++exon_cur_edited_transcript_paths_base_it;
@@ -1212,11 +1228,7 @@ list<EditedTranscriptPath> Transcriptome::project_transcript_embedded(const Tran
 
                         // If not last boundary combination copy current base transcipt path.
                         cur_edited_transcript_paths.emplace_back(*exon_cur_edited_transcript_paths_base_it);
-                        for (const Mapping& mapping : exon_path.mapping()) {
-                            auto new_mapping = cur_edited_transcript_paths.back().path.add_mapping();
-                            *new_mapping = mapping;
-                            new_mapping->set_rank(cur_edited_transcript_paths.back().path.mapping_size());
-                        }
+                        cur_edited_transcript_paths.back().path.insert(cur_edited_transcript_paths.back().path.end(), exon_path.begin(), exon_path.end());
 
                         if (exon_cur_edited_transcript_paths_base_it == cur_edited_transcript_paths_base_eit) { break; }
                         ++exon_cur_edited_transcript_paths_base_it;
@@ -1244,7 +1256,7 @@ list<EditedTranscriptPath> Transcriptome::project_transcript_embedded(const Tran
 
             while (cur_edited_transcript_paths_it != cur_edited_transcript_paths.end()) {
 
-                if (cur_edited_transcript_paths_it->path.mapping_size() == 0) {
+                if (cur_edited_transcript_paths_it->path.empty()) {
                 
                     // Delete empty paths.
                     cur_edited_transcript_paths_it = cur_edited_transcript_paths.erase(cur_edited_transcript_paths_it);
@@ -1254,7 +1266,7 @@ list<EditedTranscriptPath> Transcriptome::project_transcript_embedded(const Tran
                     // Reverse complement transcript paths that are on the '-' strand.
                     if (cur_transcript.is_reverse) {
 
-                        reverse_complement_path_in_place(&(cur_edited_transcript_paths_it->path), [&](vg::id_t node_id) {return _graph->get_length(_graph->get_handle(node_id, false));});
+                        reverse_complement_edited_path_in_place(&(cur_edited_transcript_paths_it->path), *_graph);
                     } 
                 }
 
@@ -1460,17 +1472,7 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
 
                             // Add new mapping in forward direction. Later the whole path will
                             // be reverse complemented if transcript is on the '-' strand.
-                            auto new_mapping = incomplete_transcript_paths_it->first.path.add_mapping();
-                            new_mapping->set_rank(incomplete_transcript_paths_it->first.path.mapping_size());
-
-                            new_mapping->mutable_position()->set_node_id(_graph->get_id(node_handle));
-                            new_mapping->mutable_position()->set_offset(offset);
-                            new_mapping->mutable_position()->set_is_reverse(_graph->get_is_reverse(node_handle));
-
-                            // Add new edit representing a complete match.
-                            auto new_edit = new_mapping->add_edit();
-                            new_edit->set_from_length(edit_length);
-                            new_edit->set_to_length(edit_length);
+                            incomplete_transcript_paths_it->first.path.emplace_back(EditedMapping{node_handle, static_cast<uint32_t>(offset), static_cast<uint32_t>(edit_length)});
 
                             if (node_start_pos + node_length <= exon_coords.second) {
 
@@ -1488,10 +1490,10 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
                         // Reverse complement transcript paths that are on the '-' strand.
                         if (cur_transcript.is_reverse) {
 
-                            reverse_complement_path_in_place(&(incomplete_transcript_paths_it->first.path), [&](vg::id_t node_id) {return _graph->get_length(_graph->get_handle(node_id, false));});
+                            reverse_complement_edited_path_in_place(&(incomplete_transcript_paths_it->first.path), *_graph);
                         } 
 
-                        assert(incomplete_transcript_paths_it->first.path.mapping_size() > 0);
+                        assert(!incomplete_transcript_paths_it->first.path.empty());
                         thread_edited_transcript_paths.emplace_back(std::move(incomplete_transcript_paths_it->first));
 
                         incomplete_transcript_paths_it = incomplete_transcript_paths.erase(incomplete_transcript_paths_it);
@@ -1789,21 +1791,11 @@ list<EditedTranscriptPath> Transcriptome::project_transcript_gbwt(const Transcri
 
                 // Add new mapping in forward direction. Later the whole path will
                 // be reverse complemented if transcript is on the '-' strand.
-                auto new_mapping = edited_transcript_paths.back().path.add_mapping();
-                new_mapping->set_rank(edited_transcript_paths.back().path.mapping_size());
-
-                new_mapping->mutable_position()->set_node_id(node_id);
-                new_mapping->mutable_position()->set_offset(offset);
-                new_mapping->mutable_position()->set_is_reverse(false);
-
-                // Add new edit representing a complete match.
-                auto new_edit = new_mapping->add_edit();
-                new_edit->set_from_length(edit_length);
-                new_edit->set_to_length(edit_length);
+                edited_transcript_paths.back().path.emplace_back(EditedMapping{_graph->get_handle(node_id, false), static_cast<uint32_t>(offset), static_cast<uint32_t>(edit_length)});
             }
         }
 
-        if (edited_transcript_paths.back().path.mapping_size() == 0) {
+        if (edited_transcript_paths.back().path.empty()) {
 
             // Delete empty paths.
             edited_transcript_paths.pop_back();
@@ -1813,7 +1805,7 @@ list<EditedTranscriptPath> Transcriptome::project_transcript_gbwt(const Transcri
             if (cur_transcript.is_reverse) {
 
                 // Reverse complement transcript paths that are on the '-' strand.
-                reverse_complement_path_in_place(&(edited_transcript_paths.back().path), [&](vg::id_t node_id) {return _graph->get_length(_graph->get_handle(node_id, false));});
+                reverse_complement_edited_path_in_place(&(edited_transcript_paths.back().path), *_graph);
             }
 
             // Copy paths if collapse of identical transcript paths is not wanted.
@@ -2115,23 +2107,19 @@ bool Transcriptome::has_novel_exon_boundaries(const list<EditedTranscriptPath> &
 
     for (auto & transcript_path: edited_transcript_paths) {
 
-        for (size_t i = 0; i < transcript_path.path.mapping_size(); i++) {
+        for (size_t i = 0; i < transcript_path.path.size(); i++) {
 
-            auto cur_mapping = transcript_path.path.mapping(i);
-            auto cur_handle = mapping_to_handle(cur_mapping, *_graph);
-
-            assert(cur_mapping.edit_size() == 1);
-            assert(edit_is_match(cur_mapping.edit(0)));
+            const EditedMapping & cur_mapping = transcript_path.path.at(i);
 
             if (include_transcript_ends || i != 0) {
                 // Check if left boundary is novel
-                if (cur_mapping.position().offset() > 0) {
+                if (cur_mapping.offset > 0) {
                     return true;
                 }
             }
-            if (include_transcript_ends || i + 1 != transcript_path.path.mapping_size()) {
+            if (include_transcript_ends || i + 1 != transcript_path.path.size()) {
                 // Check if right boundary is novel
-                if (cur_mapping.position().offset() + cur_mapping.edit(0).from_length() != _graph->get_length(cur_handle)) {
+                if (cur_mapping.offset + cur_mapping.length != _graph->get_length(cur_mapping.handle)) {
                     return true;
                 }
             }
@@ -2141,14 +2129,17 @@ bool Transcriptome::has_novel_exon_boundaries(const list<EditedTranscriptPath> &
     return false;
 }
 
-void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_transcript_paths, const bool is_introns, unique_ptr<gbwt::GBWT> & haplotype_index, const bool update_haplotypes, const bool add_reference_transcript_paths) {
+void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript_paths, const bool is_introns, unique_ptr<gbwt::GBWT> & haplotype_index, const bool update_haplotypes, const bool add_reference_transcript_paths) {
 
 #ifdef transcriptome_debug
     double time_convert_1 = gcsa::readTimer();
     cerr << "\t\tDEBUG Creation start: " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif
 
-    // Create set of exon boundary paths to augment graph with.
+    // Create set of exon boundary paths to augment graph with. augment()
+    // still takes protobuf Paths, so each boundary is materialised as the
+    // Mapping it used to be; these are transient and one per unique boundary
+    // (one per intron path on the intron route), not one per transcript step.
     vector<Path> exon_boundary_paths;
 
     if (is_introns) {
@@ -2157,37 +2148,34 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
 
         for (auto & transcript_path: edited_transcript_paths) {
 
-            exon_boundary_paths.emplace_back(transcript_path.path);
+            exon_boundary_paths.emplace_back(Path());
+
+            for (auto & mapping: transcript_path.path) {
+
+                append_edited_mapping(&(exon_boundary_paths.back()), mapping, *_graph);
+            }
         }
 
     } else {
 
-        spp::sparse_hash_set<Mapping, MappingHash> exon_boundary_mapping_index;
+        spp::sparse_hash_set<EditedMapping, EditedMappingHash> exon_boundary_mapping_index;
 
         for (auto & transcript_path: edited_transcript_paths) {
 
-            for (size_t j = 0; j < transcript_path.path.mapping_size(); ++j) {
-
-                const Mapping & mapping = transcript_path.path.mapping(j);
-
-                const auto mapping_length = mapping_to_length(mapping);
-                assert(mapping_length == mapping_from_length(mapping));
+            for (auto & mapping: transcript_path.path) {
 
                 // Add exon boundary path.
-                if (mapping.position().offset() > 0 || mapping.position().offset() + mapping_length < _graph->get_length(_graph->get_handle(mapping.position().node_id(), false))) {
+                if (mapping.offset > 0 || mapping.offset + mapping.length < _graph->get_length(mapping.handle)) {
 
-                    exon_boundary_paths.emplace_back(Path());
-                    *(exon_boundary_paths.back().add_mapping()) = mapping; 
-                    exon_boundary_paths.back().mutable_mapping(0)->set_rank(1);
+                    // Skip if already added.
+                    if (exon_boundary_mapping_index.emplace(mapping).second) {
 
-                    // Remove if already added.
-                    if (!exon_boundary_mapping_index.emplace(exon_boundary_paths.back().mapping(0)).second) {
-                    
-                        exon_boundary_paths.pop_back();
+                        exon_boundary_paths.emplace_back(Path());
+                        append_edited_mapping(&(exon_boundary_paths.back()), mapping, *_graph);
                     }
-                }  
+                }
             }
-        }   
+        }
     }
 
 #ifdef transcriptome_debug
@@ -2203,6 +2191,10 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
 
     // Augment graph with edited paths. 
     augment(static_cast<MutablePathMutableHandleGraph *>(_graph.get()), exon_boundary_paths, "GAM", &translations, "", false, !is_introns);
+
+    // The boundary paths were only input to augment(); release them here
+    // rather than when this function returns.
+    vector<Path>().swap(exon_boundary_paths);
 
 #ifdef transcriptome_debug
     cerr << "\t\tDEBUG Augmented graph with " << translations.size() << " translations: " << gcsa::readTimer() - time_augment_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
@@ -2262,6 +2254,15 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
         sort(translation.second.begin(), translation.second.end());
     }
 
+    // translation_index now holds everything that is read from the
+    // translations: one (offset, handle) pair per changed node side. The
+    // translations themselves are two protobuf Translations per graph node
+    // (about 1 KB per node: 2.2 GB for chrY's 2.2M nodes, 45.9% of the peak
+    // heap in the chrY profile) and were kept alive until this function
+    // returned, across the GBWT update and the rewrite of every transcript
+    // path below. Release them now; swap, because shrink_to_fit is a request.
+    vector<Translation>().swap(translations);
+
 #ifdef transcriptome_debug
     cerr << "\t\tDEBUG Indexed " << translation_index.size() << " translated nodes: " << gcsa::readTimer() - time_index_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif 
@@ -2306,22 +2307,26 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
     list<CompletedTranscriptPath> updated_transcript_paths;
 
     // Update paths to match new augmented graph and add them
-    // as reference transcript paths.
-    for (auto & transcript_path: edited_transcript_paths) {
+    // as reference transcript paths. Each edited path is released as soon as
+    // its completed path exists, so the two representations cross over
+    // instead of stacking: the completed handle vectors (8 bytes per step of
+    // the augmented path) would otherwise sit on top of the whole edited list
+    // until this function returned.
+    auto edited_transcript_paths_it = edited_transcript_paths.begin();
+
+    while (edited_transcript_paths_it != edited_transcript_paths.end()) {
+
+        const EditedTranscriptPath & transcript_path = *edited_transcript_paths_it;
 
         updated_transcript_paths.emplace_back(transcript_path);
 
-        // Same copy as in CompletedTranscriptPath's constructor, on the hotter
-        // path: this runs once per node of every transcript path while the
-        // augmented graph is rewritten, and the body only reads.
-        for (const auto & mapping: transcript_path.path.mapping()) {
+        for (const auto & mapping: transcript_path.path) {
 
-            auto mapping_handle = mapping_to_handle(mapping, *_graph);
-            auto mapping_offset = mapping.position().offset();
-            auto mapping_length = mapping_to_length(mapping);
+            const auto mapping_handle = mapping.handle;
+            const int64_t mapping_offset = mapping.offset;
+            const int64_t mapping_length = mapping.length;
 
             assert(mapping_length > 0);
-            assert(mapping_length == mapping_from_length(mapping));
 
             auto translation_index_it = translation_index.find(mapping_handle);
 
@@ -2347,6 +2352,8 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
                 updated_transcript_paths.back().path.emplace_back(mapping_handle);
             }
         }
+
+        edited_transcript_paths_it = edited_transcript_paths.erase(edited_transcript_paths_it);
     }
 
     add_splice_junction_edges(updated_transcript_paths);
@@ -2508,16 +2515,10 @@ void Transcriptome::add_splice_junction_edges(const list<EditedTranscriptPath> &
 
     for (auto & transcript_path: edited_transcript_paths) {
 
-        for (size_t i = 1; i < transcript_path.path.mapping_size(); i++) {
+        for (size_t i = 1; i < transcript_path.path.size(); i++) {
 
-            auto & prev_mapping = transcript_path.path.mapping(i - 1);
-            auto & cur_mapping = transcript_path.path.mapping(i);
-
-            auto prev_handle = mapping_to_handle(prev_mapping, *_graph);
-            auto cur_handle = mapping_to_handle(cur_mapping, *_graph);
-            
             // Ensure the edge exists.
-            _graph->create_edge(prev_handle, cur_handle);
+            _graph->create_edge(transcript_path.path.at(i - 1).handle, transcript_path.path.at(i).handle);
         }
     }
 }

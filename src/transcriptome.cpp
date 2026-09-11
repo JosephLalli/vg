@@ -2136,14 +2136,41 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
     cerr << "\t\tDEBUG Creation start: " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif
 
-    // Create set of exon boundary paths to augment graph with. augment()
-    // still takes protobuf Paths, so each boundary is materialised as the
-    // Mapping it used to be; these are transient and one per unique boundary
-    // (one per intron path on the intron route), not one per transcript step.
-    vector<Path> exon_boundary_paths;
+    // Divide nodes at exon boundaries and build the translation index the
+    // rest of this function needs: one (offset, handle) pair per changed
+    // node side. The two callers take different routes to that index.
+    //
+    // add_reference_transcripts (is_introns == false, the --transcripts
+    // route) runs only find_breakpoints -> forwardize_breakpoints ->
+    // ensure_breakpoints -- the first pass of vg::augment, kept as is so
+    // that node division, and with it the ids of the new nodes, happens
+    // exactly as it did through augment(). augment()'s second pass is
+    // skipped: it built two protobuf Translations per graph node (about
+    // 1 KB per node, 45.9% of the peak heap in the chrY profile), and the
+    // index below is filled directly from the map ensure_breakpoints
+    // returns instead. This route is measured byte-identical to calling
+    // augment() end to end (chrY output at -t 1, all -t 32
+    // relabel-invariant digests, vg validate) at roughly a third of
+    // augment()'s peak RSS.
+    //
+    // add_intron_splice_junctions (is_introns == true, the --introns
+    // route) still calls vg::augment(). Running only its first pass here
+    // does not reproduce it for intron paths: with the first pass alone,
+    // the Catch2 section "Transcriptome can parse intron BED file and add
+    // splice-junctions" gets the right node count (12) but only 15 of the
+    // expected 17 edges -- two edges that augment()'s second pass creates
+    // for intron paths are missing, and add_splice_junction_edges below
+    // does not recreate them. So this route keeps calling augment() and
+    // paying its full memory cost, in exchange for its exact original
+    // behavior.
+    spp::sparse_hash_map<handle_t, vector<pair<int32_t, handle_t> > > translation_index;
 
     if (is_introns) {
 
+        // Create set of exon boundary paths to augment graph with. augment()
+        // takes protobuf Paths, so each edited transcript path is
+        // materialised as one Path of Mappings.
+        vector<Path> exon_boundary_paths;
         exon_boundary_paths.reserve(edited_transcript_paths.size());
 
         for (auto & transcript_path: edited_transcript_paths) {
@@ -2156,7 +2183,97 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
             }
         }
 
+#ifdef transcriptome_debug
+    cerr << "\t\tDEBUG Created " << exon_boundary_paths.size() << " exon boundary paths: " << gcsa::readTimer() - time_convert_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+#endif
+
+#ifdef transcriptome_debug
+    double time_augment_1 = gcsa::readTimer();
+    cerr << "\t\tDEBUG Augmention start: " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+#endif
+
+        vector<Translation> translations;
+
+        // Augment graph with edited paths.
+        augment(static_cast<MutablePathMutableHandleGraph *>(_graph.get()), exon_boundary_paths, "GAM", &translations, "", false, !is_introns);
+
+        // The boundary paths were only input to augment(); release them here
+        // rather than when this function returns.
+        vector<Path>().swap(exon_boundary_paths);
+
+#ifdef transcriptome_debug
+    cerr << "\t\tDEBUG Augmented graph with " << translations.size() << " translations: " << gcsa::readTimer() - time_augment_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+#endif
+
+#ifdef transcriptome_debug
+    double time_index_1 = gcsa::readTimer();
+    cerr << "\t\tDEBUG Indexing start: " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+#endif
+
+        #pragma omp parallel num_threads(num_threads)
+        {
+            spp::sparse_hash_map<handle_t, vector<pair<int32_t, handle_t> > > thread_translation_index;
+
+            // Create translation index
+            #pragma omp for schedule(static)
+            for (size_t i = 0; i < translations.size(); ++i) {
+
+                const Translation & translation = translations.at(i);
+
+                assert(translation.from().mapping_size() == 1);
+                assert(translation.to().mapping_size() == 1);
+
+                auto & from_mapping = translation.from().mapping(0);
+                auto & to_mapping = translation.to().mapping(0);
+
+                assert(to_mapping.position().offset() == 0);
+                assert(from_mapping.position().is_reverse() == to_mapping.position().is_reverse());
+
+                // Only store changes
+                if (from_mapping != to_mapping) {
+
+                    auto thread_translation_index_it = thread_translation_index.emplace(mapping_to_handle(from_mapping, *_graph), vector<pair<int32_t, handle_t> >());
+                    thread_translation_index_it.first->second.emplace_back(from_mapping.position().offset(), mapping_to_handle(to_mapping, *_graph));
+                }
+            }
+
+            #pragma omp critical
+            {
+                for (auto & translation: thread_translation_index) {
+
+                    auto translation_index_it = translation_index.emplace(translation.first, translation.second);
+
+                    if (!translation_index_it.second) {
+
+                        translation_index_it.first->second.insert(translation_index_it.first->second.end(), translation.second.begin(), translation.second.end());
+                    }
+                }
+            }
+        }
+
+        // Sort translation index by offset
+        for (auto & translation: translation_index) {
+
+            sort(translation.second.begin(), translation.second.end());
+        }
+
+        // translation_index now holds everything read from the
+        // translations: one (offset, handle) pair per changed node side.
+        // The translations themselves are two protobuf Translations per
+        // graph node and were kept alive until this function returned,
+        // across the GBWT update and the rewrite of every transcript path
+        // below. Release them now; swap, because shrink_to_fit is a
+        // request.
+        vector<Translation>().swap(translations);
+
+#ifdef transcriptome_debug
+    cerr << "\t\tDEBUG Indexed " << translation_index.size() << " translated nodes: " << gcsa::readTimer() - time_index_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+#endif
+
     } else {
+
+        unordered_map<id_t, set<pos_t> > breakpoints;
+        uint64_t num_exon_boundary_paths = 0;
 
         spp::sparse_hash_set<EditedMapping, EditedMappingHash> exon_boundary_mapping_index;
 
@@ -2170,102 +2287,79 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
                     // Skip if already added.
                     if (exon_boundary_mapping_index.emplace(mapping).second) {
 
-                        exon_boundary_paths.emplace_back(Path());
-                        append_edited_mapping(&(exon_boundary_paths.back()), mapping, *_graph);
+                        Path exon_boundary_path;
+                        append_edited_mapping(&exon_boundary_path, mapping, *_graph);
+
+                        find_breakpoints(simplify(exon_boundary_path), breakpoints, true, "", 0, 1.);
+                        ++num_exon_boundary_paths;
                     }
                 }
             }
         }
-    }
 
 #ifdef transcriptome_debug
-    cerr << "\t\tDEBUG Created " << exon_boundary_paths.size() << " exon boundary paths: " << gcsa::readTimer() - time_convert_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
-#endif 
+    cerr << "\t\tDEBUG Created " << num_exon_boundary_paths << " exon boundary paths: " << gcsa::readTimer() - time_convert_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+#endif
 
 #ifdef transcriptome_debug
     double time_augment_1 = gcsa::readTimer();
     cerr << "\t\tDEBUG Augmention start: " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif
 
-    vector<Translation> translations;
+        // Divide the nodes. ensure_breakpoints divides each node left to right
+        // and records, on both strands, the piece that starts at every old
+        // position; the leftmost piece keeps the original id.
+        breakpoints = forwardize_breakpoints(_graph.get(), breakpoints);
+        auto node_translation = ensure_breakpoints(_graph.get(), breakpoints);
 
-    // Augment graph with edited paths. 
-    augment(static_cast<MutablePathMutableHandleGraph *>(_graph.get()), exon_boundary_paths, "GAM", &translations, "", false, !is_introns);
-
-    // The boundary paths were only input to augment(); release them here
-    // rather than when this function returns.
-    vector<Path>().swap(exon_boundary_paths);
+        unordered_map<id_t, set<pos_t> >().swap(breakpoints);
 
 #ifdef transcriptome_debug
-    cerr << "\t\tDEBUG Augmented graph with " << translations.size() << " translations: " << gcsa::readTimer() - time_augment_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
-#endif 
+    cerr << "\t\tDEBUG Augmented graph with " << node_translation.size() << " node translations: " << gcsa::readTimer() - time_augment_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+#endif
 
 #ifdef transcriptome_debug
     double time_index_1 = gcsa::readTimer();
     cerr << "\t\tDEBUG Indexing start: " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif
 
-    spp::sparse_hash_map<handle_t, vector<pair<int32_t, handle_t> > > translation_index;
+        for (auto & translation: node_translation) {
 
-    #pragma omp parallel num_threads(num_threads)
-    {
-        spp::sparse_hash_map<handle_t, vector<pair<int32_t, handle_t> > > thread_translation_index;
+            const pos_t & from_pos = translation.first;
+            const id_t to_id = translation.second;
 
-        // Create translation index 
-        #pragma omp for schedule(static)
-        for (size_t i = 0; i < translations.size(); ++i) {
+            // Sentinel for the position past the end of the node.
+            if (to_id == 0) {
 
-            const Translation & translation = translations.at(i);
-
-            assert(translation.from().mapping_size() == 1);
-            assert(translation.to().mapping_size() == 1);
-
-            auto & from_mapping = translation.from().mapping(0);
-            auto & to_mapping = translation.to().mapping(0);
-
-            assert(to_mapping.position().offset() == 0);
-            assert(from_mapping.position().is_reverse() == to_mapping.position().is_reverse());
-
-            // Only store changes
-            if (from_mapping != to_mapping) {
-
-                auto thread_translation_index_it = thread_translation_index.emplace(mapping_to_handle(from_mapping, *_graph), vector<pair<int32_t, handle_t> >());
-                thread_translation_index_it.first->second.emplace_back(from_mapping.position().offset(), mapping_to_handle(to_mapping, *_graph));
+                continue;
             }
+
+            // Only store changes: the leftmost piece keeps its id and, on the
+            // forward strand, its offset, so it translates to itself. This is
+            // the from_mapping != to_mapping test the translations used to go
+            // through.
+            if (offset(from_pos) == 0 && to_id == id(from_pos)) {
+
+                continue;
+            }
+
+            auto translation_index_it = translation_index.emplace(_graph->get_handle(id(from_pos), is_rev(from_pos)), vector<pair<int32_t, handle_t> >());
+            translation_index_it.first->second.emplace_back(static_cast<int32_t>(offset(from_pos)), _graph->get_handle(to_id, is_rev(from_pos)));
         }
 
-        #pragma omp critical
-        {
-            for (auto & translation: thread_translation_index) {
+        map<pos_t, id_t>().swap(node_translation);
 
-                auto translation_index_it = translation_index.emplace(translation.first, translation.second);
+        // Sort translation index by offset
+        for (auto & translation: translation_index) {
 
-                if (!translation_index_it.second) {
-
-                    translation_index_it.first->second.insert(translation_index_it.first->second.end(), translation.second.begin(), translation.second.end());
-                }
-            }
+            sort(translation.second.begin(), translation.second.end());
         }
-    }
-
-    // Sort translation index by offset
-    for (auto & translation: translation_index) {
-
-        sort(translation.second.begin(), translation.second.end());
-    }
-
-    // translation_index now holds everything that is read from the
-    // translations: one (offset, handle) pair per changed node side. The
-    // translations themselves are two protobuf Translations per graph node
-    // (about 1 KB per node: 2.2 GB for chrY's 2.2M nodes, 45.9% of the peak
-    // heap in the chrY profile) and were kept alive until this function
-    // returned, across the GBWT update and the rewrite of every transcript
-    // path below. Release them now; swap, because shrink_to_fit is a request.
-    vector<Translation>().swap(translations);
 
 #ifdef transcriptome_debug
     cerr << "\t\tDEBUG Indexed " << translation_index.size() << " translated nodes: " << gcsa::readTimer() - time_index_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
-#endif 
+#endif
+
+    }
 
     if (!haplotype_index->empty() && update_haplotypes) {
 

@@ -411,3 +411,31 @@ not use; the transcript route is byte-identical. The bypass is therefore gated o
 fast path, the --introns route still calls augment(). Reproducing augment's
 intron edge semantics in the first pass remains unimplemented; vg rna -m keeps
 the original memory profile.
+
+## 10. chr20 and chr18, 2026-09-10: the patches at chromosome scale
+
+chr20 was run as a full gate against the pre-patch control (v0.11-16-g6ffdcb969,
+sha 4e63c323) with the merged binary (v0.11-24-g139102fa0, sha 35867c7f).
+
+| run | peak RSS | wall | result |
+|---|---|---|---|
+| control -t 1 (a) | 105.32 GiB | 22:17 | reproducibility floor |
+| control -t 1 (b) | 105.28 GiB | 22:38 | byte-identical to (a): floor holds on chr20 |
+| patched -t 1 | 15.31 GiB | 15:07 | byte-identical to control: pg, prune_paths.gbwt, info.tsv, tx.fa |
+| control -t 64 | 105.22 GiB | 15:24 | |
+| patched -t 64 | 17.00 GiB | 11:04 | all relabel-invariant digests identical |
+
+Controlled ratio 0.162 at -t 64 and 0.145 at -t 1, against a control-vs-control
+floor of 0.04% on this chromosome. vg test [transcriptome] and vg validate pass.
+
+chr18 (patched only, -t 64, no control arm): 11.83 GiB peak, 6:56 wall, graph
+valid, 515,435 embedded paths against 515,431 transcripts parsed.
+
+The composition of the remaining peak has changed, and so has what predicts it.
+chr18 and chr20 have near-identical actionable-parent counts (20,421 vs 20,924)
+but differ 11.83 vs 17.00 GiB at the same thread count, while their annotations
+differ 66 vs 103 MB. Pre-patch, parent count predicted peak far better than
+annotation size; post-patch the patches removed the term that scaled with
+transcript steps, so annotation size now fits better. Any cap model refitted on
+patched measurements should be treated as provisional until there are anchors
+from a large chromosome.

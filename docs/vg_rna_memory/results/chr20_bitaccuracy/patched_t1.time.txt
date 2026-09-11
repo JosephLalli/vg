@@ -1,0 +1,23 @@
+	Command being timed: "/mnt/ssd/lalli/.codex/worktrees/e3e42ac4-cc4f-4bc9-850a-591d197313b9/vg-latest/bin/vg rna -t 1 -p -z -j -c no -s Parent -y exon -r -b /mnt/ssd/lalli/vg_rna_validation/chr20_bitaccuracy_20260910T213019/patched_t1.prune_paths.gbwt -i /mnt/ssd/lalli/vg_rna_validation/chr20_bitaccuracy_20260910T213019/patched_t1.info.tsv -f /mnt/ssd/lalli/vg_rna_validation/chr20_bitaccuracy_20260910T213019/patched_t1.tx.fa -n /mnt/ssd/lalli/vg_rna_validation/chr20_bitaccuracy_20260910T213019/chr20.gff3 /mnt/ssd/lalli/hprc_v2_vg_rna/graph/hprc-v2.1-mc-chm13.full.noHG002.canonical_chunks_v1_20260802T112539-0500/chunks/hprc-v2.1-mc-chm13.full.noHG002_12_chr20.gbz"
+	User time (seconds): 765.78
+	System time (seconds): 126.09
+	Percent of CPU this job got: 98%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 15:07.25
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 16056280
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 8
+	Minor (reclaiming a frame) page faults: 27774551
+	Voluntary context switches: 1598
+	Involuntary context switches: 4989
+	Swaps: 0
+	File system inputs: 1105440
+	File system outputs: 42297864
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

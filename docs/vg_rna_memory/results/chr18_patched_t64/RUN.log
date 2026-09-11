@@ -1,0 +1,23 @@
+chromosome    chr18   threads 64   patched-only (no control arm, by request)
+binary        vg version v0.11-24-g139102fa0  sha=35867c7faa54fd41
+inputs        gbz=hprc-v2.1-mc-chm13.full.noHG002_9_chr18.gbz  gff=retained_exons_and_bodies.gff3.gz
+=== vg rna (production recipe, -t 64) ===
+vg rna exit=0
+cpu           141%
+wall clock    6:56.15
+peak RSS      11.83 GiB (12408356 KiB)
+=== outputs ===
+  chr18.transcript_full.pg     4.2G
+  chr18.prune_paths.gbwt       64M
+  chr18.info.tsv               69M
+=== vg validate ===
+graph: valid
+=== vg stats ===
+3710528 5117698 length	85663935 
+=== phase timings from vg rna stderr ===
+[vg rna] Graph and GBWT index parsed in 13.7333 seconds, 0.527184 GB
+[vg rna] Transcripts parsed and graph updated in 54.4304 seconds, 11.032 GB
+[vg rna] Graph sorted and compacted in 18.6265 seconds, 11.032 GB
+[vg rna] Transcript paths added in 207.772 seconds, 11.3237 GB
+[vg rna] Graph and pantranscriptome written in 119.068 seconds, 11.8335 GB
+DONE

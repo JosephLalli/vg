@@ -1,8 +1,10 @@
 # Agent notes for this `vg` fork
 
 This is a fork of `vgteam/vg` at release **v1.75.1** carrying three fork-specific
-things, plus a smaller, unvalidated concurrency change to upstream prune code.
-Read the linked docs before working on any of them.
+things, plus a smaller, partially-validated concurrency change to upstream prune
+code (correctness gated at fixture scale; pangenome-scale absolute cost now
+measured, no controlled speedup A/B yet). Read the linked docs before working on
+any of them.
 
 ## 1. Building — never a bare `make`
 
@@ -50,7 +52,7 @@ Code: new `src/mpmap_trace.{hpp,cpp}`; hooks in `src/multipath_mapper.cpp` and
 `src/subcommand/mpmap_main.cpp`. Smoke test: `test/t/35_vg_mpmap_trace.t`
 (`cd test && prove -v t/35_vg_mpmap_trace.t`).
 
-## PhaseUnfolder/prune concurrency (timing unvalidated)
+## PhaseUnfolder/prune concurrency (absolute cost measured; no controlled A/B)
 
 Three merged commits, all ancestors of HEAD, attack `vg prune -u`'s
 near-single-threaded bottleneck (measured 15.6-59h wall time per chromosome
@@ -63,11 +65,24 @@ regardless of `-t`, CPU% consistently 100-145%):
   `test/t/38_vg_prune.t`, and a `deps/libbdsg` gitlink bump to fork commit `b07563bb9`
 
 Each records a byte-identity gate, so treat them as correctness-verified at fixture
-scale. What is missing is a **pangenome-scale timing**: the A/B built to measure the
-speedup (`prune_benchmarks/chr21_unfold_ab` in the `hprc_v2_vg_rna` workspace) aborted
+scale. The controlled A/B built to measure the speedup
+(`prune_benchmarks/chr21_unfold_ab` in the `hprc_v2_vg_rna` workspace) aborted
 5.5 minutes into its serial control arm and never ran the parallel arm. That abort is
 explained — `Linger=no` killed the `systemd-run --user --scope` on session teardown
-(exit 143); linger is enabled now. Quote no speedup until that A/B completes.
+(exit 143); linger is enabled now — but the A/B itself is still not rerun, so still
+quote no speedup multiple for these three commits.
+
+What does now exist (2026-09-12) is a pangenome-scale **absolute** timing on the real
+build binary, not a controlled A/B: chrY/chr18/chr2 genic prune at 6.05/42.28/194.65
+GiB peak RSS and 11:42/38:26/2:41:33 wall, scaling linearly in graph size (chrY is a
+small-graph outlier, not a scaling anchor) and projecting the 23-chromosome corpus at
+~33h serial against the ~22-day plan it replaces. chr2's CPU profile (mean 518%, peak
+791%) is the first pangenome-scale evidence `bbf264574` engages. A before/after against
+`bbf264574`'s own commit note (4h18m -> measured 2h41m, within 3% of the Amdahl
+prediction on the unfold alone) is suggestive but is a different-binary comparison, not
+a controlled A/B, and does not replace `chr21_unfold_ab`. Memory, not time, is now the
+binding constraint: chr2 peaked at 194.65 GiB of a 280 GiB cap. Detail: `CLAUDE.md`'s
+"Fork-specific subsystems" section and `hprc_v2_vg_rna/notes/prune_calibration_2026-09-12.md`.
 
 ## `vg rna` transcript-path memory
 

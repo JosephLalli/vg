@@ -18,7 +18,7 @@ area:
 | Building on this machine | [BUILDING-LOCAL.md](BUILDING-LOCAL.md) |
 | External-memory GCSA2 construction | [deps/gcsa2/EXTERNAL_MEMORY_CONSTRUCTION.md](deps/gcsa2/EXTERNAL_MEMORY_CONSTRUCTION.md) |
 | `vg mpmap --trace-splice-search` | [MPMAP-SPLICE-TRACE.md](MPMAP-SPLICE-TRACE.md) |
-| PhaseUnfolder/prune concurrency (timing unvalidated) | this file, "Fork-specific subsystems" below |
+| PhaseUnfolder/prune concurrency (absolute cost measured 2026-09-12; no controlled A/B) | this file, "Fork-specific subsystems" below |
 | `vg rna` transcript-path memory | [docs/vg_rna_memory/README.md](docs/vg_rna_memory/README.md) |
 
 `docs/` holds design and status notes for the splice-discovery investigation
@@ -167,7 +167,7 @@ it can answer are in MPMAP-SPLICE-TRACE.md.
 cd test && prove -v t/35_vg_mpmap_trace.t
 ```
 
-### PhaseUnfolder/prune concurrency (timing unvalidated)
+### PhaseUnfolder/prune concurrency (absolute cost measured; no controlled A/B)
 
 Three merged commits ancestral to HEAD attack `vg prune -u`'s near-single-threaded
 wall-clock cost, which is the largest per-chromosome cost in the whole-genome
@@ -187,19 +187,57 @@ transcript-pangenome pipeline (15.6-59h per chromosome measured, CPU% consistent
   `test/t/38_vg_prune.t`, plus a `deps/libbdsg` gitlink bump) — batches the per-node
   edge deletion the prune pass issues.
 
-**Each commit records a byte-identity gate; what no measurement establishes is the
+**Each commit records a byte-identity gate; what the gates don't establish is the
 speedup.** `bbf264574` gated on byte-identity of the pruned graph *and* the node
 mapping, not the graph alone; `409c30a77` records byte-identical results in `-e`, `-r`
 and `-u` modes, `-u` being the mode the pangenome pipeline uses, and `b47de4db9`
 carries `t/38_vg_prune.t` coverage. Do not repeat the earlier claim in this file that
-nothing confirms their safety — that was wrong. What is genuinely missing is a
-**pangenome-scale timing**: the one A/B built to measure it
+nothing confirms their safety — that was wrong.
+
+A **controlled A/B** is still missing: the one built to measure the speedup
 (`prune_benchmarks/chr21_unfold_ab` in the downstream `hprc_v2_vg_rna` workspace)
-aborted 5.5 minutes into its serial control arm and never ran the parallel arm, so no
-speedup number exists. That abort is now understood — the user session had
-`Linger=no`, so `systemd-run --user --scope` died on session teardown (exit 143);
-`loginctl enable-linger` is set now. Re-run that A/B to completion before quoting a
-speedup for a production build.
+aborted 5.5 minutes into its serial control arm and never ran the parallel arm. That
+abort is understood — the user session had `Linger=no`, so `systemd-run --user --scope`
+died on session teardown (exit 143); `loginctl enable-linger` is set now — but the A/B
+itself has not been rerun. Do not attribute a specific multiple to these three commits
+until it is.
+
+What now exists (2026-09-12) is a **pangenome-scale absolute timing**, which is a
+different and weaker claim: not a controlled A/B, but a measurement of the actual
+binary (sha256 `35867c7f…`) that will run the whole-genome build.
+`scripts/whole_genome/build_joint_genic_k32_index.sh calibrate` in the downstream
+workspace ran `vg prune -p -u -k 32 -M 0 -t 96 -g <guide> -a -m <throwaway>` against a
+throwaway node mapping and discarded the pruned output, on three stripped genic
+chromosome graphs:
+
+| chromosome | stripped genic graph | wall | peak RSS |
+|---|---|---|---|
+| chrY | 0.32 GB | 11:41.91 | 6.05 GiB |
+| chr18 | 5.96 GB | 38:25.97 | 42.28 GiB |
+| chr2 | 26.64 GB | 2:41:33 | 194.65 GiB |
+
+Scaling from chr18 to chr2 is linear in graph size (4.47x the graph for 4.20x the wall,
+4.60x the memory); chrY is a small-graph outlier and must not be used as a scaling
+anchor — a two-point fit through it predicted chr2 at 70.5 min against an actual
+161.55 min. Projected over the 23-chromosome, 321 GB genic corpus: **~33h serial**,
+against a joint-index driver that had been planned around roughly 22 days. chr2's CPU
+profile (304 samples at 30s intervals) averaged 518%, peaked at 791%, with 84% of
+samples above 200% — the first pangenome-scale evidence that `bbf264574` actually
+engages; the pre-optimization signature recorded above is "CPU% consistently 100-145%
+regardless of `-t`."
+
+A before/after on chr2's genic scope against `bbf264574`'s own commit note (4h18m, of
+which 1h43m was the single-threaded unfold) is suggestive — Amdahl on the unfold alone
+predicts 2h36m, measured 2h41m, within 3% — but it is **not** a controlled A/B
+(different binary; the annotation and graph were rebuilt in between) and must not be
+read as attributing a clean multiple to these three commits versus anything else that
+changed in between; it does not replace `chr21_unfold_ab`. Full write-up:
+`hprc_v2_vg_rna/notes/prune_calibration_2026-09-12.md`.
+
+Memory, not time, is now the binding constraint on prune concurrency at pangenome
+scale: chr2 peaked at 194.65 GiB against a 280 GiB cap (70%); two large chromosomes
+pruning concurrently would want ~390 GiB. Keep prune serial for large chromosomes, or
+pair a large one with a small one.
 
 Note `b47de4db9` moves the `deps/libbdsg` gitlink to a fork commit
 (`b07563bb9`, branch `packed-graph-batch-edge-deletion` on `JosephLalli/libbdsg`)

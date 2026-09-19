@@ -94,17 +94,11 @@ The run peaked at 341.07 GiB against a chr21-anchored prediction of ~350 GiB
 2.167 GiB per GiB of graph). chr2 came in at 2.110 GiB/GiB — **2.6% apart**. The
 scaling estimate was good.
 
-An earlier ~1,300 GiB projection, derived from chr19 `vg convert -x` receipts,
-is **withdrawn**: those were produced by vg v1.74.1, whose `index_node_to_path`
-spilled to a disk-backed `mmmulti` map absent from the pinned binary, so much of
-that "RSS" was evictable mapped file pages. Note the narrower claim — mmmulti is
-still used for edge sides at `deps/xg/src/xg.cpp:989-993`; what the pinned binary
-lacks is the node-to-path spill map specifically.
-
-A separate ~1,192 GiB projection for chr2, carried in
-`hprc_v2_vg_rna/notes/chr21_or_vs_exact_dedup_downstream.md`, is also falsified; its
-correction is recorded there. Both failed the same way: a ratio measured on one
-binary carried forward to a run executed by a later one.
+Two earlier projections for this run, one derived from chr19 `vg convert -x`
+receipts and one from the chr21 exact arm, were each several times high. Both
+failed the same way — **a ratio measured on one binary carried forward to a run
+executed by a later one** — which is the durable lesson and the reason this
+document states its binary SHA. Neither number is repeated here.
 
 ### 3. The ranked targets, and the one number that frames them
 
@@ -277,7 +271,7 @@ generation — and the XG rewrite landed between the two runs, so the calibratio
 node-to-path index spilled to a page-cache-backed mapped file while this run's is
 anonymous `int_vector` storage. The 1.75x memory ratio therefore compares a
 partly file-backed peak against a fully anonymous one, which is the same
-accounting error that got the ~1,300 GiB projection withdrawn, running in the
+accounting error that made the withdrawn projections too high, running in the
 opposite direction. Treat it as weak evidence for a scaling law and better
 evidence that the width-sizing rewrite works at pangenome scale.
 

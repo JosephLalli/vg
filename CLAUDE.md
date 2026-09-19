@@ -284,13 +284,18 @@ until it is.
 pangenome-scale prune, and it reorders the targets:
 [docs/prune_scheduling/README.md](docs/prune_scheduling/README.md). Of a
 12:47:16 run, XG construction took 6.19 h (48%) on one core, the unfold
-3.63 h (28%) decaying from 12 to 2 of 24 busy threads, `complement_components`
-2.70 h (21%) single-threaded, graph load 1.4%, `extend` plus serialization 0.7%,
-and the prune passes that `b47de4db9` optimised 0.1%. Overall the run used
-**2.006 effective cores of the 24 requested**, with roughly 10.5 of its 12.8
-hours single-threaded. The unfold's decay is a load-balance property of the
-batch barrier at `phase_unfolder.cpp:52`, which drains onto each batch's largest
-component; the doc proposes measuring the per-component distribution, then
+3.63 h (28%) averaging 4.51 of 24 cores, `complement_components` 2.70 h (21%)
+single-threaded, graph load 1.4%, `extend` plus serialization 0.7%, and the
+prune passes that `b47de4db9` optimised 0.1%. Overall the run used **2.006
+effective cores of the 24 requested**, with roughly 8.9 of its 12.8 hours
+strictly single-threaded. The unfold's CPU is U-shaped — a fast start, a ~100
+minute trough at or below 3 cores bottoming at 1.0, then recovery to 6-7.7 — the
+signature of the batch barrier at `phase_unfolder.cpp:52` draining onto each
+batch's largest component. Its recoverable share is bounded at about 3 h of
+12.8 (981.5 core-minutes ideally scheduled is 40.9 min against 217.7 actual).
+The peak RSS of 341.07 GiB falls **in the unfold**, not in XG construction,
+which releases its 336.89 GiB path plateau before the reverse index is built.
+The doc proposes measuring the per-component distribution, then
 longest-processing-time ordering and a bounded reorder buffer, both of which
 preserve byte-identity because apply order rather than work order fixes the
 numbering.

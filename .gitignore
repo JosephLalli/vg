@@ -51,3 +51,7 @@ debug_main.cpp
 /*.fa
 /*.gfa
 .vscode/*
+
+# Local, transient: created to freeze builds while a production run pins lib/ by inode.
+# Never commit it; the absolute path inside is machine-specific.
+.build-freeze

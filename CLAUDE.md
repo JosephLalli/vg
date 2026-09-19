@@ -20,9 +20,161 @@ area:
 | `vg mpmap --trace-splice-search` | [MPMAP-SPLICE-TRACE.md](MPMAP-SPLICE-TRACE.md) |
 | PhaseUnfolder/prune concurrency (absolute cost measured 2026-09-12; no controlled A/B) | this file, "Fork-specific subsystems" below |
 | `vg rna` transcript-path memory | [docs/vg_rna_memory/README.md](docs/vg_rna_memory/README.md) |
+| Transcript-rich RNA/prune memory follow-up (active validation) | [docs/transcript_path_memory/IMPLEMENTATION.md](docs/transcript_path_memory/IMPLEMENTATION.md) |
+| GBWT creation performance (new, isolated attribution) | [docs/gbwt_creation/README.md](docs/gbwt_creation/README.md) |
+| Prune phase profile and unfold scheduling (chr2, 2026-09-18) | [docs/prune_scheduling/README.md](docs/prune_scheduling/README.md) |
 
 `docs/` holds design and status notes for the splice-discovery investigation
 (mpmap vs. STAR splice junctions); they are working plans, not user docs.
+
+## Current-work routing and scientific phase transitions
+
+**This supersedes the former instruction to offer `/reload` when entering a new
+scientific phase.** Do not run `/reload` automatically or require approval.
+Use the documentation agent instead: reconcile current tracked state, retained
+receipts, and live processes, then update AI-facing documentation with the
+current intellectual state, code, decisions, evidence paths, and remaining
+acceptance work.
+
+The current exact-only chr21 RNA/prune rework is routed through
+[docs/transcript_path_memory/IMPLEMENTATION.md](docs/transcript_path_memory/IMPLEMENTATION.md);
+its generated artifacts are under `tmp/transcript_memory_20260915/`. It is
+code-performance work, distinct from whole-genome production indexing and from
+annotation/paralog policy work. Parallel V3 full chr21 RNA is terminal accepted
+at 18.538162 GiB (1.30615977x OR), 33:31.11 wall and swap 0. The raw `.pg`
+differs from the serial graph, so
+`rna_parallel_output_v3/chr21-terminal/acceptance.json` accepted it through the
+canonical semantic route: `vg validate`, all six graph/path fields (2,056,621
+nodes, 2,726,485 edges and 5,607,688 named paths), exact info bytes and evidence
+guards all pass. The preserved serial V3, 18.5631 GiB/1.3079x OR and 54:11.56,
+remains the previous accepted baseline.
+
+The GBWT-creation phase is routed through
+[docs/gbwt_creation/README.md](docs/gbwt_creation/README.md). The optimized
+guide and its coverage check passed; strip, genic_validate, genic_stats and
+genic_paths then passed (14 sealed receipts). On 2026-09-18 the user
+transferred ownership of the chr2 workflow ("it's your project now. alter the
+sequence") and the six XG/distance stages were removed from the pre-prune plan
+by the prune-direct transition
+(`index_preprune_v2_20260917T044500Z/transitions/prune_direct_20260918T045514Z/`):
+`vg prune -u` builds its own XG in-process and does not accept a prebuilt one,
+so the plan is now `mapping` -> `READY_FOR_PRUNE` -> ordinary prune and checks
+in the successor follower, then stop. The follower is now
+`prune_v4_cap480_20260918T055521Z/` (user decision: prune cap 480 GiB, above
+the 350-450 GiB planning band, admitted 2026-09-18 08:24 UTC; v3 at 512 GiB
+was never admissible while the user's Docker caps held). No
+`vg index -x` RSS measurement exists for the pinned binary at any scale; the
+chr19 8.07x figure came from vg v1.74.1's mmmulti-based XG and does not
+transfer. **The chr2 prune is terminal and the authorized work is finished.** The prune
+stage exited 0 in 12:47:16 at 341.07 GiB peak RSS (71% of its 480 GiB cap), zero
+swap, 2.006 effective cores of 24; `prune_check` passed (`graph: valid`,
+50,647,839 nodes / 53,787,207 edges, mapping structurally verified) and
+`PRUNE_COMPLETE.json` records `gcsa_executed: false`. All chr2 units have exited
+and `.build-freeze` has lifted itself, so `./build-local.sh` works again. The
+per-phase profile and the scheduling work it justifies are in
+[docs/prune_scheduling/README.md](docs/prune_scheduling/README.md). This
+authorizes no GCSA, annotation-policy work, or chr2 speedup claim.
+
+V1 of the bounded parallel implementation passed its guarded build: PackedGraph
+packing, info formatting, transcribed-node collection and missing-splice-edge
+discovery followed by ordered graph mutation. Receipt:
+`rna_parallel_output_v1/build/acceptance.json`; binary SHA256
+`b0fa7af0cdb9864482bcd3eb764c4de7bc7a515d674c3c4cc38f396ab6192b38`.
+Its terminal focused gate passed 48,455 assertions in 49 cases and real
+1/2/4/24-thread semantic/info checks. The exact-byte dense ABBA averaged
+28.1969 s serial and 20.0230 s at 24 threads, but the parallel runs averaged
+only 1.326 CPU-seconds/wall-second. The useful-parallelism gate therefore
+failed and no full parallel RNA run launched. V2 local-path microbatches and a
+bounded persistent output ring passed 42,497 assertions in nine standalone
+cases and retained exact dense bytes. Regular-file timing is inconclusive: the
+writer was sampled in `balance_dirty_pages` under
+`vm.dirty_bytes=100000000` while prune used the same SSD. A `/dev/null` ABBA
+then isolated packing: V2 T24 averaged 1.9822 s versus 7.2406 s for V1 T24 and
+20.2969 s for V2 T1; V2 local paths used about 18 effective cores. Receipt:
+`rna_parallel_output_v2/discard/acceptance.json`. The terminal 500,039,680-step
+discard scale then measured local paths at 6.294 wall/120.222 CPU seconds but
+membership offsets at 29.274/35.926 and next links at 31.666/44.002. This
+justifies the V3 source change to aligned membership microblocks and bounded
+stable-bucket next-link waves. `rna_parallel_output_v3/BUILD_READY.json` pins
+seven source hashes. Header-level validation is terminal: standalone passed
+42,512 assertions in 11 cases and exact 50M bytes; the 500M packing-only ABBA
+averaged 70.7286 s for V2 and 20.7334 s for V3, while the 2,056,621-node T1/T24
+outputs were byte-identical. Parallel RSS was 1.7881 GiB for the large-node
+50M case and at most 2.6983 GiB for 500M; the plan stayed within 3 GiB.
+Receipts are `rna_parallel_output_v3/{standalone,post-header}/acceptance.json`.
+The guarded build is terminal PASS with binary SHA256
+`545de451f54b8bd291e4196e925dec4780f898bcb2d4bf96973b75d36b805f53`.
+The initial integrated gate retained a cross-run T1 byte failure after 48,480
+assertions in 52 passing unit cases, while info, validation and canonical
+semantics matched. A same-binary repeat differed from that first T1 output and
+matched the older gold; ID-preserving GFA for all three graphs was exact. This
+localizes the difference to packed storage encoding/history but does not isolate
+its precise cause. T1 raw-byte reproducibility is therefore not guaranteed;
+same-input synthetic writer byte identity remains mandatory. Completion checks
+are terminal PASS with stable guards and semantic/info/validation identity at
+1/2/4/24 threads. The full parallel chr21 command is terminal success for
+invocation `769f682f1e2f4b0db7a33daad48d230e`: exit 0, 33:31.11 wall,
+19,438,672 KiB = 18.538162 GiB = 1.30615977x OR peak RSS, swap 0, exact info,
+unchanged inputs, and a 38,126,287,944-byte streamed graph. Receipt:
+`rna_parallel_output_v3/chr21/command-acceptance.json`. The independent
+64 GiB/no-swap validator, invocation
+`a64d62b5b6f04d0690d99bf3108f706f`, is terminal success; its semantic fallback
+passes `vg validate`, all six canonical fields, exact info, and stable evidence
+guards. `chr21/phase-analysis.json` remains immutable command evidence binding
+the unchanged 574-file source manifest; its historical pending wording is
+superseded by the terminal receipt. The 38.1494% lower wall than the accepted serial V3 is an
+unmatched, nonexclusive-host comparison, not a controlled causal speedup. The
+remaining seam audit is `rna_parallel_output_v3/serial-followup.md`. Treat the
+accepted result as the workable baseline. The isolated metadata pilot is
+terminal PASS (invocation `9c6d2ba45e3c40cb8c4b6aaac7ae94ad`) with stable
+guards. Its attribution led to a private two-check removal whose gate is also
+terminal PASS (invocation `52f675bae8284b1fb8051468f5216ff8`):
+`rna_metadata_lookup_v1/checks/units/stdout` reports 42,622 assertions in 14
+cases, while `rna_metadata_lookup_v1/checks/acceptance.json` binds exact retained
+100,000-name bytes at T1/T24 and a
+5,607,688-name CPU-only ABBA reducing mean whole-writer wall from 93.4301 to
+77.5504 s (17.0%), metadata from 87.3692 to 71.2887 s, and mean writer CPU from
+128.2705 to 113.113 s without increased peak RSS. The private prototype is now integrated into the live source tree after the
+current-binary prune proof gate closed. The integrated patch changes exactly
+`deps/libbdsg/bdsg/include/bdsg/internal/base_packed_graph.hpp` and
+`src/unittest/packed_path_stream.cpp`; `rna_metadata_lookup_v1/integration/apply/acceptance.json`
+records the patch SHA256, the two changed paths, 572 unchanged production
+sources and stable live-library guards. The guarded build service
+`vg-memory-rna-metadata-integration-build-v1-20260916.service` (invocation
+`1a9c4cf6b67f4410899b6558ad8a49b2`) is terminal PASS with binary SHA256
+`4f495d705c5547a39d1334a9c6cd7d4e02ece9e50fe65831ea79ba2679b4273c`. The
+guarded check service `vg-memory-rna-metadata-integration-checks-v1-20260916.service`
+(invocation `3d32e35743a845c992afa34c8639e333`) is terminal PASS: linked
+metadata tests, unit success, stable sources/inputs/library, and T1/T24 real
+fixtures pass validation, exact info and canonical fingerprints. T1 preserves
+exact graph bytes; T24 differs only in raw packed-history bytes. This closes
+integration correctness for the small metadata optimization, not a full-RNA
+runtime claim. A whole-RNA rerun is unnecessary absent a new integration
+concern. Defer shared-source translation and compaction subregion work. See
+`rna_parallel_output_v2/README.md` for the scale and writeback-cap controls.
+Prune V5 then terminated at its exact eight-hour service deadline with
+`Result=timeout`, status 15 and a 62 GiB peak. It has no terminal measured/GNU
+receipt, output graph, or semantic check, so it is rejected as a performance or
+memory result. `chr21_prune/candidate-v5-terminal-timeout.json` is authoritative.
+Ordinary V2 remains accepted at 75.608 GiB/1.80365x OR and 4:14:01; the 1.5x
+prune target remains unmet. V2 is binary-specific, so the frozen current binary
+is undergoing one ordinary-default revalidation in `prune_current_binary_v1/`.
+Its fixture service invocation `dece0c5939e34d8d8eb19124001a0e9c` is terminal
+PASS: TAP 26 and ordinary T1/T4/T24 plus real T24 have exact graph/mapping bytes
+and validation with stable guards. The full current-binary command invocation
+`be246266875c49e48228747eebedad77` is terminal PASS at 74.815071 GiB
+(1.784731532x OR), 3:21:53 wall, zero swap, exact mapping bytes and accepted
+graph semantics. The original terminal checker failed closed only because the
+current raw graph hash was unfamiliar; its pair-specific packed-history proof
+is retained under `prune_current_binary_v1/chr21-terminal/storage-classification-v1/`.
+The proof-backed terminal checker
+`vg-memory-prune-current-terminal-proof-v1-20260916.service` (invocation
+`d87bccbdf53a428a99515f1afcf366d6`) is terminal PASS at
+`prune_current_binary_v1/chr21-terminal-current-proof/acceptance.json`. This
+closes delivery provenance for the required `<2x` prune goal and does not meet
+or authorize a speculative 1.5x run. The ledger names the guarded build/check
+launchers and source hashes. Read it and verify live resources before acting;
+no production-index or annotation conclusion follows from these code benchmarks.
 
 ## Building — never a bare `make`
 
@@ -202,7 +354,17 @@ died on session teardown (exit 143); `loginctl enable-linger` is set now — but
 itself has not been rerun. Do not attribute a specific multiple to these three commits
 until it is.
 
-What now exists (2026-09-12) is a **pangenome-scale absolute timing**, which is a
+A **per-phase profile** now exists for chr2 (2026-09-18):
+[docs/prune_scheduling/README.md](docs/prune_scheduling/README.md). It ranks the
+serial costs — XG construction 6.2 h (59%), `complement_components` 2.7 h (26%),
+the already-parallel unfold third, the prune passes 0.1% — and records that the
+unfold decays to 2 of 24 busy threads because the batch barrier at
+`phase_unfolder.cpp:52` drains onto each batch's largest component. It proposes
+LPT ordering and a bounded reorder buffer, both byte-identity-preserving, and
+defers XG construction to its own phase. No change is authorized while the chr2
+production prune is live.
+
+What also exists (2026-09-12) is a **pangenome-scale absolute timing**, which is a
 different and weaker claim: not a controlled A/B, but a measurement of the actual
 binary (sha256 `35867c7f…`) that will run the whole-genome build.
 `scripts/whole_genome/build_joint_genic_k32_index.sh calibrate` in the downstream
@@ -238,6 +400,20 @@ Memory, not time, is now the binding constraint on prune concurrency at pangenom
 scale: chr2 peaked at 194.65 GiB against a 280 GiB cap (70%); two large chromosomes
 pruning concurrently would want ~390 GiB. Keep prune serial for large chromosomes, or
 pair a large one with a small one.
+
+**Transcript-rich inputs add a separate memory cost.** The retained chr21 OR versus
+exact-only comparison (2026-09-14, in `hprc_v2_vg_rna`:
+`notes/chr21_exact_only_downstream_ab.md`) measured prune peak RSS at 41.9 versus
+256.7 GiB while retained representatives grew 5.35x and biological path steps grew
+7.865x. Prune used 48 versus 24 threads, and GCSA used 32 versus 24; their timing
+ratios are not controlled selection effects. Both arms completed, but the retained
+prune logs do not identify the peak-owning phase. The current allocation analysis
+identifies overlapping input PackedGraph paths, XG paths, and XG reverse-index
+construction as a leading candidate; it does not assign all 256.7 GiB to unfolding.
+See [the attribution report](docs/transcript_path_memory/README.md) and
+[active implementation/validation](docs/transcript_path_memory/IMPLEMENTATION.md).
+That work preserves the exact-only workload and is separate from v2 production
+indexing and paralog-aware annotation correction.
 
 Note `b47de4db9` moves the `deps/libbdsg` gitlink to a fork commit
 (`b07563bb9`, branch `packed-graph-batch-edge-deletion` on `JosephLalli/libbdsg`)
@@ -280,8 +456,10 @@ At `-t 1` the patched run is byte-identical to the control across the output gra
 `prune_paths.gbwt`, `info.tsv` and the transcript FASTA. `vg test [transcriptome]`
 and `vg validate` pass.
 
-**`vg rna` is byte-reproducible only at `-t 1`.** Above one thread, thread completion
-order sets `exon_boundary_paths` order, which sets `unordered_map` insertion order in
+Historical `-t 1` controls were byte-identical, but a later same-binary V3
+diagnosis produced two raw PackedGraph encodings with exact ID-preserving GFA,
+so **T1 byte reproducibility is not guaranteed**. Above one thread, thread completion
+can set `exon_boundary_paths` order, which sets `unordered_map` insertion order in
 `find_breakpoints`, which sets `divide_handle` order, which sets the output node IDs.
 The graph is isomorphic and the transcripts identical, but the file is not
 reproducible — so byte-identity gates must run at `-t 1`, while production runs
@@ -291,6 +469,22 @@ compare at `-t > 1`.
 
 Full method, patches and per-run results are in
 [docs/vg_rna_memory/README.md](docs/vg_rna_memory/README.md).
+
+The 2026-09-15 transcript-rich follow-up reuses those merged improvements and
+targets the remaining exact-only chr21 RNA/prune peaks. Its opt-in mapped graph
+and path-spool work, byte-gate investigations, resource limits, and retained
+receipts are tracked in
+[docs/transcript_path_memory/IMPLEMENTATION.md](docs/transcript_path_memory/IMPLEMENTATION.md).
+V3 full RNA now has terminal full-workload semantic and memory acceptance. V1
+parallel-source checks passed correctness but failed the useful-CPU gate; V2
+local scheduling has standalone correctness and packing-only parallelism. Its
+500M-step scale exposed coarse offset/next scheduling. V3 header-level
+correctness, scaling and memory gates and its guarded build now pass. The first
+integrated gate exposed semantically neutral T1 packed-byte variation; completion
+checks pass and the full chr21 measurement is live, with no end-to-end parallel
+result yet. Prune V5 timed out without output or semantic acceptance; ordinary
+V2 remains the accepted prune result. Fixture measurements are not
+production-indexing results.
 
 ## Conventions
 

@@ -46,6 +46,22 @@
 #
 set -euo pipefail
 
+# Production build freeze. bin/vg-pinned copies used by the chr2 index run resolve
+# lib/libhandlegraph.so from THIS worktree by RPATH, and the run pins that file by
+# hash and inode/mtime. Relinking here while a stage runs forfeits the stage (up to
+# 30 h for prune). The freeze lifts itself once the receipt named in .build-freeze
+# exists; VG_BUILD_UNFREEZE=1 overrides it deliberately.
+FREEZE="$(cd "$(dirname "$0")" && pwd)/.build-freeze"
+if [[ -f $FREEZE && -z ${VG_BUILD_UNFREEZE:-} ]]; then
+  until_receipt=$(sed -n 's/^until=//p' "$FREEZE")
+  if [[ -z $until_receipt || ! -e $until_receipt ]]; then
+    echo "build-local.sh: refusing to build while the chr2 production run pins lib/ from this worktree." >&2
+    sed 's/^/  /' "$FREEZE" >&2
+    echo "  Set VG_BUILD_UNFREEZE=1 to override; that will break the pinned run." >&2
+    exit 3
+  fi
+fi
+
 VGL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Work-directory-specific protobuf(29.3)+abseil toolchain (static, PIC, C++20).
 TOOLCHAIN="${VG_TOOLCHAIN:-/mnt/ssd/lalli/vg-latest-toolchain}"

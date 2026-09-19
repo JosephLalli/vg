@@ -324,7 +324,7 @@ chr21 A/B: retaining 5.35x the representatives moved prune peak RSS from
 nodes rather than paths — the pruned graph, and GCSA2 — moved only 1.06-1.15x.
 That A/B's extrapolation to chr2 predicted ~1,192 GiB and was falsified by the
 measured 341.07 GiB; see the correction in
-`hprc_v2_vg_rna/notes/chr21_exact_only_downstream_ab.md`. Attribution work:
+`hprc_v2_vg_rna/notes/chr21_or_vs_exact_dedup_downstream.md`. Attribution work:
 [docs/transcript_path_memory/README.md](docs/transcript_path_memory/README.md).
 
 ### `vg rna` transcript-path memory

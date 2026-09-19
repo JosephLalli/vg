@@ -94,7 +94,7 @@ still used for edge sides at `deps/xg/src/xg.cpp:989-993`; what the pinned binar
 lacks is the node-to-path spill map specifically.
 
 A separate ~1,192 GiB projection for chr2, carried in
-`hprc_v2_vg_rna/notes/chr21_exact_only_downstream_ab.md`, is also falsified; its
+`hprc_v2_vg_rna/notes/chr21_or_vs_exact_dedup_downstream.md`, is also falsified; its
 correction is recorded there. Both failed the same way: a ratio measured on one
 binary carried forward to a run executed by a later one.
 

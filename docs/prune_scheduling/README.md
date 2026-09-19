@@ -10,6 +10,14 @@ an average CPU% — and aggregates cannot say which phase to attack.
 Scope: **code-performance** work on `vg prune`. Not production indexing, not
 annotation policy.
 
+Why it matters beyond wall-clock: the downstream project wants *exact*
+deduplication, which shipped vg cannot afford — chr21's exact prune peaked at
+256.70 GiB, 92% of its cap, on the smallest chromosome. The fork's memory work
+already moved that to 74.82 GiB on identical input, which is what made chr2's
+exact prune possible at all. The scheduling work below is the next increment of
+the same enabling effort, and the phases it targets are where the remaining time
+sits.
+
 ## The measurement
 
 Source: the chr2 production prune, stage unit `chr2-preprune-prune-5f82c69e8cac`,

@@ -318,12 +318,22 @@ chr2 prune peaked at 341.07 GiB against a 480 GiB cap, so two large chromosomes
 pruning concurrently would want roughly 680 GiB of the host's 1,007 GiB. Keep
 prune serial for large chromosomes, or pair a large one with a small one.
 
-**Transcript-rich inputs add a separate memory cost**, measured by a controlled
-chr21 A/B: retaining 5.35x the representatives moved prune peak RSS from
-41.9 GiB (OR) to 256.7 GiB (exact-only), a 6.12x ratio, while stages that track
-nodes rather than paths — the pruned graph, and GCSA2 — moved only 1.06-1.15x.
-That A/B's extrapolation to chr2 predicted ~1,192 GiB and was falsified by the
-measured 341.07 GiB; see the correction in
+**This memory work is the enabling condition for the downstream project's
+preferred dedup rule, not an optimization.** That project wants *exact*
+deduplication — drop only byte-identical transcripts — because in segmental
+duplications a single base can be the only thing separating two copies. As
+shipped, vg cannot do it: chr21's exact prune peaked at 256.70 GiB, 92% of its
+280 GiB cap, on the *smallest* chromosome. On the 2026-09-16 binary the same
+input, guide, thread count and cores peak at **74.82 GiB** — 3.43x less from the
+binary alone — and chr2's exact prune then completed at 341.07 GiB under a
+480 GiB cap.
+
+The mechanism is the `on_input_consumed` callback at
+`deps/xg/src/xg.cpp:1178`, which destroys the input graph's paths after the XG
+has copied its walks and before `index_node_to_path` allocates the reverse
+index, so the two never coexist. Transcript-rich inputs are expensive because
+stages tracking paths inflate 4.5-7x while stages tracking nodes — the pruned
+graph and GCSA2 — move only 1.06-1.15x. Data:
 `hprc_v2_vg_rna/notes/chr21_or_vs_exact_dedup_downstream.md`. Attribution work:
 [docs/transcript_path_memory/README.md](docs/transcript_path_memory/README.md).
 

@@ -2,7 +2,9 @@
 
 Written 2026-09-20 against the measured record in `RECEIPTS.md` (15 sections), the verified
 survey in `GBZ_INDEXING_SURVEY.md`, and the failed pipeline in
-`MPMAP_INDEX_PIPELINE_PROPOSAL.md`. Nothing here is authorized to run; it is a proposal.
+`MPMAP_INDEX_PIPELINE_PROPOSAL.md`. This is a proposal. One item has since been
+authorized and run -- the GBZ-built distance index under "Do now" below, on 2026-09-20.
+Everything else here remains unauthorized, the two gates included.
 
 ## What is settled, so nobody re-derives it
 
@@ -33,6 +35,16 @@ skips the component-labeling startup pass gated at `src/subcommand/mpmap_main.cp
 Caveat: one run per arm on a loaded host with no noise floor. The 7.5x memory ratio is far
 outside plausible contention; the 1.49x wall ratio is not.
 
+**Done 2026-09-20, and it paid more than predicted.** `vg index -t 24 -j chr21.dist
+chr21.ref.gbz`: exit 0, 2:07.95 at 7.83 GiB, 1.86 GB index. Feeding it to the section-14
+mpmap smoke test as `-d`, with nothing else changed, took the run from 27:29.23 to
+**19:17.85** at unchanged peak RSS (154.56 GiB, +0.008%), with all five reads still at
+MAPQ 60 on a strictly enriched multipath DAG. Of the 8:11 saved, the predicted
+component-labeling deletion is 3.5 m; the larger term is **null-model calibration,
+4.7 m -> 0.4 m**, which was not predicted and had not been identified as
+distance-index-sensitive. The overlay is untouched at 13.6 m and still dominates startup.
+Receipts and limits: `RECEIPTS.md` section 16.
+
 ## The gate that blocks everything else
 
 One chr21 run, with the corrected flags, checked on two things nothing in this project has
@@ -46,6 +58,38 @@ ever measured.
 required: `-c` defaults to `haplotype`, which the exact-rule arms did not use. Do not use
 `-q/--out-exclude-ref` with `-j`: measured, it silently empties the pantranscriptome. Do not
 use `-v`: it emits a GBWT in a stale node space under `-j`, and its help text says otherwise.
+
+**Read the command correctly before running it.** Three things about it are easy to get
+backwards, and each one changes what the gates mean.
+
+`-b`, `-f` and `-i` are **outputs**, not inputs -- all three are under "Output options" in
+`src/subcommand/rna_main.cpp:94-100` (`--write-gbwt`, `--write-fasta`, `--write-info`). So
+`chr21.guide.gbwt`, `chr21.tx.fa` and `chr21.tx.tsv` are produced by this run. Gate 1 is
+therefore a self-consistency check between two products of a single invocation -- the GBWT
+and the FASTA -- not a comparison against the existing exact-arm guide. That is precisely
+what makes it a test for F1: if the emitted GBWT is in a stale node space, its threads spell
+different sequences than the FASTA the same run wrote.
+
+The run's only real inputs are the positional chr21 **haplotype** pangenome GBZ and the
+rewritten GFF stream. That input is **not** the `chr21.gbz` in
+`notes/evidence/chr21_gbz_indexing_fixture_20260920/`: same filename, different object -- the
+fixture copy already carries transcripts. Neither the haplotype GBZ nor `stream_rewritten_gffs`
+is in a retained fixture; both live in the downstream `hprc_v2_vg_rna` workspace and must be
+located and hash-pinned before the run.
+
+**Unresolved: whether `-d/--remove-non-gene` belongs in this command.** As written above it is
+absent, which builds the whole chromosome. Owner decision 2 of 2026-09-20 records the opposite
+-- that the retention requirement (introns, exons, >=1 kb either side) is met *with* `-d` plus
+the `make_retention_features.py` pad features, "not by omitting `-d`", and that the prior
+chr2/chr21 **genic+flank** figures therefore transfer. Note `-d` means `--remove-non-gene` in
+`vg rna` and `--distance-index` in `vg mpmap`; they are unrelated flags. This must be settled
+before the run, because it decides whether the gate measures a whole-chromosome or a
+genic+flank graph, and the cost figures the run is supposed to supply are not comparable
+across that choice.
+
+**Thread count.** Both gates are relabel-invariant -- name-sorted set equality on sequences,
+and an edge count -- so neither needs the fork's `-t 1` byte-identity rule. `-t 24` is
+permitted here.
 
 **Gate 1, node-space equality.** Build a GBZ from `chr21.full.pg` plus `chr21.guide.gbwt`
 and require the transcript sequences it yields to match `chr21.tx.fa` as a name-sorted set.

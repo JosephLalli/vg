@@ -414,3 +414,71 @@ Not established: how many of the 1,398,636 REFERENCE paths belong to genuine ref
 samples that cannot be demoted without losing the chromosome paths mpmap needs; and whether
 the 14.3-minute overlay cost scales linearly in path count, which was never measured and
 should not be assumed, since the overlay indexes steps rather than paths.
+
+## 16. A mapper opens a GBZ-built distance index: startup 27:29 -> 19:18, output enriched
+
+Added 2026-09-20 evening, after the sections above. Pinned binary
+`4f495d705c5547a39d1334a9c6cd7d4e02ece9e50fe65831ea79ba2679b4273c` (hash re-verified against
+`bin/vg` before the runs), `TMPDIR` on SSD. Artifacts and GNU-time receipts in
+`/mnt/ssd/lalli/hprc_v2_vg_rna/notes/evidence/chr21_gbz_indexing_fixture_20260920/`.
+
+**Build.** Positional form, since `-x` is hard-typed to `xg::XG`
+(`src/subcommand/index_main.cpp:778`):
+
+    vg index -t 24 -j chr21.dist chr21.ref.gbz
+
+Exit 0, **2:07.95 wall, 8,209,496 KB = 7.83 GiB peak**, 697% CPU, 1,864,658,896-byte index.
+Receipt `dist_gbz.time.txt`. Built from `chr21.ref.gbz` rather than `chr21.gbz` because that
+is the graph mpmap opens.
+
+This is the **second** measurement of the GBZ arm and the first with a retained artifact --
+the earlier arm-to-arm pair (2:31.32 at 8.06 GiB from the GBZ, 3:45.47 at 60.59 GiB from the
+XG) kept neither a `.dist` nor a receipt. The `gbz_fixture/` working directory it ran in was
+moved into the evidence store on 2026-09-20 and no distance-index artifact or receipt came
+with it; the surviving job directory `/mnt/ssd/lalli/.claude/jobs/6a731a8b/tmp/` holds no
+distance-index receipt either. Where that pair was run is therefore not recorded, its thread
+count cannot be recovered, and this is not a strict replicate. Taken as a crude n=2
+repeat it is still the only noise information this stage has: **peak RSS reproduces to 2.9%,
+wall differs by 15%**. That is consistent with the caveat carried since the arm-to-arm run --
+the 7.5x memory advantage over the XG sits far outside that spread; the 1.49x wall advantage
+does not.
+
+**A mapper opens it.** Same command as the completed section-14 run, same graph, GCSA2, reads
+and `-t 4`, with `-d chr21.dist` the only change:
+
+    vg mpmap -x chr21.ref.gbz -g chr21.gcsa -d chr21.dist -f reads.fq -t 4
+
+Exit 0, **19:17.85 wall**, 162,080,896 KB = **154.56 GiB** peak, 347% CPU, 5 reads mapped.
+Receipt `mpmap_ref_dist.time.txt`, output `mpmap_ref_dist.gamp` / `.json`.
+
+| phase | no `-d` (section 14) | with `-d` |
+|---|---|---|
+| graph load | 0 -> 3.3 m | 0 -> 3.4 m |
+| `overlay_helper.apply()` | 3.3 -> 17.6 m (14.3) | 3.4 -> 17.0 m (13.6) |
+| reference paths, GCSA2, LCP | 17.6 -> 19.0 m | 17.0 -> 18.5 m |
+| component labeling | 19.0 -> 22.5 m (3.5) | **absent** |
+| null-model calibration | 22.5 -> 27.2 m (4.7) | 18.5 -> 18.9 m (0.4) |
+| total | 27:29.23 | 19:17.85 |
+
+**The saving is 8:11.38, and more than half of it was not predicted.** The component-labeling
+pass gated at `src/subcommand/mpmap_main.cpp:2013-2016` disappears as expected, worth 3.5 m.
+The larger unpredicted term is **null-model calibration, 4.7 m -> 0.4 m**, which this project
+had not identified as distance-index-sensitive at all. The overlay is unchanged within noise
+(14.3 -> 13.6 m) and remains the dominant startup cost; `-d` does not touch it.
+
+**Peak RSS is unchanged: 162,068,556 KB -> 162,080,896 KB, +0.008%.** A 1.86 GB distance index
+costs nothing measurable at peak, because peak is set by the overlay, not by the index.
+
+**The output changes, and strictly in one direction.** All 5 reads still map at MAPQ 60. The
+multipath structure is markedly richer -- subpaths per read 1, 3, 1, 3, 1 without `-d` against
+10, 12, 16, 7, 8 with it. Per read, the no-`-d` node set is a strict **subset** of the with-`-d`
+node set and the node-ID span is identical, so the index adds alignment alternatives rather
+than relocating any read. This is the direction vg's own startup warning predicts ("Both
+accuracy and speed will suffer without one").
+
+**Limits.** Five reads from one transcript is a smoke test: it establishes that a mapper opens
+a GBZ-built distance index, what that does to startup, and that the mapped output is enriched
+rather than moved. It establishes nothing about accuracy or throughput at scale, and one run
+per arm carries no noise floor for the mpmap wall figures. The **XG-built** distance index has
+still never been opened by a mapper, so no `-d` XG-versus-GBZ mapping comparison exists -- only
+the construction-cost comparison above.

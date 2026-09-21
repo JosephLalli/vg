@@ -672,10 +672,15 @@ transcript, including the 398,365 bp on chr21 that the OR rule deletes.
   itself warns "Graph is not in XG format. XG format is recommended for most
   mapping tasks." The GBZ is the artifact that *fits*; that it maps at
   acceptable speed is a separate, unanswered question.
-- **A distance index cost is now measured from both a GBZ and an XG (2:31.32 at
-  8.06 GiB versus 3:45.47 at 60.59 GiB on chr21), but no mapper has opened
-  either one.** Whether `-d` changes the mapped-output smoke test, or removes
-  reliance on `ref_path_handles`' longest-path heuristic, is unmeasured.
+- **A distance index cost is measured from both a GBZ and an XG (2:31.32 at
+  8.06 GiB versus 3:45.47 at 60.59 GiB on chr21), and the GBZ-built one has now
+  been opened by a mapper.** A rebuild on 2026-09-20 gave 2:07.95 at 7.83 GiB,
+  reproducing peak RSS to 2.9% and wall to 15%; supplying it to mpmap as `-d`
+  cut the five-read run to 19:17.85 from 27:29.23, at unchanged peak, and
+  enriched the multipath output without moving any read (section 16 of
+  `RECEIPTS.md`). The **XG-built** index has still not been opened, so no `-d`
+  XG-versus-GBZ *mapping* comparison exists. Whether `-d` removes reliance on
+  `ref_path_handles`' longest-path heuristic is still unmeasured.
 - **No route to a correctly-sensed production GBZ exists in shipped `vg`.**
   `--set-reference` only reaches REFERENCE-sense paths; GENERIC is assigned by
   PanSN naming and no flag overrides it. The naming change that would fix this

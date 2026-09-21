@@ -69,9 +69,12 @@ stages were removed from the pre-prune plan because `vg prune -u` builds its own
 XG in-process; XG and distance are still required for `vg mpmap`. As of
 2026-09-19 that was an open design question; a 2026-09-20 chr21-scale
 feasibility survey narrows it — the distance index has a measured GBZ route
-that never needed an XG, though no mapper has opened either the GBZ- or
-XG-built distance index — and `vg mpmap -x GBZ` loads and produces valid
-multipath output on a five-read smoke test, which establishes usability, not
+that never needed an XG, and on 2026-09-20 a mapper opened one: supplying a
+GBZ-built `-d` cut the five-read mpmap run from 27:29.23 to 19:17.85 at an
+unchanged 154.56 GiB peak, left all five reads at MAPQ 60, and strictly
+enriched the multipath output. The **XG-built** distance index has still never
+been opened by a mapper. `vg mpmap -x GBZ` loads and produces valid
+multipath output on that five-read smoke test, which establishes usability, not
 accuracy, throughput, or behavior at scale; no controlled `-x XG` vs `-x GBZ`
 mpmap comparison exists. It stays blocked by named issues (an `rpvg`
 dependency on XG input, an unindexed-path-sense cost in mpmap's reference-path

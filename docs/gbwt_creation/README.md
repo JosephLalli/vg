@@ -247,9 +247,11 @@ GBZ already exists. It resolves only the distance-index half of the
 "Prune-direct transition" section's open XG/distance question; mpmap's own
 graph argument (below) is a separate question and remains open.
 
-Two further bounds on this result: no mapper has opened either `.dist` file
-built here, so this is a construction-cost result, not a result about how a
-mapper performs against one. And the GBZ this index was built from is not
+Two further bounds on this result. The first has since been partly lifted: on
+2026-09-20 `vg mpmap` opened a GBZ-built `.dist` on chr21 and its startup fell
+from 27:29.23 to 19:17.85 at unchanged peak RSS, so for the GBZ route this is
+no longer only a construction-cost result -- though the XG-built `.dist` has
+still never been opened, and five reads measure startup, not throughput. And the GBZ this index was built from is not
 topologically identical to the source graph: `vg stats -N -E` counts
 2,701,234 edges on `chr21.gbz` against 2,726,485 on the exact-dedup source
 graph -- 25,251 fewer, 0.926%, because a GBWTGraph's edge set is only what its

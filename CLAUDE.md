@@ -9,7 +9,7 @@ A fork of `vgteam/vg` (variation-graph toolkit) at release **v1.75.1**, carrying
 to compile here. Everything else is stock upstream `vg` and behaves as documented
 in `README.md`.
 
-Read the reference for an area before touching it. Status is as of 2026-09-19.
+Read the reference for an area before touching it. Status is as of 2026-09-20.
 
 | Area | Status | Reference |
 |---|---|---|
@@ -27,12 +27,19 @@ subsystems — they are measurement and production records:
 | Transcript-rich chr21 RNA/prune | terminal accepted | [docs/transcript_path_memory/IMPLEMENTATION.md](docs/transcript_path_memory/IMPLEMENTATION.md) |
 | GBWT creation and the chr2 index run | terminal | [docs/gbwt_creation/README.md](docs/gbwt_creation/README.md) |
 | chr2 prune phase profile | terminal (2026-09-18) | [docs/prune_scheduling/README.md](docs/prune_scheduling/README.md) |
+| Exact-dedup indexing feasibility (XG vs. GBZ) | chr21-scale, measured 2026-09-20; open items listed | [docs/exact_dedup_indexing_feasibility.md](docs/exact_dedup_indexing_feasibility.md) |
+| Next steps for exact-dedup mpmap indexing | proposal, gated; nothing authorized | [docs/exact_dedup_indexing_feasibility/WAY_FORWARD.md](docs/exact_dedup_indexing_feasibility/WAY_FORWARD.md) |
 
-`docs/` holds two distinct kinds of file. The four subdirectories above
-(`gbwt_creation/`, `prune_scheduling/`, `transcript_path_memory/`,
-`vg_rna_memory/`) are authoritative references for their subsystem. The loose
+`docs/` holds three kinds of file. The subdirectories named in the tables
+above (`gbwt_creation/`, `prune_scheduling/`, `transcript_path_memory/`,
+`vg_rna_memory/`) are authoritative references for their subsystem. Most loose
 `docs/*.md` files are working plans for the splice-discovery investigation
-(mpmap vs. STAR splice junctions) and are neither user docs nor settled results.
+(mpmap vs. STAR splice junctions) and are neither user docs nor settled
+results. The exception is `docs/exact_dedup_indexing_feasibility.md`, a dated
+assessment that is itself the reference doc for the Record above; its evidence
+(receipts, an adversarially-verified survey, and the measurement probes that
+produced them) lives in the like-named subdirectory
+`docs/exact_dedup_indexing_feasibility/`.
 
 ## Current state
 
@@ -45,7 +52,9 @@ acceptance work.
 
 **Keep three efforts distinct: vg code performance, production indexing, and
 annotation/paralog policy.** A result in one authorizes nothing in the others.
-This is the most reused rule in this file.
+This is the most reused rule in this file. The chr21 exact-dedup indexing
+feasibility survey below is vg code/indexing evidence, at chromosome scale; it
+authorizes no whole-genome production-index or annotation/paralog change.
 
 The pinned production binary is SHA256
 `4f495d705c5547a39d1334a9c6cd7d4e02ece9e50fe65831ea79ba2679b4273c`.
@@ -57,10 +66,21 @@ peak RSS under a 480 GiB cap, zero swap, 2.006 effective cores of 24.
 Outputs are `chr2.pruned.pg` (6,774,195,898 bytes; 50,647,839 nodes,
 53,787,207 edges) and `chr2.mapping` (340,858,176 bytes). The six XG/distance
 stages were removed from the pre-prune plan because `vg prune -u` builds its own
-XG in-process; XG and distance are still required for `vg mpmap` and remain an
-open design question. No other chromosome in this generation has been pruned.
-This authorizes no GCSA2, no annotation-policy change, and no chr2 speedup
-claim. → [docs/gbwt_creation/README.md](docs/gbwt_creation/README.md),
+XG in-process; XG and distance are still required for `vg mpmap`. As of
+2026-09-19 that was an open design question; a 2026-09-20 chr21-scale
+feasibility survey narrows it — the distance index has a measured GBZ route
+that never needed an XG, though no mapper has opened either the GBZ- or
+XG-built distance index — and `vg mpmap -x GBZ` loads and produces valid
+multipath output on a five-read smoke test, which establishes usability, not
+accuracy, throughput, or behavior at scale; no controlled `-x XG` vs `-x GBZ`
+mpmap comparison exists. It stays blocked by named issues (an `rpvg`
+dependency on XG input, an unindexed-path-sense cost in mpmap's reference-path
+overlay, and a reference-selection semantics gap). See
+[docs/exact_dedup_indexing_feasibility.md](docs/exact_dedup_indexing_feasibility.md);
+none of it has run on chr2 or changes the numbers above. No other chromosome in
+this generation has been pruned. This authorizes no GCSA2, no annotation-policy
+change, and no chr2 speedup claim. →
+[docs/gbwt_creation/README.md](docs/gbwt_creation/README.md),
 [docs/prune_scheduling/README.md](docs/prune_scheduling/README.md)
 
 **Transcript-rich chr21 RNA/prune — terminal accepted.** Parallel V3 full chr21
@@ -403,3 +423,21 @@ Full method, patches and per-run results are in
 - Do not attribute a speedup without a controlled A/B. An absolute timing, an
   uncontrolled before/after, and a projection are each weaker claims, and this
   file's history shows all three being read as the strong one.
+- **`vg mpmap` is GCSA2-only, and a GBZ does not change that.** All three MEM
+  seeders and the splice scorer are GCSA2 queries (`src/multipath_mapper.cpp:707-723`,
+  `:3801`), and mpmap hard-exits without `-g` (`src/subcommand/mpmap_main.cpp:1633-1635`).
+  A prior version of this file said "zero commits to `multipath_mapper.cpp`,
+  `mpmap_main.cpp` or `splicing.cpp` since v1.76.1, mpmap's last algorithm
+  commit is 2022-12-13" as if that were true of this checkout; it is the
+  survey's finding about upstream `vgteam/vg` (checked via the GitHub API,
+  2026-09-20 — see `GBZ_INDEXING_SURVEY.md`, "(c) Research"), and dropping that
+  qualifier made it read as a claim about this fork's own history, which it
+  is not: this fork's own `mmp-splice-seeding` and `mpmap-splice-search-trace`
+  branches add 18 commits to those three files since `v1.75.1` (most recently
+  2026-07-11), an experimental STAR-style MMP splice-seeding path and
+  diagnostic output behind explicit flags. None of them touches the seeder or
+  hard-exit lines cited above (`git log -L` over both ranges since `v1.75.1`
+  returns no commits), so the GCSA2-only conclusion still holds, but on that
+  direct check, not on upstream inactivity. A GBZ can replace mpmap's `-x`
+  graph input, but replaces neither prune nor GCSA2. See
+  [docs/exact_dedup_indexing_feasibility/GBZ_INDEXING_SURVEY.md](docs/exact_dedup_indexing_feasibility/GBZ_INDEXING_SURVEY.md).

@@ -4,6 +4,117 @@ This follows the [completed attribution report](README.md). The active goal is
 to reduce the cost of the same exact-only annotation, preserving every named
 walk, graph topology, retained base, pruning protection, and node mapping.
 
+## Scope correction (2026-09-20): counting-graph memory versus the mpmap alignment index
+
+**Scope of this correction:** the full-chr21 RNA V3 parallel and serial
+acceptances, the full-chr21 prune V2 and current-binary acceptances, and the
+OR/exact-only acceptance-target table below all measure the same object -- the
+**counting graph**, a PackedGraph with all 5,607,688 named transcript walks
+embedded (the graph whose canonical fingerprint recurs throughout this file as
+2,056,621 nodes / 2,726,485 edges / 5,607,688 named paths). That is the graph
+panCollapse's per-node thread-multiplicity queries run against, and for that
+purpose these figures remain exactly right and should keep being cited as the
+cost of the graph panCollapse counts from. The smaller fixtures and synthetic
+probes elsewhere in this ledger -- the 37-node prune fixture, the 432-path real
+RNA fixture, the 50,003,968-step synthetic writer, the 96-character
+path-name scaling probe -- are bounded stand-ins for pieces of that same
+construction path on much smaller inputs; they are not restatements of the
+counting graph's own cost, and this correction does not reclassify them.
+
+**New evidence and a verified shared input:** measurements taken 2026-09-20 on
+the pinned binary SHA256
+`4f495d705c5547a39d1334a9c6cd7d4e02ece9e50fe65831ea79ba2679b4273c` -- the
+binary this ledger's RNA metadata duplicate-lookup integration build produced
+below (2026-09-16) -- separate the counting graph from the graph `vg mpmap`
+actually needs to align against. Full receipts:
+`docs/exact_dedup_indexing_feasibility/RECEIPTS.md`; adversarially verified
+survey: `docs/exact_dedup_indexing_feasibility/GBZ_INDEXING_SURVEY.md`;
+synthesis assessment drawing on both: `docs/exact_dedup_indexing_feasibility.md`.
+Their input is `/mnt/ssd/lalli/hprc_v2_vg_rna/notes/evidence/chr21_exact_arm_20260914/exact/genic.pg`,
+which this ledger's own `chr21_prune/control-input-output.sha256` receipt
+already names as the retained exact genic input that fed the prune V2 and
+current-binary acceptances below. A fresh hash of that file taken for this
+update confirms it is unchanged: SHA256
+`0678d83d0adfeda8acd99265b5f0e62d759116244877933552cc5fd6b66c263b`, matching
+that receipt exactly. This confirms byte-identity for prune's input
+specifically; it is not the RNA V3 acceptances' own output graph, which is a
+separate ~38.1 GB artifact recorded below (38,126,287,944 bytes for parallel
+V3, 38,148,975,648 bytes for the serial control) -- genic.pg is what the
+retained exact RNA control (1:01:06 wall, below) produced and what prune then
+consumed, not what the V3 runs themselves produced.
+
+**What was measured, and what it is not:** on that verified input, `vg index
+-x` -- a standalone, serialized XG build -- peaked at 68.52 GiB and took
+54:28.44 wall, producing a 55,013,545,597-byte XG file. `vg gbwt -g` -- a
+standalone GBZ build from the same PackedGraph and guide GBWT -- peaked at
+46.35 GiB and took 3:30.59 wall, producing a 622,882,936-byte GBZ: 88.3x
+smaller than that XG file (59.5x smaller than the counting-graph PackedGraph
+itself) and 15.5x less wall than `vg index -x` (one run of each command,
+`vg index -x` at `-t 24` against `vg gbwt -g`'s unspecified thread count, no
+noise floor established; the size ratios are deterministic and need none).
+This ledger already builds an
+XG from this same input, but only in-process, inside `vg prune -u`: the V2
+phase samples below record a 75.61 GiB peak during that XG-construction phase,
+on the pinned `vg-xg-consume` binary `31598084...89e256`; the current-binary
+prune acceptance is a separate run, on a later binary `545de451...805f53`, at
+74.815071 GiB overall. Those numbers describe the whole pruning process' RSS
+while XG construction runs, not a standalone XG artifact measured alone. The
+2026-09-20 figures are, per the survey, the first standalone `vg index -x`
+RSS measurement taken in this project at any scale, and they ran on a third
+binary, `4f495d70...4273c`. Do not read 68.52 GiB against 74.815071/75.608 GiB
+as a same-binary or same-command comparison; they are different commands --
+one measured in isolation, one embedded in a larger process -- on three
+different binaries.
+
+**Do not book these figures as the cost of an mpmap index:** `vg mpmap`'s
+alignment index does not need the full transcript-annotation walk set that
+makes this ledger's counting graph expensive.
+`hprc_v2_vg_rna/recipe_gbz_mpmap_annotation.md` step 3 already specified
+building the alignment index from splice junctions only (omitting `-a`/`-r`);
+the 2026-09-20 assessment (`docs/exact_dedup_indexing_feasibility.md`, drawing
+on the receipts and survey above) confirms that recipe was right, and
+separately records that an earlier whole-genome XG size projection had been
+computed from the counting graph rather than the alignment graph -- exactly
+the conflation this note exists to prevent. This ledger's RNA and prune peaks
+are the cost of building and pruning the transcript-annotated graph that
+panCollapse queries; the alignment-side index is a separate, and on the
+measurements above, much smaller object on disk -- not necessarily in
+resident memory, per the reference-sense caveat below.
+
+**Open limits that qualify this correction:** no junction-only GBZ or XG has
+been measured -- the 46.35/68.52 GiB figures above are for the
+*full-annotation* artifacts, the same walk set as this ledger's counting
+graph, not a stripped one -- so there is no measured floor yet for the
+alignment index's actual size. Also, no shipped `vg` route builds a
+correctly-sensed alignment-only GBZ: `--set-reference` cannot fix path sense,
+because `get_sample_sense` assigns GENERIC by PanSN naming regardless of the
+tag (`deps/gbwtgraph/src/utils.cpp:174-188`), and the one route that empties
+the GENERIC bucket (`vg rna -b`) instead leaves `ref_path_handles` empty
+(`mpmap_main.cpp:1835-1857`), a silent, exit-0 MAPQ 1->60 hazard, not a fix. Dropping
+`--add-ref-paths`/`-r` to reach a junction-only input is verified only at
+37-node fixture scale -- far below both this ledger's own 2,056,621-node chr21
+counting graph and chr2's separate, 50,647,839-node production-pruned graph --
+and the two arms of that fixture gave different duplicate node IDs, so
+acceptance there still needs this ledger's own relabel-invariant digests, not
+a raw comparison. This ledger's
+own prune-memory saving comes specifically from releasing *embedded*
+transcript paths after XG copies them (`on_input_consumed`, described below
+under XG reverse occurrences); an `-r`-free, junction-only input has no such
+path payload to release, so how much of that saving mechanism -- as opposed to
+prune's memory requirement generally -- carries over to a junction-only input
+is unmeasured, not assumed to transfer. Separately, GBZ does not remove
+`vg prune` or GCSA2 from the mpmap pipeline at all
+(`src/subcommand/mpmap_main.cpp:1633-1635` hard-exits without `-g`; all three
+seeders are GCSA2 queries), so prune stays required for any mpmap route,
+junction-only or not. No controlled `vg mpmap -x` XG-versus-GBZ runtime
+comparison exists (`RECEIPTS.md` section 14 is a five-read smoke test whose
+154.55 GiB peak is dominated by `ReferencePathOverlay` startup, not mapping).
+And if `rpvg` stays in the downstream pipeline it requires an XG input
+(`rpvg src/main.cpp:437`), so even the XG-to-GBZ saving above is deferred, not
+banked, until that dependency is resolved. These are indexing-cost findings,
+not annotation-policy or production-indexing conclusions: per this file's own
+separate-efforts rule, a result in one authorizes nothing in the others.
+
 ## Runtime requirement and change of direction (2026-09-15)
 
 The user rejected the multi-fold runtime cost of the mapped/spooled RNA route.

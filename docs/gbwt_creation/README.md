@@ -8,11 +8,17 @@ user has now authorized one guarded chr2 production transition described below;
 that authorization is limited to the `guide` replacement and does not change
 the later ordinary-prune binary or policy.
 
-**Current status:** private integration accepted; optimized chr2 guide and
-guide check completed; strip and the three genic checks completed; the
-prune-direct transition (below) removed the XG/distance stages and the live
-stage is `mapping`, followed by ordinary prune in `prune_v3_direct_20260918T045514Z/`.
-The retained private
+**Current status, as of the 2026-09-17 transition below:** private integration
+accepted; optimized chr2 guide and guide check completed; strip and the three
+genic checks completed; the prune-direct transition (below) removed the
+XG/distance stages and the live stage was `mapping`, followed by ordinary
+prune in `prune_v3_direct_20260918T045514Z/`. This has since moved past
+`mapping`: the "Prune-direct transition" section below records that prune
+itself went on to run and is now terminal (12:47:16, 341.07 GiB peak, exit 0),
+matching `CLAUDE.md`'s chr2 status. This paragraph is left as the
+point-in-time state at the guide/strip transition rather than updated in
+place, so it does not contradict the terminal result below; read the
+"Prune-direct transition" section for the current state. The retained private
 binary is `integration/bin/vg-gbwt-insertion-threads`, SHA256
 `645afde4cd7080f75b198de20329204fbdd3602a7286b71c14d26326f3a16b6e`.
 Only six intentional source files changed; live `vg` and libhandlegraph remain
@@ -123,7 +129,10 @@ Rationale, as corrected by adversarial review: `vg prune -u` reads neither an
 XG nor a distance index, `--xg-name` is a warned no-op, and prune builds its
 own XG in-process (`src/subcommand/prune_main.cpp:441-511`), so a standalone
 `vg index -x` before prune constructs the same XG twice. No `vg index -x` RSS
-measurement exists for the pinned binary at any scale. The chr19 receipts
+measurement exists for the pinned binary at any scale as of this 2026-09-18
+transition; a 2026-09-20 chr21 measurement fills that gap and is reconciled
+against the anchor below in "Guide GBWT downstream products and path sense"
+further down this file. The chr19 receipts
 (`vg convert -x` 8.07x and `vg index -j` 5.31x the genic.pg file size) were
 produced by vg v1.74.1, whose node-to-path index used a disk-spilling mmmulti
 map that the pinned binary does not contain (the fork's uncommitted `deps/xg`
@@ -137,7 +146,11 @@ XG-construction measurement. XG/distance for mapping remain a separate design
 question: mpmap needs both, the distance index can be built from a
 path-stripped graph (snarl decomposition is topology-only), and no
 reference-only XG is derivable from genic.pg because it carries only the
-14,952,173 transcript paths.
+14,952,173 transcript paths. A 2026-09-20 chr21 measurement adds a third route
+for the distance index specifically -- built directly from a GBZ, with no XG
+at all, at 7.5x less peak RSS -- while leaving the XG question for mpmap's own
+graph argument open; see "Guide GBWT downstream products and path sense"
+below.
 
 Standing hazard: `bin/vg-pinned` resolves `lib/libhandlegraph.so` from this
 worktree by RPATH (not RUNPATH, so `LD_LIBRARY_PATH` cannot redirect it), and
@@ -165,6 +178,215 @@ cap was raised; `LAUNCH_REQUEST.json` records `cap_gib: 480`).
 The chr2 prune's per-phase profile, the withdrawal of the chr19-derived XG
 projection, and the unfold scheduling work it justifies are in
 [../prune_scheduling/README.md](../prune_scheduling/README.md).
+
+## Guide GBWT downstream products and path sense (chr21 evidence, 2026-09-20)
+
+New measurements, made 2026-09-20 on the pinned production binary (SHA256
+`4f495d705c5547a39d1334a9c6cd7d4e02ece9e50fe65831ea79ba2679b4273c`) against the
+chr21 exact-dedup arm at
+`/mnt/ssd/lalli/hprc_v2_vg_rna/notes/evidence/chr21_exact_arm_20260914/exact/`
+(`genic.pg` 37,068,417,249 bytes, 34.52 GiB; `guide.gbwt` 611,729,792 bytes;
+5,607,688 named paths; 2,056,621 nodes / 2,726,485 edges) -- chr21, not chr2.
+Full receipts and their adversarial verification are
+`docs/exact_dedup_indexing_feasibility/RECEIPTS.md` and
+`docs/exact_dedup_indexing_feasibility/GBZ_INDEXING_SURVEY.md`. This belongs in
+this file because the input is the same guide-GBWT product this file's
+"Authorized chr2 guide transition" section tracks, and the path-sense finding
+below is a property of how this project names guide-GBWT paths, not of GBZ
+construction generally.
+
+### A GBZ and an r-index build cheaply from a completed guide GBWT
+
+`vg gbwt -x genic.pg -g chr21.gbz guide.gbwt` took 3:30.59 wall, 48,602,136 KiB
+(46.35 GiB) peak RSS, exit 0, and produced a 622,882,936-byte GBZ -- 59.5x
+smaller than the 37,068,417,249-byte `genic.pg` PackedGraph it was built from,
+and only 11,153,144 bytes larger than `guide.gbwt` alone (that delta is the
+34,459,835 bp node-sequence payload). `vg gbwt -r guide.gbwt` (the r-index)
+took 40.62 s, 3.37 GiB peak, and produced 565,177,017 bytes.
+
+The same input also gave this project's first `vg index -x` RSS measurement on
+the pinned binary at any scale, which the "Prune-direct transition" section
+above (2026-09-18) recorded as absent: 54:28.44 wall, 71,850,656 KiB
+(68.52 GiB) peak RSS, producing a 55,013,545,597-byte XG. That 68.52 GiB is
+lower than, and should not be read as reproducing, the 74.815 GiB "chr21 prune
+anchor" that same section cites -- the anchor is a peak over the whole prune
+process including its in-process XG build, the new figure is a standalone
+`vg index -x` on the same genic.pg, and the two are not the same measurement
+even though both are chr21 and both land in the 60-80 GiB range. Against the
+GBZ, the XG took 15.5x more wall (54:28.44 vs 3:30.59), 1.48x more peak RSS
+(68.52 vs 46.35 GiB), and is 88.3x larger on disk (55,013,545,597 vs
+622,882,936 bytes); with the r-index included, GBZ+`.ri` (1,188,059,953 bytes)
+is still 46.3x smaller than the XG. Each side of this comparison ran once, with
+no repeat and no host-contention control, so treat these as single-measurement
+ratios, not noise-floor-cleared results. The measured `xg/pg` byte ratio here
+is 1.484, against the 1.427 the whole-genome driver had assumed from an
+OR-dedup graph -- 4% apart, so that driver's sizing assumption stands with a
+small correction rather than a withdrawal.
+
+None of the ratios above should be booked as a pipeline-wide saving by
+themselves: this project's downstream `rpvg` step requires an XG regardless of
+what mpmap uses, exiting "Graph (xg format) input required" when none is
+given, and prepared `joint_mpmap_rpvg_*` runs already exist in the downstream
+`hprc_v2_vg_rna` workspace. Wherever rpvg stays in the pipeline, the XG is
+deferred, not eliminated.
+
+Distance-index construction was measured arm-to-arm on the same chr21 input:
+from the GBZ, 2:31.32 wall, 8.06 GiB peak; from the XG, 3:45.47 wall,
+60.59 GiB peak -- 7.5x less peak RSS and 1.49x less wall from the GBZ, at 5.2x
+more CPU-seconds (1,010.6 vs 195.6), which is GBZ-load cost, not parallel
+construction. One run per arm, host under load, no noise floor measured; the
+7.5x memory ratio is far outside plausible contention and is credited, the
+1.49x wall ratio is not and is held unconfirmed. `fill_in_distance_index` takes
+a bare `const HandleGraph*` (`src/snarl_distance_index.hpp:34`) and never
+needed an XG; the positional form (`vg index -j out.dist graph.gbz`) must be
+used, since `-x` is hard-typed to `xg::XG` at
+`src/subcommand/index_main.cpp:778` and fails on a GBZ. This is the one saving
+in this whole set of findings usable today with no fixture-scale caveat and no
+contract break: build the distance index from a GBZ, not the XG, whenever a
+GBZ already exists. It resolves only the distance-index half of the
+"Prune-direct transition" section's open XG/distance question; mpmap's own
+graph argument (below) is a separate question and remains open.
+
+Two further bounds on this result: no mapper has opened either `.dist` file
+built here, so this is a construction-cost result, not a result about how a
+mapper performs against one. And the GBZ this index was built from is not
+topologically identical to the source graph: `vg stats -N -E` counts
+2,701,234 edges on `chr21.gbz` against 2,726,485 on the exact-dedup source
+graph -- 25,251 fewer, 0.926%, because a GBWTGraph's edge set is only what its
+threads support. Whether that gap changes any distance-index answer, and
+whether it matters for the splice-junction edges this fork's
+`--trace-splice-search` work looks for, is unmeasured; "no contract break"
+describes the build step, not topology equivalence with a distance index built
+from the full graph.
+
+These per-artifact costs are chr21 measurements on a 34.52 GiB `genic.pg`.
+chr2's guide GBWT (3,238,845,424 bytes, "Authorized chr2 guide transition"
+above) is 5.29x larger by GBWT-file size than chr21's 611,729,792 bytes, and no
+GBZ, r-index, standalone XG, or distance index has been built from chr2's
+guide GBWT or `genic.pg`. No chr2 wall-time or peak-RSS figure for any of these
+artifacts is claimed here.
+
+### Replacing the guide stage with `vg rna -b -g`: unmeasured, and vg rna's own peak would rise
+
+`GBZ_INDEXING_SURVEY.md` ranks combining the guide-GBWT build into
+`vg rna -b -g` as its second-highest-ranked available saving, because it would
+remove a separate stage and its full re-read of chr2's 173.58 GB
+`transcript_full.pg`. That saving is not established by anything measured so
+far in this file: the "Authorized chr2 guide transition" section's
+3:15:11 wall / 229.23 GiB peak guide build (240,360,052 KiB GNU-time maximum
+RSS) used the private `vg-gbwt-insertion-threads` binary at `--num-jobs 24`,
+and the 1.494x speedup this file's own "Integrated private-source checkpoint"
+section records for that binary is a property of its multi-worker
+`GBWTBuilder`. `Transcriptome::add_transcripts_to_gbwt`
+(`src/transcriptome.cpp:3998-4023`), which is what `vg rna -b -g` would call
+instead, is a single serial `gbwt_builder->insert` loop -- the private binary's
+threading does not carry over to it. Net wall-clock change from adopting
+`vg rna -b -g` is unmeasured and could be negative, and `vg rna`'s own peak RSS
+would rise by the cost of building a `DynamicGBWT` in-process for chr2's
+29,902,979 paths -- the opposite direction from this fork's `vg rna`
+transcript-path memory work (`docs/vg_rna_memory/README.md`). Two further
+contract breaks are unresolved: `-g` becomes mandatory, or GBZ construction
+aborts with `InvalidGBWT`; and the metadata shape changes -- `vg paths -L -g`
+prints `tx1_R1#0#0#0` instead of `tx1_R1` -- so the production `guide_check`
+step's exact sorted-name comparison, which passed for the optimized guide per
+"Authorized chr2 guide transition" above, would need rewriting, not just
+rerunning, before this route could be accepted. This is not authorized and no
+acceptance run has been attempted; it is recorded here as an identified option
+with its costs, not a plan.
+
+### Path sense is a naming property of this project's guide GBWT, and it is the most actionable finding here
+
+`guide.gbwt`'s 5,607,688 named paths split as 1,398,636 REFERENCE-sense,
+4,209,052 GENERIC-sense, and 0 HAPLOTYPE-sense (`vg paths -x chr21.gbz -L`,
+cross-checked against `vg gbwt -Z --tags`, which lists all 230 non-CHM13 HPRC
+samples under `reference_samples`). Sense is assigned purely by name:
+`get_sample_sense` (`deps/gbwtgraph/src/utils.cpp:174-188`) maps the magic
+generic-sample name to GENERIC, any name listed in the `reference_samples` tag
+to REFERENCE, and everything else to HAPLOTYPE. The GENERIC 4,209,052 split as
+2,803,513 `__panSC_retention_pad1000__<sha256>_{L,R}_R1` retention-pad walks
+plus 1,405,539 other non-PanSN names
+(`docs/exact_dedup_indexing_feasibility/RECEIPTS.md` section 13) -- GENERIC
+because none of these names carry a PanSN `#` field, not because of any tag.
+The retention pads alone are 66.6% of the GENERIC set, not all of it. The
+REFERENCE 1,398,636
+are ordinary PanSN transcript names
+(`<sample>#<hap>#<sample>_{ha,pa}_T<id>_R1`) whose sample happens to be one of
+the 230 listed in `reference_samples`.
+
+`--set-reference` cannot repair this for a transcript-only guide, because it
+only moves a REFERENCE-tagged sample to HAPLOTYPE (or back) and never touches a
+GENERIC name. Rebuilding with
+`vg gbwt -x genic.pg --set-reference CHM13 -g chr21.ref.gbz` (2:07.91 wall,
+46.24 GiB peak, 622,881,552 bytes) produced 0 REFERENCE and left all 4,209,052
+GENERIC in place -- a 25% cut in the overlay's input, not a fix, because CHM13
+is not a sample this guide GBWT contains and the retention pads were never
+REFERENCE to begin with.
+
+Every GBZ built from this project's guide GBWT -- chr21's today, and chr2's or
+any other chromosome's once their guides exist -- inherits this sense
+assignment, because it is fixed by the guide GBWT's path names before any GBZ
+is ever built, and no downstream `vg gbwt` or `vg mpmap` flag changes it. The
+fix, if made, is a naming convention applied when the guide GBWT itself is
+built: give only the chromosome reference sequence a name `get_sample_sense`
+resolves to REFERENCE (or list it in `reference_samples`), and give every
+transcript and retention-pad walk a name that resolves to HAPLOTYPE rather than
+GENERIC. No such convention is implemented or accepted anywhere in this project
+yet; this section records the diagnosis, not a fix, and the fix belongs at this
+file's stage of the pipeline if it is taken up.
+
+The operational cost this sense assignment causes is measured and is large
+relative to what an 88.3x-smaller-than-XG artifact would suggest:
+`vg mpmap -x chr21.ref.gbz -g chr21.gcsa` (no `-d`) on a 5-read smoke test took
+27:29.23 wall and 162,068,556 KiB (154.55 GiB) peak RSS, of which 14.3 of the
+27.2 startup minutes (3.3 to 17.6 min) is `overlay_helper.apply()`
+(`src/subcommand/mpmap_main.cpp:1830-1831`) building a `PackedPositionOverlay`
+over every REFERENCE-or-GENERIC path -- all 4,209,052 GENERIC survive even with
+`--set-reference CHM13` applied, since GENERIC is untouched by that flag.
+`RECEIPTS.md` section 13 records that an earlier working note in this same
+investigation had concluded the overlay was not the mechanism; that was wrong
+and stands retracted there. Neither the 27:29.23 wall figure nor the
+154.55 GiB peak characterizes `vg mpmap` mapping cost on a GBZ -- both are
+dominated by this startup overlay, not by aligning the 5 reads, which all
+mapped at MAPQ 60, with genuine multipath structure on 2 of the 5. No
+controlled `vg mpmap -x chr21.xg` run exists, so there is no baseline the
+154.55 GiB can be checked against.
+
+### The strip stage and dropping `-r`/`--add-ref-paths`
+
+The "Prune-direct transition" section above already records chr2's strip-stage
+cost: 1:54:12 wall, 213.80 GiB peak. `GBZ_INDEXING_SURVEY.md` ranks dropping
+`vg rna -r`/`--add-ref-paths` as its highest-ranked available saving, because
+it would eliminate that stage outright rather than make it faster, and would
+empty the path payload from the XG that `vg prune -u` builds in-process -- on
+chr2, specifically the "XG path structures, then path release" phase, which is
+33.2% of the 12:47:16 total wall and holds a 336.89 GiB path plateau
+(`docs/prune_scheduling/README.md`, phase table). How much of that 33.2% is
+path-payload cost versus fixed XG-construction cost was not measured
+separately, so no specific fraction of the saving is claimed -- only that the
+whole phase becomes unnecessary if there is no path payload to strip out of in
+the first place.
+
+This is verified only at fixture scale, 37 nodes: the stripped and unstripped
+arms gave identical `vg stats -N -E -l` (40/34/224) and identical
+node-sequence and outdegree multisets, but different duplicate node IDs
+(49 vs 50, 43 vs 41) and a different `.mapping` file. A byte-for-byte or
+ID-for-ID comparison will therefore report a false failure at any larger scale;
+acceptance must use this project's relabel-invariant digest set (name-sorted
+FASTA, GBWT path name/length/step-count, node-sequence multiset,
+`vg stats -N -E -l -z`), the same standard this file already requires for
+above-`-t 1` byte-identity gates. Fixture scale, 37 nodes, is many orders of
+magnitude below chr2's 50,647,839-node pruned graph, so this is not yet a
+chr2-scale result.
+
+Dropping `-r` is not a standalone change. With no embedded transcript paths in
+`genic.pg`, `vg gbwt -E` has nothing left to build a guide GBWT from, so the
+guide would have to come from `vg rna -b -g` (previous subsection, itself
+unmeasured for net wall and rising in peak), and an XG built from a pathless
+`genic.pg` would carry no transcript path information for mpmap to use.
+Dropping `-r`, adopting `-b -g`, and using the GBZ as mpmap's graph argument are
+one proposed change to chr2's (and future chromosomes') indexing route,
+evaluated above from three angles, not three independent options that could be
+adopted piecemeal.
 
 ## Code boundary and unknowns
 

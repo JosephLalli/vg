@@ -1,5 +1,110 @@
 # vg rna memory patches (Stage B)
 
+## Current status (2026-09-16 UTC)
+
+The compact edited records, shorter intermediate lifetimes, and transcript-route
+`augment()` bypass are merged in `4cd1c5dd3`, `583bfd90c`, `83c36ea51`, and
+`28dc0b7be`; all four are ancestors of the current checkout. The bypass remains
+scoped to transcript input. See [the merged implementation and validation
+results](../../CLAUDE.md#vg-rna-transcript-path-memory).
+
+The proposal below retains its original pre-implementation wording and commands.
+The active exact-only chr21 memory follow-up is tracked in
+[Transcript-rich graph memory implementation](../transcript_path_memory/IMPLEMENTATION.md),
+including terminal-accepted parallel V3 full chr21 RNA (18.538162 GiB/
+1.30615977x OR, 33:31.11 wall), the preserved accepted serial V3 baseline
+(18.5631 GiB/1.3079x OR, 54:11.56), the controlled synthetic XG A/B,
+and separate prune acceptance. Bounded parallel graph packing, info output,
+transcribed-node collection and missing-splice-edge discovery V1 passed the
+guarded build recorded in
+`rna_parallel_output_v1/build/acceptance.json` (binary SHA256
+`b0fa7af0cdb9864482bcd3eb764c4de7bc7a515d674c3c4cc38f396ab6192b38`).
+Its terminal checks passed 48,455 assertions in 49 cases and real fixtures at
+1/2/4/24 threads with identical semantics and info. The exact-byte dense ABBA
+averaged 28.1969 s serial versus 20.0230 s at 24 threads, with only 1.326
+CPU-seconds/wall-second, so the useful-parallelism gate failed and no full
+parallel RNA run launched. V2 local-path microbatches plus a bounded persistent
+ring passed 42,497 assertions in nine standalone cases and preserved exact dense
+bytes. Its regular-file timing is not a packing result: the writer was observed
+in `balance_dirty_pages` under `vm.dirty_bytes=100000000` while prune was active
+on the same SSD. The terminal diagnostic in
+`rna_parallel_output_v2/discard/acceptance.json` isolates packing: V2 T24
+averaged 1.9822 s versus 7.2406 s for V1 T24 and 20.2969 s for V2 T1; local
+paths used about 18 effective cores. The terminal 500,039,680-step discard
+scale then kept local paths parallel (6.294 wall/120.222 CPU seconds), while
+membership offsets (29.274/35.926) and next links (31.666/44.002) became
+near-serial. V3 source replaces those coarse producers with aligned microblocks
+and bounded stable-bucket waves. `rna_parallel_output_v3/BUILD_READY.json` pins
+seven source hashes. Its header-only standalone gate passed 42,512 assertions
+in 11 cases and exact 50M output bytes. The terminal post-header gate records a
+3.4113x packing-only 500M V2/V3 ABBA, byte-identical 2,056,621-node T1/T24
+outputs, 1.7881 GiB T24 large-node RSS, 2.6983 GiB maximum 500M V3 RSS, and a
+plan within 3 GiB. These compile current templates against the pinned V1
+archive; they are not an integrated `vg` or real-RNA result. The guarded V3
+build is terminal PASS (binary SHA256
+`545de451f54b8bd291e4196e925dec4780f898bcb2d4bf96973b75d36b805f53`).
+The initial integrated gate retained a T1 raw-byte failure despite exact info,
+validation and canonical semantics. A same-binary repeat differed from the first
+output while matching the older gold, and all three ID-preserving GFA exports
+matched. This establishes storage-encoding variation, without isolating its
+precise cause, and removes T1 raw reproducibility as a guarantee. Completion
+checks are terminal PASS with stable guards and 1/2/4/24 semantic, info, and
+validation identity. The full parallel chr21 command is terminal success:
+33:31.11 wall, 19,438,672 KiB = 18.538162 GiB = 1.30615977x OR peak RSS,
+swap 0, exact info, unchanged inputs, and a 38,126,287,944-byte streamed graph.
+`rna_parallel_output_v3/chr21/command-acceptance.json` closes those command and
+resource gates. The independent 64 GiB/no-swap validator, invocation
+`a64d62b5b6f04d0690d99bf3108f706f`, is terminal success. Its
+`chr21-terminal/acceptance.json` passes through the canonical semantic fallback:
+the raw graph differs from the serial graph, while `vg validate`, all six fields
+(2,056,621 nodes, 2,726,485 edges, 5,607,688 named paths and three hashes), exact
+info bytes, and evidence guards pass.
+`chr21/phase-analysis.json` binds the full timing/status/log/RSS evidence and an
+unchanged 574-file source manifest. It remains unchanged historical command
+evidence; its pending wording is superseded by the terminal acceptance. Its terminal phase data include
+splice-edge discovery at 40.3467 wall/870.446 CPU seconds (about 21.6 effective
+cores), transcribed-node collection at 5.03616/80.8338 (about 16.1), and
+sort/compact at about 153.534/153.520 seconds (about one core, without subregion
+attribution). The command wall is 38.1494% below the accepted serial V3, but the
+control was not rerun and the host was nonexclusive, so this is not a controlled
+causal speedup. Remaining serial seams are audited in
+`rna_parallel_output_v3/serial-followup.md`. The isolated metadata-attribution
+pilot is terminal PASS with stable guards. The resulting private candidate
+removes only both outer lookups and its bounded gate is terminal PASS:
+`rna_metadata_lookup_v1/checks/units/stdout` reports 42,622 assertions in 14
+cases, while `rna_metadata_lookup_v1/checks/acceptance.json` binds exact
+100,000-name T1/T24 bytes and a 5,607,688-name
+CPU-only ABBA reducing mean whole-writer wall from 93.4301 to 77.5504 s (17.0%)
+without increased peak RSS. `rna_metadata_lookup_v1/checks/acceptance.json` is
+authoritative. This is an accepted private prototype, not an integrated `vg` or
+full-RNA speedup. Its apply-ready patch remains unapplied until the active prune
+command and terminal check release the guarded production tree and libraries;
+then its exact removals and tests advance through a guarded build and fixtures.
+A whole-RNA rerun is unnecessary absent a new integration concern. See
+`rna_parallel_output_v3/README.md`.
+The V2 receipts, including the inconclusive 16/64 GiB writeback-cap control, are
+summarized in `rna_parallel_output_v2/README.md`.
+Mapped prune V5 ended at its exact eight-hour deadline with `Result=timeout`,
+status 15 and a 62 GiB peak, but no terminal measured receipt, output graph, or
+semantic check. It is rejected; ordinary V2 remains accepted at 75.608 GiB and
+4:14:01, while the 62.879 GiB 1.5x target remains unmet. Authority:
+`chr21_prune/candidate-v5-terminal-timeout.json`.
+Because V2 is tied to an older XG/libbdsg binary, one frozen-current-binary
+ordinary revalidation is staged in `prune_current_binary_v1/`. Its fixture gate
+is terminal PASS: TAP 26 and ordinary T1/T4/T24 plus real T24 have exact graph
+and mapping bytes and validation. The full command is live as invocation
+`be246266875c49e48228747eebedad77` under 96 GiB/no swap; no semantic checker has
+launched. The command has loaded 2,056,621 nodes and 2,726,485 edges. Its guards
+cover all 574 current source files and the libhandlegraph identity; production
+sources and build libraries stay frozen until the command and terminal gate
+finish, and any RNA prototype must use isolated copies. Terminal command and
+checker acceptance are still required to close current-binary provenance for
+the required `<2x` goal. This is not a mapped retry or speculative 1.5x run.
+Independent work uses `-t`, with ordered mutation/output where required. These
+are code-performance experiments, not production indexing or annotation policy.
+
+## Historical proposal
+
 Reviewable patches for the top opportunities identified in Stage A of the
 `vg rna` memory investigation. Nothing here has been applied to `src/`, built,
 or run. The diffs were produced against copies of the HEAD files, verified to
@@ -404,8 +509,10 @@ unexecuted probe script `probe_t1/run_probe.sh`.
 | +0003 (unscoped) | identical | all identical | FAIL: unittest/transcriptome.cpp:842, edge count 15 != 17 (intron route) | valid | 1.98 / 5.19 GB = 0.381 | no, superseded |
 | +0003 scoped to the transcript route | identical | all identical | pass, 732 assertions | valid | 1.94 / 5.06 GB = 0.383 | yes, at 28dc0b7be |
 
-Step 0 established that vg rna output is byte-reproducible at -t 1 (two control
-runs, identical .pg). Reports and /usr/bin/time -v files are under results/.
+Step 0 found two byte-identical `-t 1` control `.pg` files. A 2026-09-15
+same-binary V3 diagnosis later produced two different raw packings with exact
+ID-preserving GFA, so that historical pair does not establish a general T1
+byte-reproducibility guarantee. Reports and /usr/bin/time -v files are under results/.
 0003's failure is on the vg rna -m intron route, which the production recipe does
 not use; the transcript route is byte-identical. The bypass is therefore gated on is_introns: the --transcripts route takes the
 fast path, the --introns route still calls augment(). Reproducing augment's
@@ -439,3 +546,113 @@ annotation size; post-patch the patches removed the term that scaled with
 transcript steps, so annotation size now fits better. Any cap model refitted on
 patched measurements should be treated as provisional until there are anchors
 from a large chromosome.
+
+## 11. Scope: embedded paths versus junction-only alignment, and a guide-GBWT shortcut (2026-09-20)
+
+Two pieces of new evidence bear on this file, both surfaced by a 2026-09-20
+chr21 exact-GBZ survey on the pinned binary
+`4f495d705c5547a39d1334a9c6cd7d4e02ece9e50fe65831ea79ba2679b4273c`
+(`docs/exact_dedup_indexing_feasibility/GBZ_INDEXING_SURVEY.md` and
+`RECEIPTS.md`). Neither changes the measured chrY/chr20/chr18 table in
+sections 9-10; both narrow what that table is a measurement of. Per this
+file's own rule (section on keeping efforts distinct, restated in
+`../../CLAUDE.md`): this is code-performance scope, and authorizes no
+whole-genome pipeline or annotation-policy decision.
+
+### 11.1 The ~6x figure is measured on the embedded-path recipe; the patched code itself is not gated that way
+
+Every recipe measured in this document -- the Stage A chrY profile (section
+2), the chrY patch gate (section 9), and the chr20/chr18 runs (section 10) --
+uses `-r` (`--add-ref-paths`), which asks `vg rna` to write the reference
+transcript paths into the output graph. That is the recipe a downstream
+gene-counting pipeline needs. The downstream `hprc_v2_vg_rna` workspace's
+`recipe_gbz_mpmap_annotation.md` (step 3) distinguishes it explicitly from a
+"junction-only alignment recipe" that omits `-a`/`-r` and keeps only the
+splice-junction edges the annotation adds, because embedding and later
+collapsing millions of transcript-body paths only serves a tag-based counter,
+not `vg mpmap`: "For mpmap ALIGNMENT, omit `-a`/`-r` -- you only need the
+junctions, which is far lighter and faster. `-a -r -c all` ... are only for a
+COUNTING graph."
+
+Reading `src/subcommand/rna_main.cpp` and `src/transcriptome.cpp` to place the
+four merged patches against that split shows the split is narrower than it
+first looks. `Transcriptome::add_reference_transcripts`
+(`src/transcriptome.cpp:654`) -- the function that builds every
+`EditedTranscriptPath` and calls `augment_graph`, i.e. everything sections 2-5
+measure and patches 0001-0003 change -- runs whenever `-n`/`--transcripts` is
+given at all (`src/subcommand/rna_main.cpp:590`), independent of `-a`/`-r`.
+So the transcripts-phase peak this document is about is not
+counting-specific; a junction-only run pays it too. What *is* gated on
+`-a`/`-r` is a separate, later call: `Transcriptome::embed_transcript_paths`
+(`src/transcriptome.cpp:3755`), invoked from `src/subcommand/rna_main.cpp:699`
+only `if (add_reference_transcript_paths || add_projected_transcript_paths)`
+(`rna_main.cpp:680`), which walks every transcript path and writes it into the
+PackedGraph as embedded steps. Section 1 already named this stage as untouched
+by any of the four patches (`embed_transcript_paths`, 221 s on chrX, 1229 s on
+chr2, memory unmeasured) -- it is the part of the embedded-path recipe's cost
+that stays outside this document's scope, and it is the mechanism behind "the
+memory work's value is on the counting side": not that the patched code skips
+junction-only runs, but that the embedded-path recipe pays an additional,
+unpatched cost the junction-only recipe never incurs.
+
+So the chrY/chr20/chr18 numbers in sections 9-10 measure a recipe that pays
+both costs -- the patched transcripts-phase peak and the unpatched
+`embed_transcript_paths` stage -- and only the first is what the four patches
+move. A junction-only `vg rna` invocation (the same flags as the production
+recipe in section 2, without `-a`/`-r`) still executes the patched code and
+should see a comparable transcripts-phase reduction, but its baseline and
+patched peaks have not been measured: nothing in this document or the
+2026-09-20 evidence times a junction-only run, on any chromosome. Do not read
+the ~6x reduction or the 0.145/0.162 ratios in section 10 (control peak over
+patched peak, defined there) as junction-only figures; they are measured on
+the embedded-path route only, and a junction-only recipe is a different and
+lighter job whose own numbers remain to be taken.
+
+### 11.2 `vg rna -b -g` as an alternative to a separate guide-GBWT stage
+
+Unrelated to the patches above but in the same subsystem: the survey's ranked
+opportunity 2 (`GBZ_INDEXING_SURVEY.md`, "Replace the separate guide-GBWT
+stage") proposes emitting the guide GBWT directly from `vg rna` with `-b FILE
+-g` (`--write-gbwt`, `--gbwt-bidirectional`) in place of a separate
+guide-GBWT build pass, which would remove one full re-read of the transcript
+graph. The stage it would replace is measured at chr2 scale in
+`docs/gbwt_creation/README.md` (3:15:11 wall, 229.23 GiB peak); the saving
+from removing it is not -- that file states plainly that this saving "is not
+established by anything measured so far," because the measured stage used a
+threaded private binary that `add_transcripts_to_gbwt` does not. This is a
+different mechanism from anything the four merged patches touch:
+`Transcriptome::add_transcripts_to_gbwt`
+(`src/transcriptome.cpp:3979-4030`, the function `-b` drives) was not modified
+by `4cd1c5dd3`, `583bfd90c`, `83c36ea51`, or `28dc0b7be`.
+
+It is usable today (the survey's tier a), with four caveats confirmed here by
+reading that function directly:
+
+- `add_transcripts_to_gbwt` is a serial loop: one
+  `gbwt_builder->insert(gbwt_thread, add_bidirectional)` call per transcript
+  path (`src/transcriptome.cpp:4017`), not the parallel construction the chr2
+  guide-GBWT stage currently uses (a private `vg-gbwt-insertion-threads`
+  binary at `--num-jobs 24`, per the survey). The net wall-clock change from
+  switching is unmeasured and could be negative at chr2 scale (29,902,979
+  paths, per the survey); no comparison run exists.
+- `vg rna`'s own peak rises by the cost of building the `DynamicGBWT` for
+  every emitted path in-process, which is the opposite direction from the
+  peak reductions in sections 3-5 and 9-10 of this document. The size of that
+  rise is not measured anywhere in this repository.
+- A GBWT built this way needs `add_bidirectional` (`-g`,
+  `--gbwt-bidirectional`) true to serve as a `vg gbwt -g` (GBZ) source; the
+  survey reports GBZ construction aborting with `InvalidGBWT` without it.
+- The metadata shape differs from a guide GBWT built the existing way:
+  `add_transcripts_to_gbwt` records every path via
+  `metadata.addPath(sample_id, 0, 0, 0)` (`src/transcriptome.cpp:4020`) --
+  contig, phase and count all zero -- so `vg paths -L -g` on the result
+  prints names like `tx1_R1#0#0#0` rather than the bare `tx1_R1` the current
+  stage's output carries. A guide-equivalence check that does a raw `cmp`
+  against the existing guide's name list, as `guide_check` does today, fails
+  on this shape difference even when the underlying path set is identical; it
+  needs a name-stripped or field-aware comparison, not a byte comparison.
+
+None of this has been run against a real chromosome. Both the wall-clock
+direction and the peak-RSS delta relative to the current two-stage route are
+open questions, not measurements, and neither should be booked as a saving
+until they are run.

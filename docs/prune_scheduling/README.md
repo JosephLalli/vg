@@ -102,7 +102,9 @@ document states its binary SHA. Neither number is repeated here.
 
 ### 3. The ranked targets, and the one number that frames them
 
-1. **XG construction — 6.19 h (48%), one core.**
+1. **XG construction — 6.19 h (48%), one core.** (What share of this is the
+   transcript-path payload versus graph topology is unmeasured — see "GBZ
+   feasibility survey" below.)
 2. **Unfold — 3.63 h (28%)**, nominally parallel, mean 4.51 of 24 cores.
 3. **`complement_components` — 2.70 h (21%), one core.**
 4. Graph load 1.4%; `extend` + serialization 0.7%; the prune passes that
@@ -240,6 +242,104 @@ One consequence worth recording: prune's in-process XG phase peaked at
 384 GiB cap it was originally assigned, since `VGset::for_each` frees the input
 at the same point prune's `destroy_all_paths` fires. That is not a measurement of
 `vg index -x`, which has never been run at any scale on this binary.
+
+## GBZ feasibility survey (2026-09-20): what it changes here, and what it does not
+
+Scope note first, because this section is the one place in this document that
+touches a decision outside it: this document profiles `vg prune` code
+performance, not production indexing or annotation policy. Whether to drop
+`vg rna -r/--add-ref-paths` is a production-indexing/annotation decision made
+elsewhere; nothing here decides it. It is recorded in this section only
+because, if adopted, it would change the composition of this document's own
+input — that is a fact about this phase profile's applicability, not an
+endorsement.
+
+An adversarially-verified survey of GBZ as a replacement carrier
+through the indexing path ran on 2026-09-20 on the same pinned binary this
+document's chr2 profile ran on, `4f495d70…4273c`
+(`docs/exact_dedup_indexing_feasibility/GBZ_INDEXING_SURVEY.md`, measured
+receipts in the same directory's `RECEIPTS.md`). Its input was **not** chr2:
+it is the chr21 exact-dedup arm's `genic.pg` — 2,056,621 nodes, 2,726,485
+edges, 5,607,688 transcript paths — a different graph at a different scale
+from the 9,520,546-node, 14,952,173-path chr2 input this document profiles.
+Every figure below is quoted from that survey and fixture, not re-derived
+here, and is not carried across the scale difference except where stated.
+
+**How much of the 6.19 h XG-construction phase is the path payload was never
+measured — this document does not estimate it.** The survey's top-ranked
+change (`GBZ_INDEXING_SURVEY.md`, "Ranked by measured saving," item 1) is
+dropping `vg rna -r/--add-ref-paths` upstream — that survey verified the
+stripped-vs-unstripped equivalence only on a 37-node fixture, where the two
+arms produced different duplicate node IDs and required relabel-invariant
+digests rather than `cmp`, not at chr2's or chr21's production scale — which
+would empty the transcript-path payload that reaches `vg prune` before
+pruning, the same payload this document's "Three results" section identifies
+as the reason XG path construction climbs to the 336.89 GiB plateau. If that
+change is made elsewhere and holds at production scale, it would shrink what
+this phase indexes. But no measurement in
+this document, in the survey, or in `RECEIPTS.md` isolates the path-driven
+share of the 254.4-minute path-structure sub-phase from its topology-driven
+share. The survey states this directly ("How much of that 6.19 h is
+path-dominated was never measured"); this document repeats rather than
+estimates it. The 48% figure above stands as measured on the current,
+path-carrying input, with no fraction of it attributed to paths.
+
+**`prune_main.cpp` builds the XG unconditionally in restore or unfold mode,
+confirmed at the line numbers current in this worktree.** `-r` would not
+remove this phase, only its payload — a distinction the survey draws for its
+own item 1 ("The XG build itself is not eliminated") and that this document
+confirms by reading the source directly:
+
+```
+479  // Remove the paths and build an XG index if needed.
+480  if (mode == mode_restore || mode == mode_unfold) {
+       ...
+506      xg_index->from_path_handle_graph(*graph, destroy_all_paths, on_path_read);
+507  } else {
+508      xg_index->from_path_handle_graph(*graph, destroy_all_paths);
+509  }
+```
+
+(`src/subcommand/prune_main.cpp:479-515`). The condition tests only the
+pruning mode, never whether the input carries any paths, so a pathless input
+still pays for `xg_index->from_path_handle_graph(...)` at `:506` or `:508`,
+inside the same `on_input_consumed` release pattern this document already
+describes under "XG construction — deferred to its own phase"
+(`prune_main.cpp:506-508` → `deps/xg/src/xg.cpp:1178`).
+
+**Settled negative: swapping the in-process XG for a GBZ inside
+`PhaseUnfolder` is dead.** `PhaseUnfolder` takes a `const PathHandleGraph&`
+(`src/phase_unfolder.hpp:45`), which a `GBWTGraph` also implements, so the
+substitution is syntactically available; it is not viable at the per-node
+cost this graph representation carries.
+`GBWTGraph::for_each_step_on_handle` — the call `PhaseUnfolder` would need to
+enumerate a node's supporting threads — measured **325,873 microseconds per
+node** on the chr21 exact GBZ, against 0.873 microseconds for a
+find-plus-extend count-only probe over the same data (`RECEIPTS.md` section
+8; `GBZ_INDEXING_SURVEY.md`, "Refutations worth knowing," which states the
+same conclusion for `PhaseUnfolder` by name). That number is measured on the
+2,056,621-node chr21 fixture, not on chr2's 50,647,839-node pruned output or
+9,520,546-node input, and it is not being scaled to either here; it is
+recorded so that no future session re-attempts the swap on the strength of
+`PhaseUnfolder`'s type signature alone. Re-attempting it would need a fresh
+measurement at whatever scale is in question.
+
+**Prune remains required regardless of GBZ adoption anywhere else in the
+pipeline.** A GBWTGraph's edge set is only what its GBWT's threads support.
+On the chr21 exact fixture, the GBZ has 2,056,621 nodes — identical to
+`genic.pg` — but 2,701,234 edges against `genic.pg`'s 2,726,485: a
+25,251-edge, **0.926%** reduction (`RECEIPTS.md` section 12). That is not
+close to what pruning removes, and it does not bound GCSA2 k-mer complexity,
+which the survey supports by citing a separate fixture where an unpruned
+graph's GCSA2 matched a path-cover-GBZ's GCSA2 to within 0.005%
+(`GBZ_INDEXING_SURVEY.md`, "Refutations worth knowing"; that comparison is
+not re-run here). That 0.005% figure is from a separate fixture, not this
+one: whether GCSA2 indexes k-mers crossing these specific 25,251 edges is
+itself unmeasured. For this document's scope, the conclusion is: nothing in
+the GBZ evidence changes the premise behind the ranked targets above — this
+run's XG-construction, unfold, and `complement_components` phases remain
+necessary work on the path to a pruned graph, not overhead that a different
+graph carrier removes.
 
 ## Validation required before any performance claim
 

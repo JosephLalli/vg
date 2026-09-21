@@ -1,0 +1,2 @@
+35867c7faa54fd4135f16dc46ad58c9e25a2faaf33079afabf4f3ba2f937a273  bin/vg
+35867c7faa54fd4135f16dc46ad58c9e25a2faaf33079afabf4f3ba2f937a273  /mnt/ssd/lalli/hprc_v2_vg_rna/whole_genome_runs/wg_genic_rna_chr1_17_20260910T233840/bin/vg-pinned

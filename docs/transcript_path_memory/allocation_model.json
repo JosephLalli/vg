@@ -1,0 +1,44 @@
+[
+  {
+    "arm": "or",
+    "raw_steps": 586975164,
+    "biological_steps": 538881605,
+    "pad_steps": 48093559,
+    "steps_per_biological_path": 1024.024454667936,
+    "serialized_raw_bytes_per_step": 9.010139478405597,
+    "serialized_genic_bytes_per_live_step": 9.3435626792271,
+    "xg_mapped_record_gib": 16.113449275493622,
+    "xg_three_64bit_vectors_gib_lower": 12.044942490756512,
+    "xg_64bit_vectors_gib_upper": 12.085086934268475,
+    "xg_vector_width_bounds": [
+      21,
+      21,
+      21
+    ],
+    "xg_width_savings_gib_lower": 8.092695735977031,
+    "completed_rna_handles_gib_min": 4.373305767774582,
+    "raw_graph_serialized_gib": 4.925511868670583,
+    "genic_graph_serialized_gib": 4.689278130419552
+  },
+  {
+    "arm": "exact",
+    "raw_steps": 4447067476,
+    "biological_steps": 4238280959,
+    "pad_steps": 208786517,
+    "steps_per_biological_path": 1511.4181386682358,
+    "serialized_raw_bytes_per_step": 8.578456669228196,
+    "serialized_genic_bytes_per_live_step": 8.746097204878579,
+    "xg_mapped_record_gib": 126.37190762162209,
+    "xg_three_64bit_vectors_gib_lower": 94.73296163231134,
+    "xg_64bit_vectors_gib_upper": 94.77893069386482,
+    "xg_vector_width_bounds": [
+      23,
+      21,
+      21
+    ],
+    "xg_width_savings_gib_lower": 62.661906913039275,
+    "completed_rna_handles_gib_min": 33.13323464989662,
+    "raw_graph_serialized_gib": 35.52900221943855,
+    "genic_graph_serialized_gib": 34.52265378925949
+  }
+]

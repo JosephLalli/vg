@@ -68,9 +68,13 @@ The input is a per-chromosome chunk of `hprc-v2.1-mc-chm13.full.noHG002`, so the
 step is real and upstream of this table. The 2026-09-20 indexing and mapping work sits on top
 of `genic.pg`, `guide.gbwt` and `chr21.gcsa` from this same run.
 
-**This is embed-then-strip, already executed.** `vg rna -r` embeds the transcripts, the guide
-GBWT is built from the *embedded* paths of the rna output, and only then are those path labels
-dropped to make the alignment graph.
+**This is embed-then-index, but not embed-then-strip.** `vg rna -r` embeds the transcripts and
+the 1 kb flank-buffer features alike, and the guide GBWT is built from the *embedded* paths of
+the rna output. The strip step then removes **only the flank-buffer paths** --
+`retention_path_names.txt` is written by `partition_vg_info.py` as the buffer partition -- so
+the biological transcripts stay embedded in `genic.pg`, and prune ran on a path-embedded
+graph. Pruning a graph with its transcript paths removed, the regime the splice-junction
+survival check is about, has still never been run.
 
 **It is therefore immune by construction to the stale-numbering defect, which is the only
 thing the transcript-sequence consistency check exists to catch.** That defect belongs to

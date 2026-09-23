@@ -94,9 +94,9 @@ Use the positional form: `-x` is hard-typed to `xg::XG` at
 index never needed an XG at all -- `fill_in_distance_index` takes a bare
 `const HandleGraph*` (`src/snarl_distance_index.hpp:34`).
 
-Measured arm-to-arm on chr21, same binary and options: from the GBZ **2:31.32 at
+Measured side by side on chr21, one build from each source, same binary and options: from the GBZ **2:31.32 at
 8.06 GiB**; from the XG **3:45.47 at 60.59 GiB**. That is 7.5x less peak memory and 1.49x
-less wall, from one run per arm on a loaded host with **no noise floor** -- the memory
+less wall, from one run of each build on a loaded host with **no noise floor** -- the memory
 ratio is far outside plausible contention, the wall ratio is not.
 
 ## Step 8 -- choose the `-x` graph, then smoke-test
@@ -147,7 +147,7 @@ is retained unedited as the object of the critique; do not run it.
 
 ## Fatal
 
-**F1. `vg rna -v` does not emit a GBWT in the output graph's node space.** Two mechanisms,
+**`vg rna -v` does not emit a GBWT in the output graph's node space.** Two mechanisms,
 both of which this proposal triggers. `src/subcommand/rna_main.cpp:590` passes
 `!use_hap_ref` as `add_reference_transcripts`' `update_haplotypes` argument, so `-j` makes
 it false and the guard at `src/transcriptome.cpp:2880` never fires -- exon-boundary node
@@ -160,13 +160,13 @@ This is upstream v1.75.1 behaviour, not fork drift, and **the help text at
 route.** Verified independently at both line numbers.
 
 On the fixture, a 9-node/9-edge spliced graph yielded a 5-node/4-edge GBZ through the `-j`
-route. The most dangerous variant is `no -j, default sort`: right node count, right total
+route. The most dangerous combination is `no -j, default sort`: right node count, right total
 length, **scrambled sequence**. `vg prune -p -u -v/--verify-paths -g <stale gbwt>` exits 0
-and reports verification complete, so the shipped gate does not catch any of this.
+and reports verification complete, so the shipped verification does not catch any of this.
 
 Consequence: steps 5, 6 and 7 all consume a corrupt input.
 
-**F2. A GBZ built from a haplotype GBWT drops every splice junction.** A GBWTGraph's edges
+**A GBZ built from a haplotype GBWT drops every splice junction.** A GBWTGraph's edges
 are exactly those its threads support, and genomic haplotypes never skip an intron.
 Fixture: 9 edges to 8, and the missing one is the junction. Step 7's GBZ is an *unspliced*
 graph, so step 8 would map against a graph with no junctions while its GCSA2 has them, and
@@ -175,10 +175,10 @@ the distance index would describe the unspliced topology.
 This also **narrows RECEIPTS.md section 12**: the 0.926% edge drop measured there is for a
 *transcript* guide on a graph built with `-d/--remove-non-gene`, where every node is
 transcribed. Symmetrically, a GBZ from a transcript guide drops every non-transcribed
-*node* -- fixture: 9 nodes to 4. This proposal does not use `-d`, so that variant would
+*node* -- fixture: 9 nodes to 4. This proposal does not use `-d`, so that GBZ would
 discard all intronic and intergenic sequence. **Neither GBZ is a valid mpmap `-x` here.**
 
-**F3. Omitting `-a`/`-r` makes `vg prune` delete the splice junctions before GCSA2 sees
+**Omitting `-a`/`-r` makes `vg prune` delete the splice junctions before GCSA2 sees
 them.** In `-u` mode `prune_main.cpp:479-513` builds its XG from the remaining embedded
 non-alt paths, `:524` removes complex edges, and `:551-566` restores only what the XG's
 paths or the GBWT's threads traverse. With no transcript paths embedded and a haplotype
@@ -190,7 +190,7 @@ the opposite deliberately, embedding transcript paths before pruning
 **This refutes the premise the whole design rests on.** The mechanism is source-certain;
 the fraction of junctions lost at pangenome scale is unmeasured.
 
-**F5. Step 8 has no graph to hand `-x`.** `spliced.xg` is named but never built.
+**Step 8 has no graph to hand `-x`.** `spliced.xg` is named but never built.
 
 ## What the critique endorsed
 
@@ -242,7 +242,7 @@ One `vg rna` invocation emitting both products in one node space:
 then derive the alignment graph by dropping embedded paths rather than building it a second
 time. This keeps junctions protected through prune, keeps panCollapse on the XG route it
 already validates, and makes the node-ID question structurally impossible rather than gated
-on a check. `-c no` is required: `-c` defaults to `haplotype`, which the exact-rule arms did
+on a check. `-c no` is required: `-c` defaults to `haplotype`, which the exact-rule runs did
 not use. `-q/--out-exclude-ref` must not be used with `-j`: measured, it silently empties
 the pantranscriptome.
 
@@ -251,11 +251,12 @@ the pantranscriptome.
 A chr21 junctions-only run with `-v` replaced by `-g -b`, gated on two checks nothing in
 the record has ever performed:
 
-1. **Node-space gate.** Build a GBZ from the spliced graph plus the emitted guide and
+1. **Transcript-sequence consistency check.** Build a GBZ from the spliced graph plus the emitted guide and
    require the transcript sequences it yields to match `vg rna -f`'s FASTA as a name-sorted
-   set. F1 fails this; a correct guide passes.
-2. **Junction-survival gate.** Prune with the transcript guide, then count how many of
-   `vg rna`'s junction edges survive into `pruned.vg`. This is the measurement F3 demands.
+   set. A guide numbered against stale node IDs, as `vg rna -v` writes one, fails this; a
+   correct guide passes.
+2. **Splice-junction survival check.** Prune with the transcript guide, then count how many of
+   `vg rna`'s junction edges survive into `pruned.vg`. This is the measurement the prune junction-deletion defect above demands.
    If survival is not ~100%, the embed-then-strip design is mandatory rather than optional.
 
-Nothing touching chr2, and no GCSA2 at any scale, until both gates pass.
+Nothing touching chr2, and no GCSA2 at any scale, until both checks pass.

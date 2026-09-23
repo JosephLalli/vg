@@ -20,7 +20,7 @@ The four probes link against the fork's own static libraries. Build each with:
 | `RECEIPTS.md` | every measured figure with its command and binary anchor |
 | `GBZ_INDEXING_SURVEY.md` | the adversarially verified survey of what GBZ mapping can improve |
 | `MPMAP_INDEX_PIPELINE_PROPOSAL.md` | a pipeline proposal and the NO-GO critique that killed it |
-| `WAY_FORWARD.md` | what to do next, what is blocked on which gate, and what not to do |
+| `WAY_FORWARD.md` | what to do next, what is blocked on which check, and what not to do |
 
 | probe | what it measures |
 |---|---|

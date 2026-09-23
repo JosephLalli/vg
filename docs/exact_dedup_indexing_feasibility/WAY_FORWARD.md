@@ -45,6 +45,52 @@ component-labeling deletion is 3.5 m; the larger term is **null-model calibratio
 distance-index-sensitive. The overlay is untouched at 13.6 m and still dominates startup.
 Receipts and limits: `RECEIPTS.md` section 16.
 
+## What has already been run end to end, and what that does to gate 1
+
+Found 2026-09-23 in the retained arm's stage receipts, and it narrows both gates.
+
+The chr21 exact arm of 2026-09-14 is a complete chain from a chromosome isolated out of the
+whole-genome pangenome to a finished GCSA2, all exit 0, all receipts retained in
+`notes/evidence/chr21_exact_arm_20260914/exact/*.time.txt`:
+
+| stage | command shape | wall | peak RSS |
+|---|---|---|---|
+| project | `project_cat_transcript_annotation.py` | -- | -- |
+| rna | `vg rna -t 24 -p -z -j -c no -s Parent -y exon -r -d -i raw_info.tsv -n /dev/stdin hprc-v2.1-mc-chm13.full.noHG002_13_chr21.gbz` | 1:01:06 | 99.13 GiB |
+| guide | `vg gbwt -p -E -x transcript_full.pg -o guide.gbwt` | 1:03:26 | 49.06 GiB |
+| strip | `vg paths -d -p retention_path_names.txt -x transcript_full.pg` | 18:57.23 | 45.68 GiB |
+| prune | `vg prune -p -u -k 32 -M 0 -t 24 -g guide.gbwt -a -m mapping genic.pg` | 4:16:41 | 256.70 GiB |
+| gcsa | `vg index -p -g ... -k 16 -X 4 -f mapping --gcsa-* pruned.vg` | 1:46:02 | 25.46 GiB |
+
+The input is a per-chromosome chunk of `hprc-v2.1-mc-chm13.full.noHG002`, so the isolation
+step is real and upstream of this table. The 2026-09-20 indexing and mapping work sits on top
+of `genic.pg`, `guide.gbwt` and `chr21.gcsa` from this same arm.
+
+**This is embed-then-strip, already executed.** `vg rna -r` embeds the transcripts, the guide
+GBWT is built from the *embedded* paths of the rna output, and only then are those path labels
+dropped to make the alignment graph.
+
+**It is therefore immune to F1 by construction, and that is not what gate 1 tests.** F1 is a
+defect of `vg rna -v/--write-hap-gbwt`, which mints a GBWT in a stale node space. `vg gbwt -E`
+cannot: it reads the paths the output graph itself carries, so it is in the output node space
+by definition, and `vg paths -d` preserves node IDs. Gate 1 remains necessary only for a gate
+run that takes the guide from `vg rna -b` instead. If the production route keeps `vg gbwt -E`,
+gate 1 is testing a hazard that route does not have -- so **decide which guide route the gate
+run is testing before running it**, or the gate answers a question nobody is asking.
+
+That argument is from flag semantics -- `--index-paths` reads the graph's own paths,
+`--drop-paths` removes labels and not nodes -- and it is corroborated, not proved, by
+measurement: `vg stats -N -r chr21.gbz` on the GBZ built from `genic.pg` plus `guide.gbwt`
+gives 2,056,621 nodes over a contiguous node-id range 1:2,056,621, matching `genic.pg`'s
+recorded 2,056,621 nodes exactly. A guide carrying node IDs from a stale space could not
+produce that. What has *not* been done is a direct node-id-range comparison against
+`genic.pg` itself, which needs a 35 GB PackedGraph load.
+
+**Two caveats on reading this table as an end-to-end test.** It ran on `vg-pinned` from
+`whole_genome_runs/wg_genic_rna_chr1_17_20260910T233840/bin/`, not the pinned production binary
+`4f495d70...4273c`, so no chain has been run end to end on one binary; and nothing here was
+checked for junction survival, which is still gate 2 and is still unmeasured.
+
 ## The gate that blocks everything else
 
 One chr21 run, with the corrected flags, checked on two things nothing in this project has
@@ -86,6 +132,15 @@ chr2/chr21 **genic+flank** figures therefore transfer. Note `-d` means `--remove
 before the run, because it decides whether the gate measures a whole-chromosome or a
 genic+flank graph, and the cost figures the run is supposed to supply are not comparable
 across that choice.
+
+**Evidence, found 2026-09-23, that `-d` belongs there.** The retained chr21 exact arm
+(`notes/evidence/chr21_exact_arm_20260914/`) already ran this shape, and its `vg_rna.time.txt`
+records `vg rna -t 24 -p -z -j -c no -s Parent -y exon -r -d -i raw_info.tsv -n /dev/stdin
+<chr21 chunk>.gbz` -- `-d` present, alongside a retained `retention_pad1000.gff3`. That is
+owner decision 2's design, already executed, and it is where the genic+flank figures come
+from. It does not by itself settle the gate command, because that arm emitted neither `-b`
+nor `-f` and so is not the same invocation; but the `-d`-plus-pads combination is not
+hypothetical.
 
 **Thread count.** Both gates are relabel-invariant -- name-sorted set equality on sequences,
 and an edge count -- so neither needs the fork's `-t 1` byte-identity rule. `-t 24` is

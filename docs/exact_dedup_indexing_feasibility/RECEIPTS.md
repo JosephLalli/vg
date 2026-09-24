@@ -526,3 +526,35 @@ binaries created the same unfolded duplicates, which supports but does not prove
 holds on the newer code. The definition can miss a junction that coincides with some
 haplotype's genomic adjacency, and could count a spliced-only edge that is not a junction; with
 nothing missing, neither changes the conclusion.
+
+## 18. chr2 mapping index: GCSA2 and GBZ build; distance index and mpmap exceed 300 GB
+
+Run 2026-09-23/24 on the terminal chr2 prune (binary `4f495d70`) with the production binary
+`0965e2fd`, all steps in one systemd unit capped at 300G with no swap, the budget the user set.
+Inputs matched the hashes sealed by their producing stages. Full receipts, including 10 s and
+30 s RSS samples, are in `hprc_v2_vg_rna/chr2_exact_corrected_prune_v1_current/mapping_index_20260923/`.
+
+| step | chr2 | chr21 (same pipeline) |
+|---|---|---|
+| GCSA2 wall / peak RSS | 9:16:19 / 64.72 GiB | 1:46:02 / 25.46 GiB |
+| GCSA2 index + LCP / peak workspace | 4.83 GB / 128.07 GB | 2.15 GB / 60.7 GB |
+| GCSA2 I/O read / written | 1,186.4 GB / 805.9 GB | 289.3 GB / 176.1 GB |
+| GBZ wall / peak RSS / size | 0:15:50 / 218.87 GiB / 3.31 GB | 0:03:31 / 46.35 GiB / 0.62 GB |
+| distance index from the GBZ | stopped at the cap after 2:26:33; 299.0 GiB from 2:00:28 | 0:02:08 / 7.83 GiB |
+| mpmap, five reads | stopped at the cap after 0:46:42, in the path overlay, 297.8 GiB and rising | 0:19:18 / 154.56 GiB (with `-d`) |
+
+The chr2 pruned input is 6.77 GB against chr21's 4.23 GB, yet GCSA2 read and wrote about four
+times as much and took about five times as long; settings differed (200G target and 12 workers
+on chr2, 96G and 6 on chr21) and the host ran at load ~120, so part of the gap may be theirs.
+mpmap ran without `-d` because the distance index failed; on chr21 `-d` did not change mpmap's
+peak (154.55 against 154.56 GiB), since the peak is the reference-path overlay. That overlay
+indexes every REFERENCE and GENERIC path in the GBZ -- here all 29.9 million guide paths, half
+of them 1 kb flank buffers -- and its memory rose steadily for 30 minutes before the cap.
+
+**What this establishes.** On this host, within 300 GB, chr2 cannot yet be mapped with this
+design: both the distance index and mpmap's overlay exceed the budget. It establishes lower
+bounds only. Neither step's true requirement was measured; for mpmap, where on chr21 the overlay
+phase took 14.3 minutes, the chr2 overlay had run about 30 minutes when stopped, which is
+consistent with, but does not measure, the linear extrapolation of about 800 GiB. The cause of
+the distance index's growth is not diagnosed; very large snarls, whose distance tables grow
+with the square of their size, are the leading hypothesis and unchecked.

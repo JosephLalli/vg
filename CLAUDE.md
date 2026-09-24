@@ -68,7 +68,17 @@ uncommitted source, without the GBWT insertion workers); measurements in these
 docs name the binary they ran on, and most name `4f495d70`. The rebuild left
 `lib/libhandlegraph.so` at `9f927257...dab250`, the hash pinned copies check.
 
-**chr2 production index — prune is terminal; GCSA2 is not started.**
+**chr2 mapping index (2026-09-24) — GCSA2 and GBZ built; distance index and mpmap do not
+fit in 300 GB.** A per-chromosome test build on the terminal prune below, production binary
+`0965e2fd`, one unit capped at 300G: GCSA2 9:16:19 at 64.72 GiB (3.63 GB + 1.20 GB LCP,
+128.07 GB peak workspace); GBZ 0:15:50 at 218.87 GiB (3.31 GB); the distance index built from
+the GBZ was stopped at the cap after 2:26:33 (pinned at 299.0 GiB), and mpmap without it was
+stopped at the cap after 0:46:42 while still building its reference-path overlay over the
+GBZ's 29.9 million paths. chr21 needed 7.83 GiB and 154.56 GiB for those two. Receipts:
+`hprc_v2_vg_rna/chr2_exact_corrected_prune_v1_current/mapping_index_20260923/` and
+[RECEIPTS.md section 18](docs/exact_dedup_indexing_feasibility/RECEIPTS.md).
+
+**chr2 production index — prune is terminal.**
 `vg prune -p -u -k 32 -M 0 -t 24` exited 0 in 12:47:16 at 341.07 GiB GNU-time
 peak RSS under a 480 GiB cap, zero swap, 2.006 effective cores of 24.
 `prune_check` passed and `PRUNE_COMPLETE.json` records `gcsa_executed: false`.

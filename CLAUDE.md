@@ -56,8 +56,17 @@ This is the most reused rule in this file. The chr21 exact-dedup indexing
 feasibility survey below is vg code/indexing evidence, at chromosome scale; it
 authorizes no whole-genome production-index or annotation/paralog change.
 
-The pinned production binary is SHA256
-`4f495d705c5547a39d1334a9c6cd7d4e02ece9e50fe65831ea79ba2679b4273c`.
+The production binary, `bin/vg` in this worktree, is SHA256
+`0965e2fdf7726526c16bea106ea3091d05b5cd7b95be69e19b5bda4a250083c4`, built
+2026-09-23 from committed source (`rna-copy-elimination` at `f0e69b4d4`,
+pushed to `JosephLalli/vg`) -- the first production build whose source is
+fully in git. It carries the `vg rna` transcript-path memory work, the XG
+input release and prune workspace, and parallel GBWT insertion for
+`vg gbwt -E`; unit tests for those areas and integration tests 06, 37, 38,
+52 and 58 pass. It replaces `4f495d70...4273c` (built 2026-09-16 from then-
+uncommitted source, without the GBWT insertion workers); measurements in these
+docs name the binary they ran on, and most name `4f495d70`. The rebuild left
+`lib/libhandlegraph.so` at `9f927257...dab250`, the hash pinned copies check.
 
 **chr2 production index — prune is terminal; GCSA2 is not started.**
 `vg prune -p -u -k 32 -M 0 -t 24` exited 0 in 12:47:16 at 341.07 GiB GNU-time

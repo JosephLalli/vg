@@ -558,3 +558,29 @@ phase took 14.3 minutes, the chr2 overlay had run about 30 minutes when stopped,
 consistent with, but does not measure, the linear extrapolation of about 800 GiB. The cause of
 the distance index's growth is not diagnosed; very large snarls, whose distance tables grow
 with the square of their size, are the leading hypothesis and unchecked.
+
+## 19. The GBZ is what made mpmap expensive: chr21 XG versus GBZ, everything else fixed
+
+Run 2026-09-24 to test why mpmap had never had memory trouble before: every earlier mpmap run in
+the project gave it an XG (peaks 9.0-92.8 GiB, one real-read run at 180.0 GiB), while the runs
+that grew large gave it a GBZ. Same binary (`4f495d70`), GCSA2 (`chr21.gcsa`), distance index
+(`chr21.dist`), five reads and `-t 4` as the section-16 run; only `-x` changed, to the
+exact-deduplication chr21 XG built in section 3 (`chr21.xg`, 55,013,545,597 bytes). Receipt and
+output in `chr21_gbz_indexing_fixture_20260920/mpmap_xg_dist.*`.
+
+| `-x` | wall | peak RSS | graph load | path-position overlay |
+|---|---|---|---|---|
+| `chr21.ref.gbz` (section 16) | 0:19:17 | 154.56 GiB | 3.4 m | 3.4 -> 17.0 m |
+| `chr21.xg` | 0:02:57 | 58.59 GiB | 1.4 m | none: the XG already stores path positions |
+
+The alignments are identical: all five reads at MAPQ 60 with the same subpath counts (10, 12,
+16, 7, 8) and the same node sets.
+
+**What it establishes.** With a GBZ, mpmap builds a position index over every reference and
+generic path at every startup; with an XG it loads positions computed when the XG was built.
+On chr21 under exact deduplication that difference is 95.97 GiB of peak and 0:16:20 of wall,
+with no change in output. It explains the chr2 failure in section 18 and why earlier XG-based
+runs never hit it. It does not make a path-embedded XG cheap at chr2 scale: the chr21 XG is
+55.0 GB and cost 68.52 GiB to build, and mpmap's peak tracked its size, so a chr2 XG carrying
+all 29.9 million paths would be several times larger. A graph with no embedded paths avoids
+both costs; that is the route proposed for chr2. One run per arm, five reads, loaded host.

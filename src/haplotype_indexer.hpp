@@ -129,6 +129,10 @@ public:
      */
     std::unique_ptr<gbwt::DynamicGBWT> build_gbwt(const PathHandleGraph& graph) const;
 
+    /// Build a GBWT from embedded non-alt paths using this many insertion workers.
+    std::unique_ptr<gbwt::DynamicGBWT> build_gbwt(const PathHandleGraph& graph,
+                                                  size_t insertion_threads) const;
+
     /**
      * Build a GBWT from the alignments. Each distinct alignment name becomes
      * a sample in the GBWT metadata. If there are multiple alignments with
@@ -153,6 +157,14 @@ public:
     std::unique_ptr<gbwt::GBWT> build_gbwt(const HandleGraph& graph,
         const std::vector<std::string>& aln_filenames, const std::string& aln_format,
         size_t parallel_jobs = 1) const;
+
+private:
+    std::unique_ptr<gbwt::DynamicGBWT> build_gbwt_impl(const std::vector<std::string>& vcf_parse_files,
+                                                       const std::string& job_name,
+                                                       const PathHandleGraph* graph,
+                                                       const std::unordered_set<path_handle_t>* paths,
+                                                       bool skip_unvisited_paths,
+                                                       size_t insertion_threads) const;
 };
 
 }

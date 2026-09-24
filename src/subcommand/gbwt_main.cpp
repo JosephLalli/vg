@@ -268,8 +268,8 @@ void help_gbwt(char** argv) {
                                         << "[" << gbwt::DynamicGBWT::SAMPLE_INTERVAL << "]" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Multithreading:" << std::endl;
-    std::cerr << "      --num-jobs N        use at most N parallel build jobs" << std::endl;
-    std::cerr << "                          (for -v, -G, -A, -l, -P) " 
+    std::cerr << "      --num-jobs N        use at most N parallel build jobs or insertion workers" << std::endl;
+    std::cerr << "                          (for -v, -G, -E, -A, -l, -P; -E uses workers within one index) "
                                         << "[" << GBWTConfig::default_build_jobs() << "]" << std::endl;
     std::cerr << "      --num-threads N     use N parallel search threads" << std::endl;
     std::cerr << "                          (for -b and -r) [" << omp_get_max_threads() << "]" << std::endl;
@@ -1399,7 +1399,7 @@ void step_1_build_gbwts(GBWTHandler& gbwts, GraphHandler& graphs, GBWTConfig& co
         if(config.show_progress) {
             config.logger.info() << "Input type: embedded paths" << std::endl;
         }
-        std::unique_ptr<gbwt::DynamicGBWT> temp = config.haplotype_indexer.build_gbwt(*(graphs.path_graph));
+        std::unique_ptr<gbwt::DynamicGBWT> temp = config.haplotype_indexer.build_gbwt(*(graphs.path_graph), config.build_jobs);
         gbwts.use(*temp);
     } else if (config.build == GBWTConfig::build_alignments) {
         if (config.show_progress) {

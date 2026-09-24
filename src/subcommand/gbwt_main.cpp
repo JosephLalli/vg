@@ -269,7 +269,8 @@ void help_gbwt(char** argv) {
     std::cerr << std::endl;
     std::cerr << "Multithreading:" << std::endl;
     std::cerr << "      --num-jobs N        use at most N parallel build jobs or insertion workers" << std::endl;
-    std::cerr << "                          (for -v, -G, -E, -A, -l, -P; -E uses workers within one index) "
+    std::cerr << "                          (for -v, -G, -E, -A, -l, -P; -E uses workers" << std::endl;
+    std::cerr << "                          within one index) "
                                         << "[" << GBWTConfig::default_build_jobs() << "]" << std::endl;
     std::cerr << "      --num-threads N     use N parallel search threads" << std::endl;
     std::cerr << "                          (for -b and -r) [" << omp_get_max_threads() << "]" << std::endl;

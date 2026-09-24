@@ -9,7 +9,9 @@
 #include "xg.hpp"
 #include "graph.hpp"
 #include "algorithms/subgraph.hpp"
+#include <array>
 #include <stdio.h>
+#include <sstream>
 
 namespace vg {
     namespace unittest {
@@ -317,6 +319,244 @@ TEST_CASE("We can build the xg index on a small graph with discontinuous node id
     REQUIRE(graph.edge_size() == 1);
 
 
+}
+
+TEST_CASE("XGPath block handle traversal agrees with random access", "[xg]") {
+    VG source;
+    source.create_handle("A", 3);
+    source.create_handle("C", 9);
+    source.create_handle("G", 71);
+    source.create_handle("T", 200);
+
+    xg::XG graph;
+    graph.from_path_handle_graph(source);
+    const auto h3 = graph.get_handle(3);
+    const auto h9 = graph.get_handle(9);
+    const auto h71 = graph.get_handle(71);
+    const auto h200 = graph.get_handle(200);
+    const std::array<handle_t, 8> pattern = {
+        graph.flip(h200), h3, h3, graph.flip(h71), h9, h200, graph.flip(h3), h71
+    };
+
+    for (size_t length : std::array<size_t, 8>{{0, 1, 127, 128, 129, 255, 256, 257}}) {
+        std::vector<handle_t> expected;
+        expected.reserve(length);
+        for (size_t i = 0; i < length; ++i) {
+            expected.push_back(pattern[i % pattern.size()]);
+        }
+
+        xg::XGPath path("block-boundary", expected, false, graph);
+        std::vector<handle_t> visited;
+        path.for_each_handle([&](size_t rank, const handle_t& handle) {
+            REQUIRE(rank == visited.size());
+            visited.push_back(handle);
+        });
+        REQUIRE(visited.size() == expected.size());
+        for (size_t i = 0; i < expected.size(); ++i) {
+            REQUIRE(as_integer(visited[i]) == as_integer(expected[i]));
+            REQUIRE(as_integer(path.handle(i)) == as_integer(expected[i]));
+        }
+    }
+}
+
+TEST_CASE("XG indexes every oriented occurrence of repeated path nodes", "[xg]") {
+    VG graph;
+    auto repeated = graph.create_handle("AAA", 7);
+    auto spacer = graph.create_handle(string(257, 'C'), 1000);
+    auto unpathed = graph.create_handle("TTTT", 999999);
+
+    auto linear = graph.create_path_handle("linear");
+    graph.append_step(linear, graph.flip(repeated)); // position 0
+    graph.append_step(linear, spacer);               // position 3
+    graph.append_step(linear, repeated);             // position 260
+    graph.append_step(linear, graph.flip(repeated)); // position 263
+
+    auto circular = graph.create_path_handle("circular", true);
+    graph.append_step(circular, graph.flip(spacer));   // position 0
+    graph.append_step(circular, repeated);             // position 257
+    graph.append_step(circular, graph.flip(repeated)); // position 260
+    graph.append_step(circular, repeated);             // position 263
+
+    graph.create_path_handle("empty");
+
+    // Exercise step ranks above 8 bits and path positions above 16 bits without
+    // requiring an impractically large fixture.
+    auto wide = graph.create_path_handle("wide");
+    for (size_t i = 0; i < 300; ++i) {
+        graph.append_step(wide, spacer);
+    }
+
+    xg::XG index;
+    index.from_path_handle_graph(graph);
+
+    struct Occurrence {
+        string path;
+        bool reverse;
+        size_t position;
+    };
+    auto occurrences = [](const xg::XG& xg_index, const handle_t& handle) {
+        vector<Occurrence> found;
+        xg_index.for_each_step_on_handle(handle, [&](const step_handle_t& step) {
+            auto step_handle = xg_index.get_handle_of_step(step);
+            found.push_back({xg_index.get_path_name(xg_index.get_path_handle_of_step(step)),
+                             xg_index.get_is_reverse(step_handle),
+                             xg_index.get_position_of_step(step)});
+        });
+        return found;
+    };
+
+    // XG's established occurrence order is path rank, then path orientation,
+    // then step rank. Forward occurrences consequently precede reverse ones
+    // within a path even when the reverse step occurs earlier on that path.
+    vector<Occurrence> expected_repeated = {
+        {"circular", false, 257}, {"circular", false, 263}, {"circular", true, 260},
+        {"linear", false, 260}, {"linear", true, 0}, {"linear", true, 263}
+    };
+    vector<string> path_names;
+    index.for_each_path_handle([&](const path_handle_t& path) {
+        path_names.push_back(index.get_path_name(path));
+    });
+    vector<string> expected_path_names = {"circular", "empty", "linear", "wide"};
+    REQUIRE(path_names == expected_path_names);
+
+    auto repeated_xg = index.get_handle(7);
+    auto spacer_xg = index.get_handle(1000);
+    auto unpathed_xg = index.get_handle(999999);
+    auto actual_repeated = occurrences(index, repeated_xg);
+    REQUIRE(actual_repeated.size() == expected_repeated.size());
+    for (size_t i = 0; i < expected_repeated.size(); ++i) {
+        REQUIRE(actual_repeated[i].path == expected_repeated[i].path);
+        REQUIRE(actual_repeated[i].reverse == expected_repeated[i].reverse);
+        REQUIRE(actual_repeated[i].position == expected_repeated[i].position);
+    }
+    REQUIRE(occurrences(index, index.flip(repeated_xg)).size() == expected_repeated.size());
+    REQUIRE(index.steps_of_handle(repeated_xg, true).size() == 3);
+    REQUIRE(index.steps_of_handle(index.flip(repeated_xg), true).size() == 3);
+    REQUIRE(occurrences(index, unpathed_xg).empty());
+    REQUIRE(index.is_empty(index.get_path_handle("empty")));
+    REQUIRE(index.get_is_circular(index.get_path_handle("circular")));
+
+    auto wide_occurrences = occurrences(index, spacer_xg);
+    REQUIRE(wide_occurrences.size() == 302);
+    REQUIRE(wide_occurrences.back().path == "wide");
+    REQUIRE(wide_occurrences.back().position == 299 * 257);
+    auto wide_last = index.get_step_at_position(index.get_path_handle("wide"), 299 * 257);
+    REQUIRE(index.get_position_of_step(wide_last) == 299 * 257);
+
+    stringstream serialized;
+    index.serialize(serialized);
+    serialized.seekg(0);
+    xg::XG reloaded;
+    reloaded.deserialize(serialized);
+    auto reloaded_repeated = occurrences(reloaded, reloaded.get_handle(7));
+    REQUIRE(reloaded_repeated.size() == expected_repeated.size());
+    for (size_t i = 0; i < expected_repeated.size(); ++i) {
+        REQUIRE(reloaded_repeated[i].path == expected_repeated[i].path);
+        REQUIRE(reloaded_repeated[i].reverse == expected_repeated[i].reverse);
+        REQUIRE(reloaded_repeated[i].position == expected_repeated[i].position);
+    }
+}
+
+TEST_CASE("XG permits releasing input storage after its final read", "[xg]") {
+    SECTION("path-handle input can be destroyed before reverse indexing") {
+        auto input = std::make_unique<VG>();
+        auto a = input->create_handle("AAA", 7);
+        auto b = input->create_handle("CT", 19);
+        input->create_edge(a, b);
+        input->create_edge(b, input->flip(a));
+        auto path = input->create_path_handle("repeated");
+        input->append_step(path, a);
+        input->append_step(path, b);
+        input->append_step(path, input->flip(a));
+
+        xg::XG control;
+        control.from_path_handle_graph(*input);
+        stringstream expected;
+        control.serialize(expected);
+
+        xg::XG consumed;
+        size_t calls = 0;
+        consumed.from_path_handle_graph(*input, [&]() {
+            ++calls;
+            input.reset();
+        });
+        REQUIRE(calls == 1);
+        REQUIRE(input == nullptr);
+        REQUIRE(consumed.get_step_count(consumed.get_path_handle("repeated")) == 3);
+        stringstream actual;
+        consumed.serialize(actual);
+        REQUIRE(actual.str() == expected.str());
+    }
+
+    SECTION("validation finishes its input reads before the callback") {
+        bool consumed = false;
+        auto sequences = [&](const auto& emit) {
+            REQUIRE_FALSE(consumed);
+            emit(string("A"), nid_t(7));
+        };
+        auto edges = [&](const auto& emit) {
+            REQUIRE_FALSE(consumed);
+        };
+        auto paths = [&](const auto& emit) {
+            REQUIRE_FALSE(consumed);
+            emit(string("p"), nid_t(7), false, string(), false, false);
+        };
+        xg::XG index;
+        size_t calls = 0;
+        index.from_enumerators(sequences, edges, paths, true, "", [&]() {
+            consumed = true;
+            ++calls;
+        });
+        REQUIRE(consumed);
+        REQUIRE(calls == 1);
+        REQUIRE(index.get_position_of_step(index.path_begin(index.get_path_handle("p"))) == 0);
+    }
+}
+
+TEST_CASE("XG reports every path read before releasing its input", "[xg]") {
+    VG graph;
+    auto a = graph.create_handle("A", 7);
+    auto b = graph.create_handle("CG", 19);
+    auto repeated = graph.create_path_handle("repeated");
+    graph.append_step(repeated, a);
+    graph.append_step(repeated, b);
+    graph.append_step(repeated, a);
+    graph.create_path_handle("empty");
+    auto circular = graph.create_path_handle("circular", true);
+    graph.append_step(circular, graph.flip(b));
+    graph.append_step(circular, a);
+
+    vector<size_t> one_pass_counts;
+    graph.for_each_path_handle([&](const path_handle_t& path) {
+        one_pass_counts.push_back(graph.get_step_count(path));
+    });
+    vector<size_t> expected_counts = one_pass_counts;
+    expected_counts.insert(expected_counts.end(), one_pass_counts.begin(), one_pass_counts.end());
+
+    xg::XG control;
+    control.from_path_handle_graph(graph);
+    stringstream expected_bytes;
+    control.serialize(expected_bytes);
+
+    xg::XG observed;
+    vector<size_t> callback_counts;
+    bool input_consumed = false;
+    size_t consumed_calls = 0;
+    observed.from_path_handle_graph(graph, [&]() {
+        REQUIRE(callback_counts == expected_counts);
+        input_consumed = true;
+        ++consumed_calls;
+    }, [&](size_t step_count) {
+        REQUIRE_FALSE(input_consumed);
+        callback_counts.push_back(step_count);
+    });
+    REQUIRE(callback_counts == expected_counts);
+    REQUIRE(consumed_calls == 1);
+    REQUIRE(observed.get_is_circular(observed.get_path_handle("circular")));
+    REQUIRE(observed.is_empty(observed.get_path_handle("empty")));
+    stringstream actual_bytes;
+    observed.serialize(actual_bytes);
+    REQUIRE(actual_bytes.str() == expected_bytes.str());
 }
 
 TEST_CASE("Looping over XG handles in parallel works", "[xg]") {

@@ -1,7 +1,13 @@
 
 #include <thread>
+#include <array>
+#include <chrono>
+#include <cstring>
+#include <ctime>
+#include <exception>
 
 #include <gbwtgraph/utils.h>
+#include <bdsg/packed_graph.hpp>
 
 #include "../io/save_handle_graph.hpp"
 
@@ -16,6 +22,127 @@ using namespace vg::io;
 using namespace std;
 
 // #define transcriptome_debug
+
+namespace {
+
+constexpr uint64_t TRANSCRIPT_PATH_CHUNK_RECORDS = 1024 * 1024;
+constexpr uint64_t MAPPED_GRAPH_CHECKPOINT_BYTES = 256ull * 1024 * 1024;
+
+// Each parallel info row has a fixed scratch buffer. Completed batches retain
+// at most 4096 x 64 KiB of text; large rows are emitted by the ordered writer.
+struct TranscriptInfoRowTooLarge : std::length_error {
+    TranscriptInfoRowTooLarge() : std::length_error("Transcript info row exceeds parallel buffer") {}
+};
+
+class TranscriptInfoRowBuffer : public std::streambuf {
+public:
+    TranscriptInfoRowBuffer() { setp(storage.data(), storage.data() + storage.size()); }
+    std::string text() const { return std::string(pbase(), pptr()); }
+protected:
+    int_type overflow(int_type value) override {
+        if (traits_type::eq_int_type(value, traits_type::eof())) {
+            return traits_type::not_eof(value);
+        }
+        throw TranscriptInfoRowTooLarge();
+    }
+    std::streamsize xsputn(const char* data, std::streamsize count) override {
+        if (count < 0 || static_cast<size_t>(count) > static_cast<size_t>(epptr() - pptr())) {
+            throw TranscriptInfoRowTooLarge();
+        }
+        std::memcpy(pptr(), data, static_cast<size_t>(count));
+        pbump(static_cast<int>(count));
+        return count;
+    }
+private:
+    std::array<char, 64 * 1024> storage;
+};
+
+// Bound discovery scratch independently of transcript length. Only the drain
+// mutates the graph, and it retains first-insertion order across all batches.
+template<class Paths, class Visit>
+void add_transcript_edges_in_order(MutablePathDeletableHandleGraph& graph,
+                                  const Paths& paths, int requested,
+                                  bool show_progress, const Visit& visit) {
+    const auto started = std::chrono::steady_clock::now();
+    const auto cpu_started = std::clock();
+    auto add_path = [&](const auto& path) {
+        handle_t previous;
+        visit(path, [&](const handle_t& handle, uint64_t rank) {
+            if (rank != 0) { graph.create_edge(previous, handle); }
+            previous = handle;
+        });
+    };
+    size_t actual_workers = 1, fallback_paths = 0;
+    if (requested <= 1 || paths.size() < 2) {
+        for (const auto& path : paths) { add_path(path); }
+    } else {
+        constexpr size_t batch_size = 4096;
+        constexpr size_t maximum_missing = 128;
+        struct Full {};
+        struct Discovery {
+            std::array<pair<handle_t, handle_t>, maximum_missing> missing;
+            size_t count = 0;
+            bool serial = false;
+            exception_ptr error;
+        };
+        auto next = paths.begin();
+        while (next != paths.end()) {
+            vector<const typename Paths::value_type*> batch;
+            batch.reserve(batch_size);
+            while (next != paths.end() && batch.size() < batch_size) {
+                batch.push_back(&*next++);
+            }
+            // About 8 MiB at full batch size; no worker retains a whole walk.
+            vector<Discovery> discovered(batch.size());
+            #pragma omp parallel num_threads(requested)
+            {
+                #pragma omp single
+                actual_workers = omp_get_num_threads();
+                #pragma omp for schedule(dynamic, 16)
+                for (size_t i = 0; i < batch.size(); ++i) {
+                    auto& result = discovered[i];
+                    try {
+                        handle_t previous;
+                        visit(*batch[i], [&](const handle_t& handle, uint64_t rank) {
+                            if (rank != 0 && !graph.has_edge(previous, handle)) {
+                                if (result.count == maximum_missing) { throw Full(); }
+                                result.missing[result.count++] = {previous, handle};
+                            }
+                            previous = handle;
+                        });
+                    } catch (const Full&) { result.serial = true; }
+                    catch (...) { result.error = current_exception(); }
+                }
+            }
+            // All readers have joined before graph mutation or an exception.
+            for (size_t i = 0; i < batch.size(); ++i) {
+                const auto& result = discovered[i];
+                if (result.error) { rethrow_exception(result.error); }
+                if (result.serial) {
+                    add_path(*batch[i]);
+                    ++fallback_paths;
+                } else {
+                    for (size_t j = 0; j < result.count; ++j) {
+                        graph.create_edge(result.missing[j].first, result.missing[j].second);
+                    }
+                }
+            }
+        }
+    }
+    if (show_progress) {
+        const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+        const double cpu = static_cast<double>(std::clock() - cpu_started) / CLOCKS_PER_SEC;
+        cerr << "[vg rna] Splice edge discovery: " << actual_workers << " workers, "
+             << fallback_paths << " serial fallback paths; " << wall << " wall seconds, "
+             << cpu << " CPU seconds" << endl;
+    }
+}
+
+string workspace_file(const string & workspace, const string & filename) {
+    return workspace + (workspace.back() == '/' ? "" : "/") + filename;
+}
+
+}
 
 bool operator==(const Exon & lhs, const Exon & rhs) { 
 
@@ -208,6 +335,13 @@ string TranscriptPath::get_name() const {
 
 handle_t EditedTranscriptPath::get_first_node_handle(const HandleGraph & graph) const {
 
+    if (!shared_path.empty()) {
+        const auto & slice = shared_path.is_reverse()
+            ? shared_path.slices().back() : shared_path.slices().front();
+        const auto handle = (*slice.source)[shared_path.is_reverse()
+            ? slice.end - 1 : slice.begin].handle;
+        return shared_path.is_reverse() ? graph.flip(handle) : handle;
+    }
     assert(!path.empty());
 
     return path.front().handle;
@@ -236,32 +370,215 @@ CompletedTranscriptPath::CompletedTranscriptPath(const EditedTranscriptPath & ed
     is_reference = edited_transcript_path_in.is_reference;
     is_haplotype = edited_transcript_path_in.is_haplotype;
 
+    if (!edited_transcript_path_in.shared_path.empty()) {
+        // No augmentation is needed here: every slice must cover whole nodes.
+        // Internal records were validated once when the source was constructed.
+        for (const auto & slice : edited_transcript_path_in.shared_path.slices()) {
+            if (slice.first_offset != 0 ||
+                slice.last_end != (*slice.source)[slice.end - 1].length) {
+                throw logic_error("An incomplete shared path requires graph augmentation");
+            }
+        }
+        shared_path = edited_transcript_path_in.shared_path;
+        return;
+    }
     path.reserve(edited_transcript_path_in.path.size());
 
-    for (const auto & mapping: edited_transcript_path_in.path) {
+    edited_transcript_path_in.for_each_mapping(graph, [&](const EditedMapping & mapping, uint64_t) {
 
         // Check that the path only consist of whole nodes (complete).
         assert(mapping.offset == 0);
         assert(mapping.length == graph.get_length(mapping.handle));
 
         path.emplace_back(mapping.handle);
-    }
+    });
 }
 
 handle_t CompletedTranscriptPath::get_first_node_handle(const HandleGraph & graph) const {
-
+    if (!shared_path.empty()) {
+        const auto & slice = shared_path.is_reverse()
+            ? shared_path.slices().back() : shared_path.slices().front();
+        const auto handle = (*slice.source)[shared_path.is_reverse()
+            ? slice.end - 1 : slice.begin].handle;
+        return shared_path.is_reverse() ? graph.flip(handle) : handle;
+    }
+    assert(!path.empty());
     return path.front();
 }
 
-Transcriptome::Transcriptome(unique_ptr<MutablePathDeletableHandleGraph>&& graph_in) : _graph(std::move(graph_in)) {
+handle_t CompletedTranscriptPath::get_last_node_handle(const HandleGraph & graph) const {
+    if (!shared_path.empty()) {
+        const auto & slice = shared_path.is_reverse()
+            ? shared_path.slices().front() : shared_path.slices().back();
+        const auto handle = (*slice.source)[shared_path.is_reverse()
+            ? slice.begin : slice.end - 1].handle;
+        return shared_path.is_reverse() ? graph.flip(handle) : handle;
+    }
+    assert(!path.empty());
+    return path.back();
+}
+
+Transcriptome::Transcriptome(unique_ptr<MutablePathDeletableHandleGraph>&& graph_in,
+                             const string & path_workspace) : _graph(std::move(graph_in)) {
     
     if (!_graph) {
         cerr << "\tERROR: Could not load graph." << endl;
         exit(1);
     }
+
+    if (!path_workspace.empty()) {
+        if (dynamic_cast<bdsg::MappedPackedGraph*>(_graph.get()) == nullptr) {
+            throw invalid_argument("A transcript path workspace requires a file-backed MappedPackedGraph");
+        }
+        _edited_path_spool = make_unique<TranscriptPathSpool<EditedMapping>>(
+            workspace_file(path_workspace, "edited.steps"));
+        _completed_path_spool = make_unique<TranscriptPathSpool<handle_t>>(
+            workspace_file(path_workspace, "completed.steps"));
+    }
+}
+
+bool Transcriptome::uses_path_workspace() const {
+    return static_cast<bool>(_edited_path_spool);
+}
+
+void Transcriptome::spool_edited_path(EditedTranscriptPath * transcript_path) const {
+    assert(uses_path_workspace());
+    assert(transcript_path != nullptr);
+    assert(!transcript_path->path_is_spooled);
+    assert(!transcript_path->path.empty());
+
+    transcript_path->path_span = _edited_path_spool->append(
+        transcript_path->path.data(), static_cast<uint64_t>(transcript_path->path.size()));
+    transcript_path->path_is_spooled = true;
+    note_mapped_graph_work(static_cast<uint64_t>(transcript_path->path.size()) *
+                           sizeof(EditedMapping));
+    vector<EditedMapping>().swap(transcript_path->path);
+}
+
+void Transcriptome::spool_completed_path(CompletedTranscriptPath * transcript_path) {
+    assert(uses_path_workspace());
+    assert(transcript_path != nullptr);
+    assert(!transcript_path->path_is_spooled);
+    assert(!transcript_path->path.empty());
+
+    transcript_path->path_length = 0;
+    for (const handle_t & handle : transcript_path->path) {
+        transcript_path->path_length += _graph->get_length(handle);
+    }
+    transcript_path->path_span = _completed_path_spool->append(
+        transcript_path->path.data(), static_cast<uint64_t>(transcript_path->path.size()));
+    transcript_path->path_is_spooled = true;
+    vector<handle_t>().swap(transcript_path->path);
+}
+
+void Transcriptome::for_each_edited_chunk(
+    const EditedTranscriptPath & transcript_path,
+    const function<void(const EditedMapping *, uint64_t, uint64_t)> & iteratee) const {
+    if (!transcript_path.shared_path.empty()) {
+        EditedMapping chunk[256];
+        uint64_t count = 0, begin = 0;
+        transcript_path.for_each_mapping(*_graph, [&](const EditedMapping & mapping, uint64_t) {
+            chunk[count++] = mapping;
+            if (count == 256) {
+                iteratee(chunk, count, begin);
+                begin += count;
+                count = 0;
+            }
+        });
+        if (count != 0) { iteratee(chunk, count, begin); }
+        return;
+    }
+    if (!transcript_path.path_is_spooled) {
+        if (!transcript_path.path.empty()) {
+            iteratee(transcript_path.path.data(), transcript_path.path.size(), 0);
+        }
+        return;
+    }
+    if (!_edited_path_spool) {
+        throw runtime_error("Edited transcript path refers to a missing spool");
+    }
+    uint64_t relative_begin = 0;
+    _edited_path_spool->for_each_chunk(
+        transcript_path.path_span, TRANSCRIPT_PATH_CHUNK_RECORDS,
+        [&](const EditedMapping * records, uint64_t count) {
+            iteratee(records, count, relative_begin);
+            relative_begin += count;
+        });
+}
+
+void Transcriptome::for_each_completed_chunk(
+    const CompletedTranscriptPath & transcript_path,
+    const function<void(const handle_t *, uint64_t, uint64_t)> & iteratee) const {
+    if (!transcript_path.shared_path.empty()) {
+        handle_t chunk[256];
+        uint64_t count = 0, begin = 0;
+        transcript_path.for_each_handle(*_graph, [&](const handle_t & handle, uint64_t) {
+            chunk[count++] = handle;
+            if (count == 256) {
+                iteratee(chunk, count, begin);
+                begin += count;
+                count = 0;
+            }
+        });
+        if (count != 0) { iteratee(chunk, count, begin); }
+        return;
+    }
+    if (!transcript_path.path_is_spooled) {
+        if (!transcript_path.path.empty()) {
+            iteratee(transcript_path.path.data(), transcript_path.path.size(), 0);
+        }
+        return;
+    }
+    if (!_completed_path_spool) {
+        throw runtime_error("Completed transcript path refers to a missing spool");
+    }
+    uint64_t relative_begin = 0;
+    _completed_path_spool->for_each_chunk(
+        transcript_path.path_span, TRANSCRIPT_PATH_CHUNK_RECORDS,
+        [&](const handle_t * records, uint64_t count) {
+            iteratee(records, count, relative_begin);
+            relative_begin += count;
+        });
+}
+
+uint64_t Transcriptome::completed_path_size(const CompletedTranscriptPath & transcript_path) const {
+    return transcript_path.path_is_spooled
+        ? transcript_path.path_span.count
+        : transcript_path.resident_size();
+}
+
+void Transcriptome::note_mapped_graph_work(uint64_t bytes) const {
+    if (!uses_path_workspace()) {
+        return;
+    }
+    if (bytes >= MAPPED_GRAPH_CHECKPOINT_BYTES ||
+        _mapped_graph_work >= MAPPED_GRAPH_CHECKPOINT_BYTES - bytes) {
+        checkpoint_mapped_graph();
+        _mapped_graph_work = 0;
+    } else {
+        _mapped_graph_work += bytes;
+    }
+}
+
+void Transcriptome::checkpoint_mapped_graph() const {
+    if (!uses_path_workspace()) {
+        return;
+    }
+    auto mapped_graph = dynamic_cast<const bdsg::MappedPackedGraph*>(_graph.get());
+    if (mapped_graph == nullptr) {
+        throw runtime_error("Transcript path workspace graph is no longer mapped");
+    }
+    mapped_graph->checkpoint_and_evict();
+    _mapped_graph_work = 0;
 }
 
 int32_t Transcriptome::add_intron_splice_junctions(vector<istream *> intron_streams, unique_ptr<gbwt::GBWT> & haplotype_index, const bool update_haplotypes) {
+
+    require_graph_mutation();
+
+    if (uses_path_workspace()) {
+        throw invalid_argument("Transcript path workspaces do not support intron input");
+    }
 
 #ifdef transcriptome_debug
     double time_parsing_1 = gcsa::readTimer();
@@ -336,6 +653,13 @@ int32_t Transcriptome::add_intron_splice_junctions(vector<istream *> intron_stre
 
 int32_t Transcriptome::add_reference_transcripts(vector<istream *> transcript_streams, unique_ptr<gbwt::GBWT> & haplotype_index, const bool use_haplotype_paths, const bool update_haplotypes) {
 
+    require_graph_mutation();
+
+    if (uses_path_workspace() &&
+        (!use_haplotype_paths || update_haplotypes || path_collapse_type != "no")) {
+        throw invalid_argument("Transcript path workspaces require GBWT reference paths, no GBWT update, and path collapse 'no'");
+    }
+
 #ifdef transcriptome_debug
     double time_parsing_1 = gcsa::readTimer();
     cerr << "\tDEBUG Parsing start: " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
@@ -399,6 +723,11 @@ int32_t Transcriptome::add_reference_transcripts(vector<istream *> transcript_st
 
     if (show_progress) { cerr << "\tConstructed " << edited_transcript_paths.size() << " reference transcript paths" << endl; };
 
+    if (uses_path_workspace()) {
+        _edited_path_spool->sync();
+        checkpoint_mapped_graph();
+    }
+
 #ifdef transcriptome_debug
     cerr << "\tDEBUG: " << gcsa::readTimer() - time_project_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif 
@@ -423,6 +752,11 @@ int32_t Transcriptome::add_reference_transcripts(vector<istream *> transcript_st
     // Sort transcript paths and update their copy ids.
     sort_transcript_paths_update_copy_id();
 
+    if (uses_path_workspace()) {
+        _completed_path_spool->sync();
+        checkpoint_mapped_graph();
+    }
+
     if (show_progress) { cerr << "\tUpdated graph with reference transcript paths" << endl; };
 
 #ifdef transcriptome_debug
@@ -433,6 +767,12 @@ int32_t Transcriptome::add_reference_transcripts(vector<istream *> transcript_st
 }
 
 int32_t Transcriptome::add_haplotype_transcripts(vector<istream *> transcript_streams, const gbwt::GBWT & haplotype_index, const bool proj_emded_paths) {
+
+    require_graph_mutation();
+
+    if (uses_path_workspace()) {
+        throw invalid_argument("Transcript path workspaces do not support haplotype projection");
+    }
     
 #ifdef transcriptome_debug
     double time_parsing_1 = gcsa::readTimer();
@@ -991,10 +1331,16 @@ void Transcriptome::construct_reference_transcript_paths_embedded_callback(list<
         transcripts_idx += num_threads;
     }
 
-    edited_transcript_paths_mutex->lock();
+    lock_guard<mutex> lock(*edited_transcript_paths_mutex);
     remove_redundant_transcript_paths<EditedTranscriptPath>(&thread_edited_transcript_paths, edited_transcript_paths_index);
+    if (uses_path_workspace()) {
+        for (EditedTranscriptPath & transcript_path : thread_edited_transcript_paths) {
+            if (!transcript_path.path_is_spooled) {
+                spool_edited_path(&transcript_path);
+            }
+        }
+    }
     edited_transcript_paths->splice(edited_transcript_paths->end(), thread_edited_transcript_paths);
-    edited_transcript_paths_mutex->unlock();
 }
 
 list<EditedTranscriptPath> Transcriptome::project_transcript_embedded(const Transcript & cur_transcript, const bdsg::PositionOverlay & graph_path_pos_overlay, const bool use_reference_paths, const bool use_haplotype_paths) const {
@@ -1363,6 +1709,9 @@ list<EditedTranscriptPath> Transcriptome::construct_reference_transcript_paths_g
 void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<EditedTranscriptPath> * edited_transcript_paths, spp::sparse_hash_map<handle_t, vector<EditedTranscriptPath *> > * edited_transcript_paths_index, uint32_t * excluded_transcripts, mutex * edited_transcript_paths_mutex, const int32_t thread_idx, const vector<pair<uint32_t, uint32_t> > & chrom_transcript_sets, const vector<Transcript> & transcripts, const gbwt::GBWT & haplotype_index, const spp::sparse_hash_map<string, map<uint32_t, uint32_t> > & haplotype_name_index) const {
 
     int32_t chrom_transcript_sets_idx = thread_idx;
+    const bool share_source = use_shared_reference_paths &&
+        path_collapse_type == "no" && !uses_path_workspace();
+    using SharedSource = SharedTranscriptPath<EditedMapping>::Source;
 
     while (chrom_transcript_sets_idx < chrom_transcript_sets.size()) {
 
@@ -1379,6 +1728,30 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
 
         auto haplotype_name_index_it = haplotype_name_index.find(transcripts.at(transcript_idx).chrom);
         assert(haplotype_name_index_it != haplotype_name_index.end());
+
+        // Restrict the shared source to nodes overlapping annotated exons. A
+        // small set of transcripts must not retain whole chromosome walks.
+        // This union selects storage only; the original scan below still
+        // decides transcript validity, fragment breaks and completion order.
+        vector<pair<int32_t, int32_t>> exon_intervals;
+        if (share_source) {
+            for (size_t i = transcript_set.first; i < transcript_set.first + transcript_set.second; ++i) {
+                for (const auto & exon : transcripts[i].exons) {
+                    exon_intervals.emplace_back(exon.coordinates);
+                }
+            }
+            sort(exon_intervals.begin(), exon_intervals.end());
+            size_t kept = 0;
+            for (const auto & interval : exon_intervals) {
+                if (kept != 0 && static_cast<int64_t>(interval.first) <=
+                    static_cast<int64_t>(exon_intervals[kept - 1].second) + 1) {
+                    exon_intervals[kept - 1].second = max(exon_intervals[kept - 1].second, interval.second);
+                } else {
+                    exon_intervals[kept++] = interval;
+                }
+            }
+            exon_intervals.resize(kept);
+        }
 
         for (auto & haplotype_idx: haplotype_name_index_it->second) {
 
@@ -1401,10 +1774,45 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
             auto node_start_pos = haplotype_idx.first;
             const gbwt::vector_type & gbwt_haplotype = haplotype_index.extract(haplotype_idx.second);
 
+            shared_ptr<const SharedSource> shared_source;
+            vector<uint64_t> source_positions;
+            if (share_source) {
+                vector<EditedMapping> source_mappings;
+                size_t interval_idx = 0;
+                uint64_t source_pos = haplotype_idx.first;
+                for (size_t i = 0; i < gbwt_haplotype.size(); ++i) {
+                    while (interval_idx < exon_intervals.size() &&
+                           static_cast<int64_t>(exon_intervals[interval_idx].second) < static_cast<int64_t>(source_pos)) {
+                        ++interval_idx;
+                    }
+                    if (interval_idx == exon_intervals.size()) { break; }
+                    const auto handle = gbwt_to_handle(*_graph, gbwt_haplotype[i]);
+                    const auto length = _graph->get_length(handle);
+                    if (static_cast<int64_t>(source_pos + length) > exon_intervals[interval_idx].first) {
+                        if (length > numeric_limits<uint32_t>::max()) {
+                            throw overflow_error("Shared transcript source node length exceeds edited mapping format");
+                        }
+                        source_mappings.push_back({handle, 0, static_cast<uint32_t>(length)});
+                        source_positions.push_back(i);
+                    }
+                    source_pos += length;
+                }
+                shared_source = make_shared<SharedSource>(std::move(source_mappings));
+            }
+
+            size_t gbwt_position = 0, source_rank = 0;
+
             for (auto & gbwt_node: gbwt_haplotype) {
 
-                auto node_handle = gbwt_to_handle(*_graph, gbwt_node);
-                auto node_length = _graph->get_length(node_handle);
+                const bool in_shared_source = share_source && source_rank < source_positions.size() &&
+                    source_positions[source_rank] == gbwt_position;
+                const size_t current_source_rank = source_rank;
+                auto node_handle = in_shared_source ? (*shared_source)[source_rank].handle
+                    : gbwt_to_handle(*_graph, gbwt_node);
+                auto node_length = in_shared_source ? (*shared_source)[source_rank].length
+                    : _graph->get_length(node_handle);
+                if (in_shared_source) { ++source_rank; }
+                ++gbwt_position;
 
                 while (transcript_idx < transcript_set.first + transcript_set.second) {
 
@@ -1472,7 +1880,16 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
 
                             // Add new mapping in forward direction. Later the whole path will
                             // be reverse complemented if transcript is on the '-' strand.
-                            incomplete_transcript_paths_it->first.path.emplace_back(EditedMapping{node_handle, static_cast<uint32_t>(offset), static_cast<uint32_t>(edit_length)});
+                            if (share_source) {
+                                if (!in_shared_source) {
+                                    throw logic_error("Transcript mapping is absent from shared exon source");
+                                }
+                                incomplete_transcript_paths_it->first.shared_path.append(
+                                    shared_source, current_source_rank, current_source_rank + 1,
+                                    static_cast<uint32_t>(offset), static_cast<uint32_t>(offset + edit_length));
+                            } else {
+                                incomplete_transcript_paths_it->first.path.emplace_back(EditedMapping{node_handle, static_cast<uint32_t>(offset), static_cast<uint32_t>(edit_length)});
+                            }
 
                             if (node_start_pos + node_length <= exon_coords.second) {
 
@@ -1490,10 +1907,19 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
                         // Reverse complement transcript paths that are on the '-' strand.
                         if (cur_transcript.is_reverse) {
 
-                            reverse_complement_edited_path_in_place(&(incomplete_transcript_paths_it->first.path), *_graph);
+                            if (share_source) {
+                                incomplete_transcript_paths_it->first.shared_path.reverse_complement();
+                            } else {
+                                reverse_complement_edited_path_in_place(&(incomplete_transcript_paths_it->first.path), *_graph);
+                            }
                         } 
 
-                        assert(!incomplete_transcript_paths_it->first.path.empty());
+                        assert(!incomplete_transcript_paths_it->first.path.empty() ||
+                               !incomplete_transcript_paths_it->first.shared_path.empty());
+                        if (uses_path_workspace()) {
+                            lock_guard<mutex> lock(*edited_transcript_paths_mutex);
+                            spool_edited_path(&(incomplete_transcript_paths_it->first));
+                        }
                         thread_edited_transcript_paths.emplace_back(std::move(incomplete_transcript_paths_it->first));
 
                         incomplete_transcript_paths_it = incomplete_transcript_paths.erase(incomplete_transcript_paths_it);
@@ -1525,13 +1951,17 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
 
         assert(thread_edited_transcript_paths.size() == transcript_set.second - excluded_transcripts_local);
 
-        edited_transcript_paths_mutex->lock();
-
+        lock_guard<mutex> lock(*edited_transcript_paths_mutex);
         remove_redundant_transcript_paths<EditedTranscriptPath>(&thread_edited_transcript_paths, edited_transcript_paths_index);
+        if (uses_path_workspace()) {
+            for (EditedTranscriptPath & transcript_path : thread_edited_transcript_paths) {
+                if (!transcript_path.path_is_spooled) {
+                    spool_edited_path(&transcript_path);
+                }
+            }
+        }
         edited_transcript_paths->splice(edited_transcript_paths->end(), thread_edited_transcript_paths);
         *excluded_transcripts += excluded_transcripts_local;
-
-        edited_transcript_paths_mutex->unlock();
 
         chrom_transcript_sets_idx += num_threads;
     }
@@ -1999,6 +2429,12 @@ vector<pair<exon_nodes_t, thread_ids_t> > Transcriptome::get_exon_haplotypes(con
 template <class T>
 void Transcriptome::remove_redundant_transcript_paths(list<T> * new_transcript_paths, spp::sparse_hash_map<handle_t, vector<T*> > * transcript_paths_index) const {
 
+    // With collapse disabled, every identity must be retained. Avoid building
+    // a first-handle reverse index that will never be queried.
+    if (path_collapse_type == "no") {
+        return;
+    }
+
     auto new_transcript_paths_it = new_transcript_paths->begin();
 
     while (new_transcript_paths_it != new_transcript_paths->end()) {
@@ -2095,6 +2531,37 @@ list<CompletedTranscriptPath> Transcriptome::construct_completed_transcript_path
 
 void Transcriptome::add_edited_transcript_paths(const list<EditedTranscriptPath> & edited_transcript_paths) {
 
+    if (uses_path_workspace()) {
+        for (const EditedTranscriptPath & edited_path : edited_transcript_paths) {
+            CompletedTranscriptPath completed_path(edited_path);
+            handle_t previous;
+            bool have_previous = false;
+
+            for_each_edited_chunk(edited_path,
+                [&](const EditedMapping * mappings, uint64_t count, uint64_t) {
+                    for (uint64_t i = 0; i < count; ++i) {
+                        const EditedMapping & mapping = mappings[i];
+                        assert(mapping.offset == 0);
+                        assert(mapping.length == _graph->get_length(mapping.handle));
+                        if (have_previous) {
+                            _graph->create_edge(previous, mapping.handle);
+                        }
+                        completed_path.path.emplace_back(mapping.handle);
+                        previous = mapping.handle;
+                        have_previous = true;
+                    }
+                });
+
+            assert(!completed_path.path.empty());
+            const uint64_t path_bytes =
+                static_cast<uint64_t>(completed_path.path.size()) * sizeof(handle_t);
+            spool_completed_path(&completed_path);
+            _transcript_paths.emplace_back(std::move(completed_path));
+            note_mapped_graph_work(path_bytes);
+        }
+        return;
+    }
+
     add_splice_junction_edges(edited_transcript_paths);
 
     for (auto & transcript_path: edited_transcript_paths) {
@@ -2106,6 +2573,49 @@ void Transcriptome::add_edited_transcript_paths(const list<EditedTranscriptPath>
 bool Transcriptome::has_novel_exon_boundaries(const list<EditedTranscriptPath> & edited_transcript_paths, const bool include_transcript_ends) const {
 
     for (auto & transcript_path: edited_transcript_paths) {
+
+        if (!transcript_path.shared_path.empty()) {
+            bool novel = false;
+            transcript_path.shared_path.for_each_boundary(
+                [&](const handle_t & handle) { return _graph->flip(handle); },
+                [&](const EditedMapping & mapping, uint64_t rank) {
+                    if ((include_transcript_ends || rank != 0) && mapping.offset > 0) {
+                        novel = true;
+                    }
+                    if ((include_transcript_ends || rank + 1 != transcript_path.shared_path.size()) &&
+                        mapping.offset + mapping.length != _graph->get_length(mapping.handle)) {
+                        novel = true;
+                    }
+                });
+            if (novel) { return true; }
+            continue;
+        }
+
+        if (transcript_path.path_is_spooled) {
+            const uint64_t path_size = transcript_path.path_span.count;
+            const uint64_t chunk_size = min<uint64_t>(TRANSCRIPT_PATH_CHUNK_RECORDS, path_size);
+            vector<EditedMapping> chunk(static_cast<size_t>(chunk_size));
+            for (uint64_t relative_begin = 0; relative_begin < path_size;) {
+                const uint64_t count = min<uint64_t>(chunk_size, path_size - relative_begin);
+                _edited_path_spool->read(transcript_path.path_span,
+                                         relative_begin, count, chunk.data());
+                for (uint64_t i = 0; i < count; ++i) {
+                    const uint64_t path_offset = relative_begin + i;
+                    const EditedMapping & cur_mapping = chunk[static_cast<size_t>(i)];
+                    if ((include_transcript_ends || path_offset != 0) &&
+                        cur_mapping.offset > 0) {
+                        return true;
+                    }
+                    if ((include_transcript_ends || path_offset + 1 != path_size) &&
+                        cur_mapping.offset + cur_mapping.length !=
+                            _graph->get_length(cur_mapping.handle)) {
+                        return true;
+                    }
+                }
+                relative_begin += count;
+            }
+            continue;
+        }
 
         for (size_t i = 0; i < transcript_path.path.size(); i++) {
 
@@ -2277,23 +2787,29 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
 
         spp::sparse_hash_set<EditedMapping, EditedMappingHash> exon_boundary_mapping_index;
 
-        for (auto & transcript_path: edited_transcript_paths) {
-
-            for (auto & mapping: transcript_path.path) {
-
-                // Add exon boundary path.
-                if (mapping.offset > 0 || mapping.offset + mapping.length < _graph->get_length(mapping.handle)) {
-
-                    // Skip if already added.
-                    if (exon_boundary_mapping_index.emplace(mapping).second) {
-
-                        Path exon_boundary_path;
-                        append_edited_mapping(&exon_boundary_path, mapping, *_graph);
-
-                        find_breakpoints(simplify(exon_boundary_path), breakpoints, true, "", 0, 1.);
-                        ++num_exon_boundary_paths;
-                    }
+        auto add_boundary = [&](const EditedMapping & mapping) {
+            if (mapping.offset > 0 || mapping.offset + mapping.length < _graph->get_length(mapping.handle)) {
+                if (exon_boundary_mapping_index.emplace(mapping).second) {
+                    Path exon_boundary_path;
+                    append_edited_mapping(&exon_boundary_path, mapping, *_graph);
+                    find_breakpoints(simplify(exon_boundary_path), breakpoints, true, "", 0, 1.);
+                    ++num_exon_boundary_paths;
                 }
+            }
+        };
+
+        for (auto & transcript_path: edited_transcript_paths) {
+            if (!transcript_path.shared_path.empty()) {
+                // Slice interiors contain whole nodes. Visiting just endpoints
+                // preserves the old first-encounter order of partial mappings.
+                transcript_path.shared_path.for_each_boundary(
+                    [&](const handle_t & handle) { return _graph->flip(handle); },
+                    [&](const EditedMapping & mapping, uint64_t) { add_boundary(mapping); });
+            } else {
+                for_each_edited_chunk(transcript_path,
+                    [&](const EditedMapping * mappings, uint64_t count, uint64_t) {
+                        for (uint64_t i = 0; i < count; ++i) { add_boundary(mappings[i]); }
+                    });
             }
         }
 
@@ -2398,7 +2914,67 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
     cerr << "\t\tDEBUG Updating (paths) start: " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif
 
+    if (uses_path_workspace()) {
+        assert(!is_introns);
+        assert(add_reference_transcript_paths);
+        assert(_transcript_paths.empty());
+
+        auto edited_transcript_paths_it = edited_transcript_paths.begin();
+        while (edited_transcript_paths_it != edited_transcript_paths.end()) {
+            const EditedTranscriptPath & transcript_path = *edited_transcript_paths_it;
+            CompletedTranscriptPath completed_path(transcript_path);
+
+            for_each_edited_chunk(transcript_path,
+                [&](const EditedMapping * mappings, uint64_t count, uint64_t) {
+                    for (uint64_t i = 0; i < count; ++i) {
+                        const EditedMapping & mapping = mappings[i];
+                        const handle_t mapping_handle = mapping.handle;
+                        const int64_t mapping_offset = mapping.offset;
+                        const int64_t mapping_length = mapping.length;
+
+                        assert(mapping_length > 0);
+                        auto translation_index_it = translation_index.find(mapping_handle);
+                        if (translation_index_it != translation_index.end()) {
+                            if (mapping_offset == 0 &&
+                                translation_index_it->second.front().first > 0) {
+                                completed_path.path.emplace_back(mapping_handle);
+                            }
+                            for (const auto & new_node : translation_index_it->second) {
+                                if (new_node.first >= mapping_offset &&
+                                    new_node.first < mapping_offset + mapping_length) {
+                                    completed_path.path.emplace_back(new_node.second);
+                                }
+                            }
+                        } else {
+                            completed_path.path.emplace_back(mapping_handle);
+                        }
+                    }
+                });
+
+            assert(!completed_path.path.empty());
+            for (size_t i = 1; i < completed_path.path.size(); ++i) {
+                _graph->create_edge(completed_path.path[i - 1], completed_path.path[i]);
+            }
+
+            const uint64_t path_bytes =
+                static_cast<uint64_t>(completed_path.path.size()) * sizeof(handle_t);
+            spool_completed_path(&completed_path);
+            _transcript_paths.emplace_back(std::move(completed_path));
+            edited_transcript_paths_it = edited_transcript_paths.erase(edited_transcript_paths_it);
+            note_mapped_graph_work(path_bytes);
+        }
+
+        _completed_path_spool->sync();
+        checkpoint_mapped_graph();
+        return;
+    }
+
     list<CompletedTranscriptPath> updated_transcript_paths;
+
+    SharedTranscriptPath<EditedMapping>::TranslationCache shared_translation;
+    for (const auto & transcript_path : edited_transcript_paths) {
+        shared_translation.register_path(transcript_path.shared_path);
+    }
 
     // Update paths to match new augmented graph and add them
     // as reference transcript paths. Each edited path is released as soon as
@@ -2414,7 +2990,25 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
 
         updated_transcript_paths.emplace_back(transcript_path);
 
-        for (const auto & mapping: transcript_path.path) {
+        if (!transcript_path.shared_path.empty()) {
+            updated_transcript_paths.back().shared_path = shared_translation.translate(
+                transcript_path.shared_path, [&](const EditedMapping & mapping, const auto & emit) {
+                    auto found = translation_index.find(mapping.handle);
+                    if (found == translation_index.end()) {
+                        emit(mapping);
+                        return;
+                    }
+                    auto emit_handle = [&](const handle_t & handle) {
+                        emit(EditedMapping{handle, 0, static_cast<uint32_t>(_graph->get_length(handle))});
+                    };
+                    if (found->second.front().first > 0) { emit_handle(mapping.handle); }
+                    for (const auto & node : found->second) { emit_handle(node.second); }
+                });
+            edited_transcript_paths_it = edited_transcript_paths.erase(edited_transcript_paths_it);
+            continue;
+        }
+
+        transcript_path.for_each_mapping(*_graph, [&](const EditedMapping & mapping, uint64_t) {
 
             const auto mapping_handle = mapping.handle;
             const int64_t mapping_offset = mapping.offset;
@@ -2445,12 +3039,14 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
 
                 updated_transcript_paths.back().path.emplace_back(mapping_handle);
             }
-        }
+        });
 
         edited_transcript_paths_it = edited_transcript_paths.erase(edited_transcript_paths_it);
     }
 
     add_splice_junction_edges(updated_transcript_paths);
+
+    assert(shared_translation.empty());
 
     if (add_reference_transcript_paths) {
 
@@ -2547,11 +3143,110 @@ void Transcriptome::update_haplotype_index(unique_ptr<gbwt::GBWT> & haplotype_in
 
 void Transcriptome::update_transcript_paths(const spp::sparse_hash_map<handle_t, vector<pair<int32_t, handle_t> > > & update_index) {
 
+    if (uses_path_workspace()) {
+        for (CompletedTranscriptPath & transcript_path : _transcript_paths) {
+            TranscriptPathSpool<handle_t>::Span updated_span;
+            bool have_updated_span = false;
+
+            for_each_completed_chunk(transcript_path,
+                [&](const handle_t * handles, uint64_t count, uint64_t) {
+                    vector<handle_t> updated_handles;
+                    updated_handles.reserve(static_cast<size_t>(count));
+
+                    for (uint64_t i = 0; i < count; ++i) {
+                        const handle_t handle = handles[i];
+                        auto update_index_it = update_index.find(handle);
+                        if (update_index_it != update_index.end()) {
+                            if (update_index_it->second.front().first > 0) {
+                                updated_handles.emplace_back(handle);
+                            }
+                            for (const auto & new_handle : update_index_it->second) {
+                                updated_handles.emplace_back(new_handle.second);
+                            }
+                        } else {
+                            update_index_it = update_index.find(_graph->flip(handle));
+                            if (update_index_it != update_index.end()) {
+                                if (update_index_it->second.front().first > 0) {
+                                    updated_handles.emplace_back(handle);
+                                }
+                                for (auto update_handle_rit = update_index_it->second.rbegin();
+                                     update_handle_rit != update_index_it->second.rend();
+                                     ++update_handle_rit) {
+                                    updated_handles.emplace_back(_graph->flip(update_handle_rit->second));
+                                }
+                            } else {
+                                updated_handles.emplace_back(handle);
+                            }
+                        }
+                    }
+
+                    const auto chunk_span = _completed_path_spool->append(
+                        updated_handles.data(), static_cast<uint64_t>(updated_handles.size()));
+                    if (!have_updated_span) {
+                        updated_span = chunk_span;
+                        have_updated_span = true;
+                    } else {
+                        if (updated_span.begin + updated_span.count != chunk_span.begin) {
+                            throw runtime_error("Completed path rewrite lost spool contiguity");
+                        }
+                        updated_span.count += chunk_span.count;
+                    }
+                    note_mapped_graph_work(count * sizeof(handle_t));
+                });
+
+            if (!have_updated_span || updated_span.count == 0) {
+                throw runtime_error("Completed path rewrite produced an empty path");
+            }
+            transcript_path.path_span = updated_span;
+            transcript_path.path_is_spooled = true;
+        }
+
+        _completed_path_spool->sync();
+        checkpoint_mapped_graph();
+        return;
+    }
+
+    // Translate each immutable source once before the independent vector paths.
+    // The cache omits source entries outside all registered slices. Those
+    // entries may name nodes deleted before compaction and must not be queried.
+    SharedTranscriptPath<EditedMapping>::TranslationCache shared_translation;
+    for (const auto & transcript_path : _transcript_paths) {
+        shared_translation.register_path(transcript_path.shared_path);
+    }
+    for (auto & transcript_path : _transcript_paths) {
+        if (transcript_path.shared_path.empty()) { continue; }
+        transcript_path.shared_path = shared_translation.translate(
+            transcript_path.shared_path, [&](const EditedMapping & mapping, const auto & emit) {
+                auto emit_handle = [&](const handle_t & handle) {
+                    emit(EditedMapping{handle, 0, static_cast<uint32_t>(_graph->get_length(handle))});
+                };
+                auto found = update_index.find(mapping.handle);
+                if (found != update_index.end()) {
+                    if (found->second.front().first > 0) { emit_handle(mapping.handle); }
+                    for (const auto & node : found->second) { emit_handle(node.second); }
+                } else {
+                    found = update_index.find(_graph->flip(mapping.handle));
+                    if (found == update_index.end()) {
+                        emit(mapping);
+                    } else {
+                        if (found->second.front().first > 0) { emit_handle(mapping.handle); }
+                        for (auto node = found->second.rbegin(); node != found->second.rend(); ++node) {
+                            emit_handle(_graph->flip(node->second));
+                        }
+                    }
+                }
+            });
+    }
+
+    assert(shared_translation.empty());
+
     #pragma omp parallel num_threads(num_threads)
     {
-        // Update transcript paths 
+        // Update transcript paths
         #pragma omp for schedule(static)
         for (size_t i = 0; i < _transcript_paths.size(); ++i) {
+
+            if (!_transcript_paths[i].shared_path.empty()) { continue; }
 
             vector<handle_t> new_transcript_path;
             new_transcript_path.reserve(_transcript_paths.at(i).path.size());
@@ -2607,38 +3302,28 @@ void Transcriptome::update_transcript_paths(const spp::sparse_hash_map<handle_t,
 
 void Transcriptome::add_splice_junction_edges(const list<EditedTranscriptPath> & edited_transcript_paths) {
 
-    for (auto & transcript_path: edited_transcript_paths) {
-
-        for (size_t i = 1; i < transcript_path.path.size(); i++) {
-
-            // Ensure the edge exists.
-            _graph->create_edge(transcript_path.path.at(i - 1).handle, transcript_path.path.at(i).handle);
-        }
-    }
+    add_transcript_edges_in_order(*_graph, edited_transcript_paths,
+        uses_path_workspace() ? 1 : num_threads, show_progress, [&](const auto& path, const auto& emit) {
+        path.for_each_mapping(*_graph, [&](const EditedMapping& mapping, uint64_t rank) {
+            emit(mapping.handle, rank);
+        });
+    });
 }
 
 void Transcriptome::add_splice_junction_edges(const list<CompletedTranscriptPath> & completed_transcript_paths) {
 
-    for (auto & transcript_path: completed_transcript_paths) {
-
-        for (size_t i = 1; i < transcript_path.path.size(); i++) {
-            
-            // Ensure the edge exists.
-            _graph->create_edge(transcript_path.path.at(i - 1), transcript_path.path.at(i));
-        }
-    }
+    add_transcript_edges_in_order(*_graph, completed_transcript_paths,
+        uses_path_workspace() ? 1 : num_threads, show_progress, [&](const auto& path, const auto& emit) {
+            path.for_each_handle(*_graph, emit);
+        });
 }
 
 void Transcriptome::add_splice_junction_edges(const vector<CompletedTranscriptPath> & completed_transcript_paths) {
 
-    for (auto & transcript_path: completed_transcript_paths) {
-
-        for (size_t i = 1; i < transcript_path.path.size(); i++) {
-            
-            // Ensure the edge exists.
-            _graph->create_edge(transcript_path.path.at(i - 1), transcript_path.path.at(i));
-        }
-    }
+    add_transcript_edges_in_order(*_graph, completed_transcript_paths,
+        uses_path_workspace() ? 1 : num_threads, show_progress, [&](const auto& path, const auto& emit) {
+            path.for_each_handle(*_graph, emit);
+        });
 }
 
 void Transcriptome::sort_transcript_paths_update_copy_id() {
@@ -2693,6 +3378,7 @@ vector<CompletedTranscriptPath> Transcriptome::reference_transcript_paths() cons
         if (transcript_path.is_reference) {
 
             reference_transcript_paths.emplace_back(transcript_path);
+            reference_transcript_paths.back().materialize(*_graph);
         }
     }
 
@@ -2710,6 +3396,7 @@ vector<CompletedTranscriptPath> Transcriptome::haplotype_transcript_paths() cons
         if (transcript_path.is_haplotype) {
 
             haplotype_transcript_paths.emplace_back(transcript_path);
+            haplotype_transcript_paths.back().materialize(*_graph);
         }
     }
 
@@ -2723,17 +3410,135 @@ const MutablePathDeletableHandleGraph & Transcriptome::graph() const {
 
 void Transcriptome::collect_transcribed_nodes(spp::sparse_hash_set<nid_t> * transcribed_nodes) const {
 
-    for (auto & transcript_path: _transcript_paths) {
+    const auto started = std::chrono::steady_clock::now();
+    const auto cpu_started = std::clock();
+    const size_t requested = static_cast<size_t>(std::max(1, num_threads));
+    constexpr size_t scratch_budget = 1ULL << 30;
+    const size_t node_count = _graph->get_node_count();
+    size_t actual_workers = 1;
+    bool collected_parallel = false;
 
-        assert(transcript_path.path.size() > 0);
-        for (auto & handle: transcript_path.path) {
+    // Graph reads and resident walks are immutable here. The workspace route
+    // also updates checkpoint bookkeeping and retains its existing serial path.
+    if (requested > 1 && !uses_path_workspace() && !_transcript_paths.empty() &&
+        node_count != 0 && node_count <= scratch_budget / sizeof(nid_t)) {
+        vector<nid_t> node_ids(node_count);
+        size_t next = 0;
+        _graph->for_each_handle([&](const handle_t& handle) {
+            if (next == node_ids.size()) { throw logic_error("Graph node count changed during collection"); }
+            node_ids[next++] = _graph->get_id(handle);
+        });
+        if (next != node_count) { throw logic_error("Graph node count changed during collection"); }
+        const auto limits = std::minmax_element(node_ids.begin(), node_ids.end());
+        const uint64_t minimum = static_cast<uint64_t>(*limits.first);
+        const uint64_t span = static_cast<uint64_t>(*limits.second) - minimum;
+        // Dense IDs avoid a hash lookup for every transcript occurrence. Sparse
+        // IDs use an explicitly sized read-only rank table, never an ID-span
+        // allocation or one hash set per worker.
+        const bool dense = span < 4 * node_count;
+        const size_t bits = dense ? static_cast<size_t>(span + 1) : node_count;
+        const size_t words = bits / 64 + (bits % 64 != 0);
+        size_t rank_slots = 0;
+        if (!dense) {
+            rank_slots = 1;
+            while (rank_slots < 2 * node_count) { rank_slots *= 2; }
+        }
+        const size_t fixed_bytes = node_ids.capacity() * sizeof(nid_t) + rank_slots * sizeof(size_t);
+        const size_t worker_bytes = words * sizeof(uint64_t) + sizeof(vector<uint64_t>) + sizeof(exception_ptr);
+        const size_t workers = fixed_bytes < scratch_budget ?
+            std::min({requested, _transcript_paths.size(), (scratch_budget - fixed_bytes) / worker_bytes}) : 0;
+        if (workers > 1) {
+            vector<size_t> ranks(rank_slots, 0);
+            if (!dense) {
+                for (size_t i = 0; i < node_ids.size(); ++i) {
+                    size_t slot = wang_hash<nid_t>()(node_ids[i]) & (rank_slots - 1);
+                    while (ranks[slot] != 0) { slot = (slot + 1) & (rank_slots - 1); }
+                    ranks[slot] = i + 1;
+                }
+            }
+            auto rank_of = [&](nid_t id) -> size_t {
+                if (dense) {
+                    const uint64_t rank = static_cast<uint64_t>(id) - minimum;
+                    if (rank >= bits) { throw invalid_argument("Transcript refers to an absent node"); }
+                    return static_cast<size_t>(rank);
+                }
+                size_t slot = wang_hash<nid_t>()(id) & (rank_slots - 1);
+                while (ranks[slot] != 0) {
+                    const size_t rank = ranks[slot] - 1;
+                    if (node_ids[rank] == id) { return rank; }
+                    slot = (slot + 1) & (rank_slots - 1);
+                }
+                throw invalid_argument("Transcript refers to an absent node");
+            };
+            vector<vector<uint64_t>> marked;
+            marked.reserve(workers);
+            for (size_t worker = 0; worker < workers; ++worker) { marked.emplace_back(words, 0); }
+            vector<exception_ptr> errors(workers);
+            #pragma omp parallel num_threads(workers)
+            {
+                const size_t worker = omp_get_thread_num();
+                #pragma omp single
+                actual_workers = omp_get_num_threads();
+                auto& local = marked[worker];
+                #pragma omp for schedule(dynamic, 64)
+                for (size_t i = 0; i < _transcript_paths.size(); ++i) {
+                    if (errors[worker]) { continue; }
+                    try {
+                        const auto& path = _transcript_paths[i];
+                        assert(completed_path_size(path) > 0);
+                        path.for_each_handle(*_graph, [&](const handle_t& handle, uint64_t) {
+                            const size_t rank = rank_of(_graph->get_id(handle));
+                            local[rank / 64] |= uint64_t(1) << (rank % 64);
+                        });
+                    } catch (...) { errors[worker] = current_exception(); }
+                }
+            }
+            for (const auto& error : errors) { if (error) { rethrow_exception(error); } }
+            uint64_t marked_count = 0;
+            #pragma omp parallel for num_threads(workers) reduction(+:marked_count)
+            for (size_t word = 0; word < words; ++word) {
+                for (size_t worker = 1; worker < workers; ++worker) { marked[0][word] |= marked[worker][word]; }
+                marked_count += __builtin_popcountll(marked[0][word]);
+            }
+            uint64_t valid_count = 0;
+            for (size_t i = 0; i < node_ids.size(); ++i) {
+                const size_t rank = dense ? static_cast<uint64_t>(node_ids[i]) - minimum : i;
+                if (marked[0][rank / 64] & (uint64_t(1) << (rank % 64))) {
+                    transcribed_nodes->emplace(node_ids[i]);
+                    ++valid_count;
+                }
+            }
+            // Dense ranges may contain holes. Detect a transcript marking one
+            // before the caller deletes any nodes.
+            if (valid_count != marked_count) { throw invalid_argument("Transcript refers to an absent node"); }
+            collected_parallel = true;
+        }
+    }
 
-            transcribed_nodes->emplace(_graph->get_id(handle));
-        }    
-    } 
+    if (!collected_parallel) {
+        for (auto & transcript_path: _transcript_paths) {
+
+            assert(completed_path_size(transcript_path) > 0);
+            for_each_completed_chunk(transcript_path,
+                [&](const handle_t * handles, uint64_t count, uint64_t) {
+                    for (uint64_t i = 0; i < count; ++i) {
+                        transcribed_nodes->emplace(_graph->get_id(handles[i]));
+                    }
+                });
+            note_mapped_graph_work(completed_path_size(transcript_path) * sizeof(handle_t));
+        }
+    }
+    if (show_progress) {
+        const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+        const double cpu = static_cast<double>(std::clock() - cpu_started) / CLOCKS_PER_SEC;
+        cerr << "[vg rna] Transcribed node collection: " << actual_workers << " workers; "
+             << wall << " wall seconds, " << cpu << " CPU seconds" << endl;
+    }
 }
 
 void Transcriptome::remove_non_transcribed_nodes() {
+
+    require_graph_mutation();
 
     vector<path_handle_t> path_handles;
     path_handles.reserve(_graph->get_path_count());
@@ -2748,6 +3553,8 @@ void Transcriptome::remove_non_transcribed_nodes() {
 
         _graph->destroy_path(path_handle);
     }
+
+    checkpoint_mapped_graph();
 
     assert(_graph->get_path_count() == 0);
 
@@ -2774,10 +3581,18 @@ void Transcriptome::remove_non_transcribed_nodes() {
         _graph->destroy_handle(handle);
     }
 
+    checkpoint_mapped_graph();
+
     assert(_graph->get_node_count() == transcribed_nodes.size());
 }
 
 void Transcriptome::chop_nodes(const uint32_t max_node_length) {
+
+    require_graph_mutation();
+
+    if (uses_path_workspace()) {
+        throw invalid_argument("Transcript path workspaces do not support chopping nodes");
+    }
 
     spp::sparse_hash_map<handle_t, vector<pair<int32_t, handle_t> > > split_index;
 
@@ -2815,7 +3630,10 @@ void Transcriptome::chop_nodes(const uint32_t max_node_length) {
 
 bool Transcriptome::sort_compact_nodes() {
 
-    if (dynamic_cast<bdsg::PackedGraph*>(_graph.get()) == nullptr) {
+    require_graph_mutation();
+
+    if (dynamic_cast<bdsg::PackedGraph*>(_graph.get()) == nullptr &&
+        dynamic_cast<bdsg::MappedPackedGraph*>(_graph.get()) == nullptr) {
 
         return false;
     }
@@ -2828,6 +3646,10 @@ bool Transcriptome::sort_compact_nodes() {
     auto new_order = handlealgs::topological_order(_graph.get());
     assert(new_order.size() == _graph->get_node_count());
 
+    if (uses_path_workspace() && show_progress) {
+        cerr << "\tComputed topological order for " << new_order.size() << " nodes" << endl;
+    }
+
 #ifdef transcriptome_debug
     cerr << "\tDEBUG Sorted " << new_order.size() << " nodes: " << gcsa::readTimer() - time_sort_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif 
@@ -2839,13 +3661,29 @@ bool Transcriptome::sort_compact_nodes() {
 
     spp::sparse_hash_map<handle_t, vector<pair<int32_t, handle_t> > > update_index; 
 
-    for (auto & transcript_path: _transcript_paths) {
-
-        for (auto & handle: transcript_path.path) {
-
+    const bool has_shared_paths = any_of(_transcript_paths.begin(), _transcript_paths.end(),
+        [](const CompletedTranscriptPath & path) { return !path.shared_path.empty(); });
+    if (uses_path_workspace() || has_shared_paths) {
+        // Workspace paths are either made from this graph, or have already
+        // retained every node they use in remove_non_transcribed_nodes(). Map
+        // both orientations of every retained node instead of rereading all
+        // completed path records solely to discover the used handles.
+        for (auto handle : new_order) {
             update_index.emplace(handle, vector<pair<int32_t, handle_t> >());
+            update_index.emplace(_graph->flip(handle), vector<pair<int32_t, handle_t> >());
         }
-    }   
+    } else {
+        for (auto & transcript_path: _transcript_paths) {
+
+            for_each_completed_chunk(transcript_path,
+                [&](const handle_t * handles, uint64_t count, uint64_t) {
+                    for (uint64_t i = 0; i < count; ++i) {
+                        update_index.emplace(handles[i], vector<pair<int32_t, handle_t> >());
+                    }
+                });
+            note_mapped_graph_work(completed_path_size(transcript_path) * sizeof(handle_t));
+        }
+    }
 
     uint32_t order_idx = 1;
 
@@ -2873,6 +3711,10 @@ bool Transcriptome::sort_compact_nodes() {
         ++order_idx;
     }
 
+    if (uses_path_workspace() && show_progress) {
+        cerr << "\tPrepared " << update_index.size() << " oriented node translations" << endl;
+    }
+
 #ifdef transcriptome_debug
     cerr << "\tDEBUG Indexed " << update_index.size() << " node updates: " << gcsa::readTimer() - time_index_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif 
@@ -2883,6 +3725,12 @@ bool Transcriptome::sort_compact_nodes() {
 #endif
 
     _graph->apply_ordering(new_order, true);
+
+    checkpoint_mapped_graph();
+
+    if (uses_path_workspace() && show_progress) {
+        cerr << "\tReassigned graph node ids; rewriting completed path spans" << endl;
+    }
 
 #ifdef transcriptome_debug
     cerr << "\tDEBUG Updated graph: " << gcsa::readTimer() - time_update_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
@@ -2908,6 +3756,34 @@ void Transcriptome::embed_transcript_paths(const bool add_reference_transcripts,
 
     assert(add_reference_transcripts || add_haplotype_transcripts);
 
+    if (uses_path_workspace() &&
+        (!add_reference_transcripts || add_haplotype_transcripts)) {
+        throw invalid_argument("Transcript path workspaces support embedding reference transcripts only");
+    }
+
+    if (_paths_deferred_for_output) {
+        throw logic_error("Transcript paths have already been prepared for graph output");
+    }
+    if (use_streaming_path_output && !uses_path_workspace()) {
+        auto packed = dynamic_cast<const bdsg::PackedGraph*>(_graph.get());
+        if (packed != nullptr && dynamic_cast<const GFAHandleGraph*>(_graph.get()) == nullptr &&
+            packed->can_serialize_with_paths()) {
+            for (size_t i = 0; i < _transcript_paths.size(); ++i) {
+                const auto & path = _transcript_paths[i];
+                if ((path.is_reference && add_reference_transcripts) ||
+                    (path.is_haplotype && add_haplotype_transcripts)) {
+                    _streamed_path_indices.push_back(i);
+                }
+            }
+            _paths_deferred_for_output = true;
+            if (show_progress) {
+                cerr << "\tPrepared " << _streamed_path_indices.size()
+                     << " transcript paths for graph output" << endl;
+            }
+            return;
+        }
+    }
+
     int32_t num_embedded_paths = 0;
 
     // Add transcript paths to graph
@@ -2927,11 +3803,16 @@ void Transcriptome::embed_transcript_paths(const bool add_reference_transcripts,
 
         auto path_handle = _graph->create_path_handle(transcript_path.get_name());
 
-        for (auto & handle: transcript_path.path) {
-
-            _graph->append_step(path_handle, handle);
-        }
+        for_each_completed_chunk(transcript_path,
+            [&](const handle_t * handles, uint64_t count, uint64_t) {
+                for (uint64_t i = 0; i < count; ++i) {
+                    _graph->append_step(path_handle, handles[i]);
+                }
+                note_mapped_graph_work(count * sizeof(handle_t));
+            });
     }
+
+    checkpoint_mapped_graph();
 
     if (show_progress) { cerr << "\tEmbedded " << num_embedded_paths << " paths in graph" << endl; };
 }
@@ -3016,6 +3897,14 @@ vector<handle_t> walk_gbwt_body(const HandleGraph & graph, const gbwt::GBWT & gb
 
 void Transcriptome::embed_transcript_body_paths(const gbwt::GBWT & haplotype_index, const bool add_reference_bodies, const bool add_haplotype_bodies) {
 
+    if (_paths_deferred_for_output) {
+        throw logic_error("Transcript body embedding must precede deferred path output");
+    }
+
+    if (uses_path_workspace()) {
+        throw invalid_argument("Transcript path workspaces do not support transcript body paths");
+    }
+
     assert(add_reference_bodies || add_haplotype_bodies);
 
     // Position overlay for genomic-order walking of embedded assembly paths.
@@ -3027,7 +3916,7 @@ void Transcriptome::embed_transcript_body_paths(const gbwt::GBWT & haplotype_ind
 
     for (auto & transcript_path: _transcript_paths) {
 
-        if (transcript_path.path.empty()) { continue; }
+        if (transcript_path.resident_size() == 0) { continue; }
 
         // Gene provenance is a construction-time property of the transcript: REF if
         // it has a reference projection at all, else ALT (non-reference-only gene).
@@ -3036,8 +3925,8 @@ void Transcriptome::embed_transcript_body_paths(const gbwt::GBWT & haplotype_ind
 
         // Terminal exon anchors (node ids). The body spans these on each carrying
         // assembly, following the assembly (not the splice edge) between them.
-        const nid_t anchor_first = _graph->get_id(transcript_path.path.front());
-        const nid_t anchor_last = _graph->get_id(transcript_path.path.back());
+        const nid_t anchor_first = _graph->get_id(transcript_path.get_first_node_handle(*_graph));
+        const nid_t anchor_last = _graph->get_id(transcript_path.get_last_node_handle(*_graph));
 
         vector<vector<handle_t> > distinct_bodies;
         auto add_distinct = [&](vector<handle_t> && body) {
@@ -3089,6 +3978,10 @@ void Transcriptome::embed_transcript_body_paths(const gbwt::GBWT & haplotype_ind
 
 void Transcriptome::add_transcripts_to_gbwt(gbwt::GBWTBuilder * gbwt_builder, const bool add_bidirectional, const bool exclude_reference_transcripts) const {
 
+    if (uses_path_workspace()) {
+        throw invalid_argument("Transcript path workspaces do not support transcript GBWT output");
+    }
+
     int32_t num_added_threads = 0;
 
     vector<string> sample_names;
@@ -3115,11 +4008,10 @@ void Transcriptome::add_transcripts_to_gbwt(gbwt::GBWTBuilder * gbwt_builder, co
         ++num_added_threads;
 
         // Convert transcript path to GBWT thread.
-        gbwt::vector_type gbwt_thread(transcript_path.path.size());
-        for (size_t i = 0; i < transcript_path.path.size(); i++) {
-
-            gbwt_thread[i] = handle_to_gbwt(*_graph, transcript_path.path.at(i));
-        }
+        gbwt::vector_type gbwt_thread(transcript_path.resident_size());
+        transcript_path.for_each_handle(*_graph, [&](const handle_t & handle, uint64_t rank) {
+            gbwt_thread[rank] = handle_to_gbwt(*_graph, handle);
+        });
 
         // Insert transcript path as thread into GBWT index.
         gbwt_builder->insert(gbwt_thread, add_bidirectional);
@@ -3139,6 +4031,10 @@ void Transcriptome::add_transcripts_to_gbwt(gbwt::GBWTBuilder * gbwt_builder, co
 
 void Transcriptome::write_transcript_sequences(ostream * fasta_ostream, const bool exclude_reference_transcripts) const {
 
+    if (uses_path_workspace()) {
+        throw invalid_argument("Transcript path workspaces do not support FASTA output");
+    }
+
     int32_t num_written_sequences = 0;
 
     for (auto & transcript_path: _transcript_paths) {
@@ -3155,10 +4051,9 @@ void Transcriptome::write_transcript_sequences(ostream * fasta_ostream, const bo
 
         // Construct transcript path sequence.
         string transcript_path_sequence = "";
-        for (auto & handle: transcript_path.path) {
-
+        transcript_path.for_each_handle(*_graph, [&](const handle_t & handle, uint64_t) {
             transcript_path_sequence += _graph->get_sequence(handle);
-        }
+        });
 
         // Write transcript path name and sequence.
         write_fasta_sequence(transcript_path.get_name(), transcript_path_sequence, *fasta_ostream);
@@ -3167,36 +4062,70 @@ void Transcriptome::write_transcript_sequences(ostream * fasta_ostream, const bo
 
 void Transcriptome::write_transcript_info(ostream * tsv_ostream, const gbwt::GBWT & haplotype_index, const bool exclude_reference_transcripts) const {
 
-    *tsv_ostream << "Name\tLength\tTranscripts\tHaplotypes" << endl; 
+    *tsv_ostream << "Name\tLength\tTranscripts\tHaplotypes\n";
     
     // Parse reference sample tags.
     auto gbwt_reference_samples = gbwtgraph::parse_reference_samples_tag(haplotype_index);
 
-    int32_t num_written_info = 0;
+    const auto started = std::chrono::steady_clock::now();
+    const auto cpu_started = std::clock();
+    const int workers = std::max(1, num_threads);
+    // Some basic_ios accessors initialize cached state. Read them once before
+    // starting workers, rather than sharing the destination stream with them.
+    const auto output_flags = tsv_ostream->flags();
+    const auto output_precision = tsv_ostream->precision();
+    const auto output_fill = tsv_ostream->fill();
+    const auto output_locale = tsv_ostream->getloc();
 
-    for (auto & transcript_path: _transcript_paths) {
+    // Cache the small GBWT metadata table once. Bounds include string objects
+    // and their capacities; an unusual metadata table keeps the serial route.
+    constexpr size_t name_budget = 32 * 1024 * 1024;
+    constexpr size_t maximum_name = 4096;
+    vector<string> base_names;
+    bool parallel_names = workers > 1 && haplotype_index.metadata.paths() <= name_budget / sizeof(string);
+    if (parallel_names) {
+        base_names.reserve(haplotype_index.metadata.paths());
+        size_t used = base_names.capacity() * sizeof(string);
+        if (used > name_budget) { parallel_names = false; }
+        for (size_t i = 0; parallel_names && i < haplotype_index.metadata.paths(); ++i) {
+            string name = get_base_gbwt_path_name(haplotype_index, i, gbwt_reference_samples);
+            if (name.size() > maximum_name || name.capacity() + 1 > name_budget - used) {
+                parallel_names = false;
+                break;
+            }
+            used += name.capacity() + 1;
+            base_names.emplace_back(std::move(name));
+        }
+        if (!parallel_names) { vector<string>().swap(base_names); }
+    }
+
+    auto write_row = [&](ostream& out, const CompletedTranscriptPath& transcript_path) {
 
         assert(transcript_path.is_reference || transcript_path.is_haplotype);
 
         // Exclude unique reference transcripts
         if (exclude_reference_transcripts && transcript_path.is_reference && !transcript_path.is_haplotype) {
 
-            continue;
+            return;
         }
-
-        ++num_written_info;
 
         // Get transcript path length.
         int32_t transcript_path_length = 0;
 
-        for (auto & handle: transcript_path.path) {
-
-            transcript_path_length += _graph->get_length(handle);
+        if (transcript_path.path_is_spooled) {
+            if (transcript_path.path_length > static_cast<uint64_t>(numeric_limits<int32_t>::max())) {
+                throw overflow_error("Transcript path length exceeds the info format");
+            }
+            transcript_path_length = static_cast<int32_t>(transcript_path.path_length);
+        } else {
+            transcript_path.for_each_handle(*_graph, [&](const handle_t & handle, uint64_t) {
+                transcript_path_length += _graph->get_length(handle);
+            });
         }
 
-        *tsv_ostream << transcript_path.get_name();
-        *tsv_ostream << "\t" << transcript_path_length;
-        *tsv_ostream << "\t";
+        out << transcript_path.get_name();
+        out << "\t" << transcript_path_length;
+        out << "\t";
 
         assert(!transcript_path.transcript_names.empty());
 
@@ -3206,14 +4135,14 @@ void Transcriptome::write_transcript_info(ostream * tsv_ostream, const gbwt::GBW
 
             if (!is_first) {
 
-                *tsv_ostream << ",";
+                out << ",";
             } 
 
             is_first = false;
-            *tsv_ostream << name;
+            out << name;
         }
 
-        *tsv_ostream << "\t";
+        out << "\t";
 
         assert(!transcript_path.embedded_path_names.empty() || !transcript_path.haplotype_gbwt_ids.empty());
 
@@ -3232,7 +4161,11 @@ void Transcriptome::write_transcript_info(ostream * tsv_ostream, const gbwt::GBW
                 continue;
             }
 
-            hap_name_count[get_base_gbwt_path_name(haplotype_index, id.first, gbwt_reference_samples)]++;
+            if (parallel_names) {
+                hap_name_count[base_names.at(id.first)]++;
+            } else {
+                hap_name_count[get_base_gbwt_path_name(haplotype_index, id.first, gbwt_reference_samples)]++;
+            }
         }
         
         is_first = true;
@@ -3242,28 +4175,134 @@ void Transcriptome::write_transcript_info(ostream * tsv_ostream, const gbwt::GBW
                 for (size_t i = 0; i < name_and_count.second; ++i) {
                     
                     if (!is_first) {
-                        *tsv_ostream << ",";
+                        out << ",";
                     }
                     is_first = false;
                     
-                    *tsv_ostream << name_and_count.first;
+                    out << name_and_count.first;
                     if (name_and_count.second > 1) {
                         // disambiguate across overlapping phase blocks, passes through the transcript by a haplotype
-                        *tsv_ostream << '#' << i;
+                        out << '#' << i;
                     }
                 }
             }
         }
 
-        *tsv_ostream << endl;
+        out << '\n';
+    };
+
+    struct Row {
+        string text;
+        exception_ptr error;
+        bool serial = false;
+    };
+    uint64_t parallel_rows = 0, serial_rows = 0;
+    size_t actual_workers = 1;
+    if (parallel_names && !_transcript_paths.empty()) {
+        constexpr size_t batch_size = 4096;
+        for (size_t begin = 0; begin < _transcript_paths.size(); begin += batch_size) {
+            const size_t count = std::min(batch_size, _transcript_paths.size() - begin);
+            vector<Row> rows(count);
+            #pragma omp parallel num_threads(workers)
+            {
+                #pragma omp single
+                actual_workers = omp_get_num_threads();
+                #pragma omp for schedule(dynamic, 16)
+                for (size_t i = 0; i < count; ++i) {
+                    try {
+                        const auto& path = _transcript_paths[begin + i];
+                        // Bound worker-local origin maps as well as output text.
+                        bool bounded = path.transcript_names.size() <= 128 &&
+                            path.embedded_path_names.size() <= 128 && path.haplotype_gbwt_ids.size() <= 128 &&
+                            path.embedded_path_names.size() + path.haplotype_gbwt_ids.size() <= 128;
+                        if (bounded) {
+                            for (const auto& name : path.transcript_names) { bounded &= name.size() <= maximum_name; }
+                            for (const auto& name : path.embedded_path_names) { bounded &= name.first.size() <= maximum_name; }
+                        }
+                        if (!bounded) {
+                            rows[i].serial = true;
+                            continue;
+                        }
+                        TranscriptInfoRowBuffer buffer;
+                        ostream row_stream(&buffer);
+                        row_stream.flags(output_flags);
+                        row_stream.precision(output_precision);
+                        row_stream.fill(output_fill);
+                        row_stream.imbue(output_locale);
+                        row_stream.exceptions(ios::badbit | ios::failbit);
+                        write_row(row_stream, path);
+                        rows[i].text = buffer.text();
+                    } catch (const TranscriptInfoRowTooLarge&) {
+                        rows[i].serial = true;
+                    } catch (...) {
+                        rows[i].error = current_exception();
+                    }
+                }
+            }
+            // Workers have joined before any stream error is propagated.
+            for (size_t i = 0; i < count; ++i) {
+                if (rows[i].error) { rethrow_exception(rows[i].error); }
+                if (rows[i].serial) {
+                    write_row(*tsv_ostream, _transcript_paths[begin + i]);
+                    ++serial_rows;
+                } else {
+                    *tsv_ostream << rows[i].text;
+                    ++parallel_rows;
+                }
+                if (!*tsv_ostream) { throw runtime_error("Could not write transcript information"); }
+            }
+        }
+    } else {
+        for (const auto& path : _transcript_paths) {
+            write_row(*tsv_ostream, path);
+            ++serial_rows;
+            if (!*tsv_ostream) { throw runtime_error("Could not write transcript information"); }
+        }
+    }
+    tsv_ostream->flush();
+    if (!*tsv_ostream) { throw runtime_error("Could not flush transcript information"); }
+    if (show_progress) {
+        const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+        const double cpu = static_cast<double>(std::clock() - cpu_started) / CLOCKS_PER_SEC;
+        cerr << "[vg rna] Transcript info: " << parallel_rows << " parallel rows, "
+             << serial_rows << " serial rows; " << actual_workers << " workers ("
+             << workers << " requested); "
+             << wall << " wall seconds, " << cpu << " CPU seconds" << endl;
     }
 }
 
 void Transcriptome::write_graph(ostream * graph_ostream) const {
 
-    vg::io::save_handle_graph(_graph.get(), *graph_ostream);
+    if (_paths_deferred_for_output) {
+        auto packed = dynamic_cast<const bdsg::PackedGraph*>(_graph.get());
+        if (packed == nullptr) {
+            throw logic_error("Deferred path output requires PackedGraph");
+        }
+        bdsg::PathSerializationStageCallback stage;
+        if (show_progress) {
+            stage = [](const bdsg::PathSerializationStage& item) {
+                cerr << "[vg rna] Graph output " << item.name << ": " << item.workers
+                     << " workers, " << item.blocks << " blocks, " << item.planned_extra_bytes
+                     << " planned extra bytes; " << item.wall_seconds << " wall seconds, "
+                     << item.cpu_seconds << " CPU seconds" << endl;
+            };
+        }
+        packed->serialize_with_paths(*graph_ostream, _streamed_path_indices.size(),
+            [&](size_t i) { return _transcript_paths[_streamed_path_indices[i]].get_name(); },
+            [&](size_t i) { return completed_path_size(_transcript_paths[_streamed_path_indices[i]]); },
+            [&](size_t i, const auto & emit) {
+                _transcript_paths[_streamed_path_indices[i]].for_each_handle(*_graph,
+                    [&](const handle_t & handle, uint64_t) { emit(handle); });
+            }, static_cast<size_t>(std::max(1, num_threads)), 3ULL << 30, stage);
+    } else if (uses_path_workspace()) {
+        auto mapped_graph = dynamic_cast<const bdsg::MappedPackedGraph*>(_graph.get());
+        if (mapped_graph == nullptr) {
+            throw runtime_error("Transcript path workspace graph is not mapped");
+        }
+        mapped_graph->serialize_packed_graph(*graph_ostream);
+    } else {
+        vg::io::save_handle_graph(_graph.get(), *graph_ostream);
+    }
 }
 
 }
-
-

@@ -18,6 +18,8 @@
 #include "vg.hpp"
 #include "types.hpp"
 #include "gbwt_helper.hpp"
+#include "transcript_path_spool.hpp"
+#include "shared_transcript_path.hpp"
 
 namespace vg {
 
@@ -186,6 +188,14 @@ struct EditedTranscriptPath : public TranscriptPath {
     /// boundaries.
     vector<EditedMapping> path;
 
+    /// Shared source slices for GBWT reference paths when no path collapse is
+    /// requested. Whole internal steps are decoded only when consumed.
+    SharedTranscriptPath<EditedMapping> shared_path;
+
+    /// Location of the path in the optional disk-backed edited-step arena.
+    TranscriptPathSpool<EditedMapping>::Span path_span;
+    bool path_is_spooled = false;
+
     EditedTranscriptPath(const string & transcript_name, const string & embedded_path_name, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, embedded_path_name, is_reference_in, is_haplotype_in) {}
     EditedTranscriptPath(const string & transcript_name, const gbwt::size_type & haplotype_gbwt_id, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, haplotype_gbwt_id, is_reference_in, is_haplotype_in) {}
 
@@ -200,6 +210,21 @@ struct EditedTranscriptPath : public TranscriptPath {
 
     handle_t get_first_node_handle(const HandleGraph & graph) const;
 
+    /// Iterate a resident edited path in its original walk order.
+    template<class Iteratee>
+    void for_each_mapping(const HandleGraph & graph, const Iteratee & iteratee) const {
+        if (path_is_spooled) {
+            throw logic_error("A spooled edited path must be read through its Transcriptome");
+        }
+        if (!shared_path.empty()) {
+            shared_path.for_each_mapping([&](const handle_t & handle) {
+                return graph.flip(handle);
+            }, iteratee);
+        } else {
+            for (size_t i = 0; i < path.size(); ++i) { iteratee(path[i], i); }
+        }
+    }
+
 };
 
 /**
@@ -209,6 +234,16 @@ struct CompletedTranscriptPath : public TranscriptPath {
 
     /// Transcript path.
     vector<handle_t> path;
+
+    /// Whole-node slices of immutable sources, shared by named transcripts.
+    SharedTranscriptPath<EditedMapping> shared_path;
+
+    /// Location of the path in the optional disk-backed completed-step arena.
+    TranscriptPathSpool<handle_t>::Span path_span;
+    bool path_is_spooled = false;
+
+    /// Cached sequence length for the disk-backed info writer.
+    uint64_t path_length = 0;
 
     CompletedTranscriptPath(const EditedTranscriptPath & edited_transcript_path);
     CompletedTranscriptPath(const EditedTranscriptPath & edited_transcript_path, const HandleGraph & graph);
@@ -220,6 +255,38 @@ struct CompletedTranscriptPath : public TranscriptPath {
     ~CompletedTranscriptPath() = default;
 
     handle_t get_first_node_handle(const HandleGraph & graph) const;
+    handle_t get_last_node_handle(const HandleGraph & graph) const;
+
+    uint64_t resident_size() const {
+        return shared_path.empty() ? path.size() : shared_path.size();
+    }
+
+    template<class Iteratee>
+    void for_each_handle(const HandleGraph & graph, const Iteratee & iteratee) const {
+        if (path_is_spooled) {
+            throw logic_error("A spooled completed path must be read through its Transcriptome");
+        }
+        if (!shared_path.empty()) {
+            shared_path.for_each_mapping([&](const handle_t & handle) {
+                return graph.flip(handle);
+            }, [&](const EditedMapping & mapping, uint64_t rank) {
+                iteratee(mapping.handle, rank);
+            });
+        } else {
+            for (size_t i = 0; i < path.size(); ++i) { iteratee(path[i], i); }
+        }
+    }
+
+    /// Expand an explicitly requested copy, preserving the legacy vector API.
+    void materialize(const HandleGraph & graph) {
+        if (!shared_path.empty()) {
+            path.reserve(shared_path.size());
+            for_each_handle(graph, [&](const handle_t & handle, uint64_t) {
+                path.emplace_back(handle);
+            });
+            shared_path = {};
+        }
+    }
 };
 
 struct EditedMappingHash
@@ -243,7 +310,8 @@ class Transcriptome {
 
     public:
     
-        Transcriptome(unique_ptr<MutablePathDeletableHandleGraph>&& graph_in); 
+        Transcriptome(unique_ptr<MutablePathDeletableHandleGraph>&& graph_in,
+                      const string & path_workspace = "");
 
         /// Write progress to stderr.
         bool show_progress = false;
@@ -260,6 +328,14 @@ class Transcriptome {
         /// Speicifies which paths should be compared when collapsing identical paths. 
         /// Can be no, haplotype or all.
         string path_collapse_type = "haplotype";
+
+        /// Share edited/completed source walks on the GBWT reference/no-collapse route.
+        /// Disabling this preserves the expanded representation for comparison.
+        bool use_shared_reference_paths = true;
+
+        /// CLI output-only route: defer path records until write_graph().
+        /// The graph() view does not include these paths before serialization.
+        bool use_streaming_path_output = false;
 
         /// Treat a missing path in the transcripts/introns as a data error
         bool error_on_missing_path = true;
@@ -280,6 +356,8 @@ class Transcriptome {
         int32_t add_haplotype_transcripts(vector<istream *> transcript_streams, const gbwt::GBWT & haplotype_index, const bool proj_emded_paths);
 
         /// Returns transcript paths.
+        /// Read resident walks through CompletedTranscriptPath::for_each_handle;
+        /// a shared walk has no expanded `path` vector.
         const vector<CompletedTranscriptPath> & transcript_paths() const;
 
         /// Returns the reference transcript paths.
@@ -338,11 +416,48 @@ class Transcriptome {
 
         /// Transcript paths representing the transcriptome. 
         vector<CompletedTranscriptPath> _transcript_paths;
+        vector<size_t> _streamed_path_indices;
+        bool _paths_deferred_for_output = false;
+        void require_graph_mutation() const {
+            if (_paths_deferred_for_output) {
+                throw logic_error("Graph output has been prepared; further graph mutation is unsupported");
+            }
+        }
         mutex mutex_transcript_paths;
+
+        /// Optional append-only path arenas. Their files are retained when the
+        /// Transcriptome is destroyed, on both success and failure.
+        unique_ptr<TranscriptPathSpool<EditedMapping>> _edited_path_spool;
+        unique_ptr<TranscriptPathSpool<handle_t>> _completed_path_spool;
+
+        /// Approximate mapped graph work since its resident pages were last
+        /// checkpointed and released.
+        mutable uint64_t _mapped_graph_work = 0;
 
         /// Spliced pangenome graph.
         unique_ptr<MutablePathDeletableHandleGraph> _graph;
         mutex mutex_graph;
+
+        /// True when transcript steps live in the two disk-backed arenas.
+        bool uses_path_workspace() const;
+
+        /// Move a finished path into its arena and release vector capacity.
+        void spool_edited_path(EditedTranscriptPath * transcript_path) const;
+        void spool_completed_path(CompletedTranscriptPath * transcript_path);
+
+        /// Visit one bounded chunk at a time, whether the path is resident or
+        /// disk-backed. The third argument is the path-relative record offset.
+        void for_each_edited_chunk(const EditedTranscriptPath & transcript_path,
+                                   const function<void(const EditedMapping *, uint64_t, uint64_t)> & iteratee) const;
+        void for_each_completed_chunk(const CompletedTranscriptPath & transcript_path,
+                                      const function<void(const handle_t *, uint64_t, uint64_t)> & iteratee) const;
+
+        /// Number of completed steps without materializing the path.
+        uint64_t completed_path_size(const CompletedTranscriptPath & transcript_path) const;
+
+        /// Checkpoint a mapped graph after a bounded amount of path work.
+        void note_mapped_graph_work(uint64_t bytes) const;
+        void checkpoint_mapped_graph() const;
 
         /// Parse BED file of introns.
         void parse_introns(vector<Transcript> * introns, istream * intron_stream, const bdsg::PositionOverlay & graph_path_pos_overlay) const;

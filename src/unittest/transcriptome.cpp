@@ -5,6 +5,9 @@
 
 #include <stdio.h>
 #include <iostream>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "gbwt/dynamic_gbwt.h"
 #include "bdsg/packed_graph.hpp"
@@ -860,6 +863,92 @@ namespace vg {
                 REQUIRE(transcriptome.graph().get_sequence(transcriptome.graph().get_handle(11)) == "A");
                 REQUIRE(transcriptome.graph().get_sequence(transcriptome.graph().get_handle(12)) == "AAA");             
             }
+        }
+
+        TEST_CASE("Disk-backed transcript paths match ordinary PackedGraph output", "[transcriptome]") {
+
+            auto make_haplotype_index = []() {
+                gbwt::Verbosity::set(gbwt::Verbosity::SILENT);
+                gbwt::GBWTBuilder builder(gbwt::bit_length(gbwt::Node::encode(2, true)));
+                builder.index.addMetadata();
+
+                gbwt::vector_type thread(2);
+                thread[0] = gbwt::Node::encode(1, false);
+                thread[1] = gbwt::Node::encode(2, false);
+                builder.insert(thread, true);
+                builder.index.metadata.addPath(0, 0, 0, 0);
+                builder.index.metadata.addSamples(vector<string>({"sample1"}));
+                builder.index.metadata.addContigs(vector<string>({"path1"}));
+                builder.finish();
+                return make_unique<gbwt::GBWT>(builder.index);
+            };
+
+            auto populate_graph = [](MutablePathDeletableHandleGraph * graph) {
+                const handle_t left = graph->create_handle("AAAA", 1);
+                const handle_t right = graph->create_handle("CC", 2);
+                graph->create_edge(left, right);
+            };
+
+            auto run_pipeline = [&](unique_ptr<MutablePathDeletableHandleGraph> graph,
+                                    const string & workspace) {
+                populate_graph(graph.get());
+                Transcriptome transcriptome(std::move(graph), workspace);
+                transcriptome.num_threads = 1;
+                transcriptome.path_collapse_type = "no";
+
+                stringstream annotation;
+                annotation << "sample1#0#path1\t.\texon\t2\t5\t.\t+\t.\t"
+                           << "transcript_id \"tx\";" << endl;
+                auto haplotype_index = make_haplotype_index();
+                transcriptome.add_reference_transcripts(
+                    vector<istream *>({&annotation}), haplotype_index, true, false);
+
+                if (!workspace.empty()) {
+                    REQUIRE(transcriptome.transcript_paths().size() == 1);
+                    REQUIRE(transcriptome.transcript_paths().front().path.empty());
+                    REQUIRE(transcriptome.transcript_paths().front().path_is_spooled);
+                    REQUIRE(transcriptome.transcript_paths().front().path_span.count > 0);
+                }
+
+                transcriptome.remove_non_transcribed_nodes();
+                REQUIRE(transcriptome.sort_compact_nodes());
+                transcriptome.embed_transcript_paths(true, false);
+
+                ostringstream info;
+                transcriptome.write_transcript_info(&info, *haplotype_index, false);
+                ostringstream graph_out;
+                transcriptome.write_graph(&graph_out);
+                return make_pair(graph_out.str(), info.str());
+            };
+
+            const auto ordinary = run_pipeline(
+                unique_ptr<MutablePathDeletableHandleGraph>(new bdsg::PackedGraph()), "");
+
+            char workspace_template[] = "rna-path-workspaceXXXXXX";
+            char * workspace_name = mkdtemp(workspace_template);
+            REQUIRE(workspace_name != nullptr);
+            const string workspace(workspace_name);
+            const string arena_name = workspace + "/graph.arena";
+            const int arena_fd = open(arena_name.c_str(), O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+            REQUIRE(arena_fd >= 0);
+
+            const auto disk_backed = run_pipeline(
+                unique_ptr<MutablePathDeletableHandleGraph>(new bdsg::MappedPackedGraph(arena_fd)),
+                workspace);
+
+            REQUIRE(disk_backed.second == ordinary.second);
+            REQUIRE(disk_backed.first == ordinary.first);
+
+            bdsg::PackedGraph reloaded;
+            istringstream graph_in(disk_backed.first);
+            reloaded.deserialize(graph_in);
+            REQUIRE(reloaded.has_path("tx_R1"));
+            REQUIRE(reloaded.get_step_count(reloaded.get_path_handle("tx_R1")) > 0);
+
+            REQUIRE(unlink((workspace + "/edited.steps").c_str()) == 0);
+            REQUIRE(unlink((workspace + "/completed.steps").c_str()) == 0);
+            REQUIRE(unlink(arena_name.c_str()) == 0);
+            REQUIRE(rmdir(workspace.c_str()) == 0);
         }
     }
 }

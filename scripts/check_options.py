@@ -148,6 +148,57 @@ NON_WORK_WORDS = {'exit', 'return', 'deprecated', 'abort', 'throw', 'error'}
 FILENAME_VAR_ENDS = {'file', 'filename', 'file_name', 'filepath', 'file_path'}
 """Suffixes that indicate a variable is definitely a filename"""
 
+
+def deferred_file_checks(lines: List[str], start: int, variables: set) -> set:
+    """Find narrowly formatted post-switch checks in the surrounding main body.
+
+    The option parser normally checks files immediately. A small number of
+    commands must first reject an incompatible option combination without
+    validating its optional output paths. Keep that exception intentionally
+    mechanical: only a main-body statement, or its exact one-statement
+    nonempty guard, may validate the same variable after the switch.
+    """
+    checked = set()
+    index = start
+    while index < len(lines):
+        line = lines[index]
+        if line.startswith('}'):
+            # The unindented closing brace ends the enclosing main function.
+            break
+        stripped = line.strip()
+        if stripped.endswith('\\'):
+            # C++ splices these lines before interpreting even // comments.
+            break
+        if stripped.startswith('//'):
+            index += 1
+            continue
+        if '/*' in line or 'R"' in line:
+            # This formatting checker is not a C++ lexer. Do not grant an
+            # exemption across a block comment or a potentially multiline
+            # string, whose contents could resemble a validation statement.
+            break
+        for variable in variables:
+            call = rf'{re.escape(variable)} = (?:ensure_writable|require_exists)\(logger, {re.escape(variable)}\);'
+            if re.fullmatch(r'    ' + call, line):
+                checked.add(variable)
+                break
+            if re.fullmatch(rf'    if \(!{re.escape(variable)}\.empty\(\)\) \{{', line):
+                body = index + 1
+                while (body < len(lines) and lines[body].strip().startswith('//')
+                       and not lines[body].rstrip().endswith('\\')):
+                    body += 1
+                close = body + 1
+                while (close < len(lines) and lines[close].strip().startswith('//')
+                       and not lines[close].rstrip().endswith('\\')):
+                    close += 1
+                if (body < len(lines) and close < len(lines)
+                    and re.fullmatch(r'        ' + call, lines[body])
+                    and lines[close] == '    }'):
+                    checked.add(variable)
+                break
+        index += 1
+    return checked
+
 @dataclass
 class OptionInfo:
     """Information about a command line option.
@@ -615,6 +666,7 @@ def extract_switch_optarg(text: str) -> Dict[str, OptionInfo]:
 
     optarg_usage = dict()
     extra_errors = []
+    deferred_errors = {}
     shortforms = set()
     inside_switch = False
     # Current cases being processed
@@ -644,7 +696,9 @@ def extract_switch_optarg(text: str) -> Dict[str, OptionInfo]:
         current_cases = []
         extra_errors = []
 
-    for line in text.splitlines():
+    lines = text.splitlines()
+    switch_end = None
+    for line_index, line in enumerate(lines):
         stripped = line.strip()
 
         # Are we inside the switch statement?
@@ -652,6 +706,7 @@ def extract_switch_optarg(text: str) -> Dict[str, OptionInfo]:
             inside_switch = True
             curly_brace_nesting = -1
         elif inside_switch and line.strip() == '}' and curly_brace_nesting == 0:
+            switch_end = line_index + 1
             break
 
         # Ignore comments and lines outside the switch
@@ -674,8 +729,15 @@ def extract_switch_optarg(text: str) -> Dict[str, OptionInfo]:
         for suffix in FILENAME_VAR_ENDS:
             if f'{suffix} = optarg;' in stripped:
                 # Extra check for file-existance functions
-                extra_errors.append("Use require_exists() or ensure_writable() "
-                                    "for standardized file checks: " + stripped)
+                error = ("Use require_exists() or ensure_writable() "
+                         "for standardized file checks: " + stripped)
+                extra_errors.append(error)
+                # Preserve the existing heuristic, including bare names such
+                # as `filename`. Only an unambiguous assignment to a simple
+                # local variable qualifies for deferred validation.
+                match = re.fullmatch(r'([A-Za-z_][A-Za-z0-9_]*) = optarg;', stripped)
+                if match:
+                    deferred_errors.setdefault(match.group(1), set()).add(error)
                 break
 
         # Detect new case
@@ -715,6 +777,13 @@ def extract_switch_optarg(text: str) -> Dict[str, OptionInfo]:
     # Handle trailing block without break (not common but valid)
     if current_cases:
         save_case_info()
+
+    if switch_end is not None and deferred_errors:
+        checked = deferred_file_checks(lines, switch_end, set(deferred_errors))
+        for option in optarg_usage.values():
+            option.errors = [error for error in option.errors
+                             if not any(variable in checked and error in messages
+                                        for variable, messages in deferred_errors.items())]
 
     return optarg_usage
 

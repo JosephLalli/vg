@@ -1,0 +1,10 @@
+[1.14739 s] body path names: 1402415
+[153.954 s] genic graph: 2056621 nodes, 2726485 edges, 2804175 paths
+[157.235 s] body paths 1402415 of 1402415 listed; spliced paths 1401760
+[158.888 s] spliced: 123091739 steps, 657316 distinct edges
+[201.652 s] body: 4115189220 steps, 2489166 distinct edges
+[201.807 s] junction edges: 22178 (22178 present as graph edges)
+[246.87 s] mapping: first_node 1000000000, 5973132 duplicates
+[259.442 s] pruned graph: 7621792 nodes, 8242163 edges
+[269.502 s] pruned edges 8242163, distinct after mapping 2714794, unmappable 0
+[269.505 s] done

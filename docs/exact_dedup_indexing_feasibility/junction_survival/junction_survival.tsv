@@ -1,0 +1,13 @@
+genic_nodes_max_id	2056621
+spliced_paths	1401760
+body_paths	1402415
+spliced_steps	123091739
+body_steps	4115189220
+spliced_distinct_edges	657316
+junction_edges	22178
+junction_edges_present_in_genic_graph	22178
+pruned_edges	8242163
+pruned_edges_distinct_after_mapping	2714794
+pruned_edges_unmappable	0
+junction_edges_surviving	22178
+junction_edges_missing	0

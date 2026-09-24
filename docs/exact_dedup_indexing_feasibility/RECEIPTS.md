@@ -482,3 +482,47 @@ rather than moved. It establishes nothing about accuracy or throughput at scale,
 per arm carries no noise floor for the mpmap wall figures. The **XG-built** distance index has
 still never been opened by a mapper, so no `-d` XG-versus-GBZ mapping comparison exists -- only
 the construction-cost comparison above.
+
+## 17. Splice-junction survival through prune: 22,178 of 22,178
+
+Measured 2026-09-23 on retained files, with no rerun of any pipeline stage. Probe
+`junction_survival.cpp` (built by `junction_survival.mk` against this tree's libbdsg); outputs,
+GNU-time receipt and input hashes in `junction_survival/`.
+
+**Question.** Does prune keep every splice-junction edge `vg rna` created? If it did not,
+spliced reads could not align across the lost junctions.
+
+**Definition.** The exact annotation has two layers: 1,401,760 spliced transcripts (`exon`) and
+1,402,415 unspliced bodies (`body`), the same transcripts walked through their introns on the
+same haplotypes. A junction edge is an edge some spliced transcript traverses and no body
+traverses: bodies share every within-exon edge and cross each intron through genomic sequence.
+
+**Inputs** (`evidence/chr21_exact_arm_20260914/exact/`, September 13 binary `35867c7f`):
+`genic.pg` (SHA256 `0678d83d...`, the graph prune read, transcripts embedded, buffers
+stripped), `pruned.vg` (`cc126f15...`) and the prune node mapping `mapping.throwaway`
+(`15778a31...`, first node 1,000,000,000, 5,973,132 duplicates).
+
+**Result.**
+
+| quantity | value |
+|---|---|
+| spliced-transcript steps / distinct edges | 123,091,739 / 657,316 |
+| body steps / distinct edges | 4,115,189,220 / 2,489,166 |
+| junction edges | 22,178 (all 22,178 are edges of `genic.pg`) |
+| pruned-graph edges / distinct after mapping duplicates back | 8,242,163 / 2,714,794 (of 2,726,485 in `genic.pg`) |
+| **junction edges surviving** | **22,178** |
+| junction edges missing | 0 |
+
+Cost: 0:04:36 wall, 41.75 GiB peak, 3.75 effective cores, 24 threads.
+
+**What it establishes, and what it does not.** In the configuration production actually runs --
+transcripts embedded in prune's input *and* in the guide index, `prune -u` -- no splice junction
+is lost. That is expected by construction, since `-u` unfolds both embedded paths and guide
+threads, and this confirms it at chr21 scale. It does not test pruning a graph with the
+transcript paths removed and only the guide protecting them; that has never been run. The prune
+was on the September 13 binary. The node mapping's SHA256 equals the mapping recorded for the
+September 16 binary's chr21 prune (`docs/transcript_path_memory/IMPLEMENTATION.md`), so both
+binaries created the same unfolded duplicates, which supports but does not prove that the result
+holds on the newer code. The definition can miss a junction that coincides with some
+haplotype's genomic adjacency, and could count a spliced-only edge that is not a junction; with
+nothing missing, neither changes the conclusion.

@@ -160,6 +160,11 @@ and require the transcript sequences it yields to match `chr21.tx.fa` as a name-
 A guide in a stale node space fails this; nothing shipped catches it otherwise --
 `vg prune --verify-paths` returns success on a stale index.
 
+**Measured 2026-09-23: in the configuration production runs, 22,178 of 22,178 splice-junction
+edges survive prune** (transcripts embedded in prune's input and in the guide; `RECEIPTS.md`
+section 17). What remains untested is the form of this check described next, with the
+transcript paths removed before prune.
+
 **The splice-junction survival check.** Derive the alignment graph by dropping embedded paths
 (`vg paths -d`, which removes labels and never nodes, so node IDs are preserved), prune it
 with the transcript guide, and count how many of `vg rna`'s junction edges survive into

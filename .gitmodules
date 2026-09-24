@@ -51,7 +51,7 @@
     url = https://github.com/vgteam/fermi-lite.git
 [submodule "deps/gbwt"]
 	path = deps/gbwt
-	url = https://github.com/jltsiren/gbwt.git
+	url = https://github.com/JosephLalli/gbwt.git
 [submodule "deps/sublinear-Li-Stephens"]
 	path = deps/sublinear-Li-Stephens
 	url = https://github.com/yoheirosen/sublinear-Li-Stephens.git
@@ -91,10 +91,10 @@
 	url = https://github.com/brendangregg/FlameGraph
 [submodule "deps/libbdsg"]
 	path = deps/libbdsg
-	url = https://github.com/vgteam/libbdsg.git
+	url = https://github.com/JosephLalli/libbdsg.git
 [submodule "deps/xg"]
 	path = deps/xg
-	url = https://github.com/vgteam/xg.git
+	url = https://github.com/JosephLalli/xg.git
 [submodule "deps/gbwtgraph"]
 	path = deps/gbwtgraph
 	url = https://github.com/jltsiren/gbwtgraph.git

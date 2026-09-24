@@ -144,12 +144,17 @@ exists. `VG_BUILD_UNFREEZE=1` overrides it deliberately. The file is
 `.gitignore`d because its `until=` path is absolute and machine-specific —
 committing it breaks `./build-local.sh` in every other checkout.
 
-### Submodule hazard
+### Fork-hosted submodules
 
-`b47de4db9` moves the `deps/libbdsg` gitlink to a fork commit (`b07563bb9`,
-branch `packed-graph-batch-edge-deletion` on `JosephLalli/libbdsg`) while
-`.gitmodules` still names `vgteam/libbdsg`, which does not carry that commit.
-A fresh clone cannot resolve the submodule until that URL is repointed.
+Four submodules record commits that exist only on the user's forks, so
+`.gitmodules` points each at its fork: `deps/gcsa2` (`JosephLalli/gcsa2`),
+`deps/libbdsg` (`JosephLalli/libbdsg`), `deps/xg` (`JosephLalli/xg`) and
+`deps/gbwt` (`JosephLalli/gbwt`). The last three were repointed on
+2026-09-23; before that `.gitmodules` named `vgteam/libbdsg`, `vgteam/xg` and
+`jltsiren/gbwt`, which do not carry the recorded commits, and a fresh clone
+could not resolve them. Push a submodule commit to its fork before pushing a
+vg commit that records it. An existing checkout keeps its old URLs until
+`git submodule sync`.
 
 ## Tests
 

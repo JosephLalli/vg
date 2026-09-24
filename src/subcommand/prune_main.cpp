@@ -28,18 +28,33 @@
 #include "../io/save_handle_graph.hpp"
 
 #include <gbwt/gbwt.h>
+#include <bdsg/packed_graph.hpp>
 
+#include <cerrno>
+#include <cstring>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <list>
+#include <limits>
 #include <map>
 #include <string>
 
 #include <getopt.h>
 #include <omp.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 using namespace vg;
 using namespace vg::subcommand;
+
+namespace {
+constexpr int PATH_WORKSPACE_OPT = 1000;
+constexpr int PATH_WORKSPACE_RESERVE_OPT = 1001;
+constexpr uint64_t MAPPED_PATH_CHECKPOINT_BYTES = 256ull * 1024 * 1024;
+}
 
 enum PruningMode { mode_prune, mode_restore, mode_unfold };
 
@@ -109,32 +124,39 @@ void help_prune(char** argv) {
     std::cerr << "Pruning the graph removes embedded paths." << std::endl;
     std::cerr << std::endl;
     std::cerr << "Pruning parameters:" << std::endl;
-    std::cerr << "  -k, --kmer-length N    kmer length used for pruning" << std::endl;
-    std::cerr << "                         "; print_defaults(PruningParameters::kmer_length);
-    std::cerr << "  -e, --edge-max N       remove the edges on kmers making > N edge choices" << std::endl;
-    std::cerr << "                         "; print_defaults(PruningParameters::edge_max);
-    std::cerr << "  -s, --subgraph-min N   remove subgraphs of < N bases" << std::endl;
-    std::cerr << "                         "; print_defaults(PruningParameters::subgraph_min);
-    std::cerr << "  -M, --max-degree N     if N > 0, remove nodes with degree > N before pruning" << std::endl;
-    std::cerr << "                         "; print_defaults(PruningParameters::max_degree);
+    std::cerr << "  -k, --kmer-length N             kmer length used for pruning" << std::endl;
+    std::cerr << "                                   "; print_defaults(PruningParameters::kmer_length);
+    std::cerr << "  -e, --edge-max N                remove the edges on kmers making > N edge" << std::endl;
+    std::cerr << "                                   choices" << std::endl;
+    std::cerr << "                                   "; print_defaults(PruningParameters::edge_max);
+    std::cerr << "  -s, --subgraph-min N            remove subgraphs of < N bases" << std::endl;
+    std::cerr << "                                   "; print_defaults(PruningParameters::subgraph_min);
+    std::cerr << "  -M, --max-degree N              if N > 0, remove nodes with degree > N before" << std::endl;
+    std::cerr << "                                   pruning" << std::endl;
+    std::cerr << "                                   "; print_defaults(PruningParameters::max_degree);
     std::cerr << std::endl;
     std::cerr << "Pruning modes (-P, -r, and -u are mutually exclusive):" << std::endl;
-    std::cerr << "  -P, --prune            simply prune the graph (default)" << std::endl;
-    std::cerr << "  -r, --restore-paths    restore the edges on non-alt paths" << std::endl;
-    std::cerr << "  -u, --unfold-paths     unfold non-alt paths and GBWT threads" << std::endl;
-    std::cerr << "  -v, --verify-paths     verify that the paths exist after pruning" << std::endl;
-    std::cerr << "                         (potentially very slow)" << std::endl;
+    std::cerr << "  -P, --prune                     simply prune the graph (default)" << std::endl;
+    std::cerr << "  -r, --restore-paths             restore the edges on non-alt paths" << std::endl;
+    std::cerr << "  -u, --unfold-paths              unfold non-alt paths and GBWT threads" << std::endl;
+    std::cerr << "  -v, --verify-paths              verify that the paths exist after pruning" << std::endl;
+    std::cerr << "                                   (potentially very slow)" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Unfolding options:" << std::endl;
-    std::cerr << "  -g, --gbwt-name FILE   unfold the threads from this GBWT index" << std::endl;
-    std::cerr << "  -m, --mapping FILE     store node mapping for duplicates (required with -u)" << std::endl;
-    std::cerr << "  -a, --append-mapping   append to the existing node mapping" << std::endl;
+    std::cerr << "  -g, --gbwt-name FILE            unfold the threads from this GBWT index" << std::endl;
+    std::cerr << "  -m, --mapping FILE              store node mapping for duplicates (required" << std::endl;
+    std::cerr << "                                   with -u)" << std::endl;
+    std::cerr << "  -a, --append-mapping            append to the existing node mapping" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Other options:" << std::endl;
-    std::cerr << "  -p, --progress         show progress" << std::endl;
-    std::cerr << "  -t, --threads N        use N threads [" << omp_get_max_threads() << "]" << std::endl;
-    std::cerr << "  -d, --dry-run          determine the validity of the combination of options" << std::endl;
-    std::cerr << "  -h, --help             print this help message to stderr and exit" << std::endl;
+    std::cerr << "      --path-workspace DIR        use a new disk-backed workspace for" << std::endl;
+    std::cerr << "                                   PackedGraph input" << std::endl;
+    std::cerr << "      --path-workspace-reserve N  reserve N GiB in one initial sparse mapping" << std::endl;
+    std::cerr << "  -p, --progress                  show progress" << std::endl;
+    std::cerr << "  -t, --threads N                 use N threads [" << omp_get_max_threads() << "]" << std::endl;
+    std::cerr << "  -d, --dry-run                   determine the validity of the combination of" << std::endl;
+    std::cerr << "                                   options" << std::endl;
+    std::cerr << "  -h, --help                      print this help message to stderr and exit" << std::endl;
     std::cerr << std::endl;
 }
 
@@ -154,7 +176,10 @@ int main_prune(int argc, char** argv) {
     PruningMode mode = mode_prune;
     int threads = omp_get_max_threads();
     bool verify_paths = false, append_mapping = false, show_progress = false, dry_run = false;
-    std::string vg_name, gbwt_name, mapping_name;
+    std::string vg_name, gbwt_name, mapping_name, path_workspace;
+    bool path_workspace_requested = false;
+    bool path_workspace_reserve_requested = false;
+    uint64_t path_workspace_initial_bytes = 0;
 
     // Derived variables.
     bool kmer_length_set = false, edge_max_set = false, subgraph_min_set = false, max_degree_set = false;
@@ -179,6 +204,8 @@ int main_prune(int argc, char** argv) {
             { "progress", no_argument, 0, 'p' },
             { "threads", required_argument, 0, 't' },
             { "dry-run", no_argument, 0, 'd' },
+            { "path-workspace", required_argument, 0, PATH_WORKSPACE_OPT },
+            { "path-workspace-reserve", required_argument, 0, PATH_WORKSPACE_RESERVE_OPT },
             { "help", no_argument, 0, 'h' },
             { 0, 0, 0, 0 }
         };
@@ -238,6 +265,21 @@ int main_prune(int argc, char** argv) {
         case 'd':
             dry_run = true;
             break;
+        case PATH_WORKSPACE_OPT:
+            path_workspace = optarg;
+            path_workspace_requested = true;
+            break;
+        case PATH_WORKSPACE_RESERVE_OPT: {
+            const uint64_t gib = parse<uint64_t>(optarg);
+            const uint64_t maximum = std::min<uint64_t>(std::numeric_limits<size_t>::max(),
+                                                       std::numeric_limits<::off_t>::max());
+            if (gib == 0 || gib > (maximum >> 30)) {
+                logger.error() << "--path-workspace-reserve requires a positive GiB size representable by size_t and off_t" << std::endl;
+            }
+            path_workspace_initial_bytes = gib << 30;
+            path_workspace_reserve_requested = true;
+            break;
+        }
 
         case 'h':
         case '?':
@@ -272,6 +314,30 @@ int main_prune(int argc, char** argv) {
     }
     if (!(kmer_length > 0 && edge_max > 0)) {
         logger.error() << "--kmer-length and --edge-max must be positive" << std::endl;
+    }
+
+    // Reject workspace/input mistakes before opening a requested mapping output.
+    // A retained workspace is scratch evidence; it cannot be reopened or resumed.
+    if (path_workspace_reserve_requested && !path_workspace_requested) {
+        logger.error() << "--path-workspace-reserve requires --path-workspace" << std::endl;
+    }
+    std::ifstream packed_input;
+    if (path_workspace_requested) {
+        if (path_workspace.empty() || vg_name == "-") {
+            logger.error() << "--path-workspace requires a nonempty new directory and a PackedGraph input file" << std::endl;
+        }
+        struct stat workspace_stat;
+        if (lstat(path_workspace.c_str(), &workspace_stat) == 0 || errno != ENOENT) {
+            logger.error() << "--path-workspace requires a new directory: " << path_workspace << std::endl;
+        }
+        packed_input.open(vg_name, std::ios::binary);
+        uint32_t magic = 0;
+        packed_input.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+        bdsg::PackedGraph format;
+        if (!packed_input || ntohl(magic) != format.get_magic_number()) {
+            logger.error() << "--path-workspace requires standard PackedGraph input" << std::endl;
+        }
+        packed_input.seekg(0);
     }
 
     if (!mapping_name.empty()) {
@@ -324,6 +390,12 @@ int main_prune(int argc, char** argv) {
         if (show_progress) {
             opt_info << " --progress";
         }
+        if (path_workspace_requested) {
+            opt_info << " --path-workspace " << path_workspace;
+        }
+        if (path_workspace_reserve_requested) {
+            opt_info << " --path-workspace-reserve " << (path_workspace_initial_bytes >> 30);
+        }
         if (dry_run) {
             opt_info << " --dry-run";
         }
@@ -342,8 +414,31 @@ int main_prune(int argc, char** argv) {
 
     // Handle the input.
     std::unique_ptr<MutablePathDeletableHandleGraph> graph;
-    graph = vg::io::VPKG::load_one<MutablePathDeletableHandleGraph>(vg_name);
-    xg::XG xg_index;
+    bdsg::MappedPackedGraph* mapped_graph = nullptr;
+    if (path_workspace_requested) {
+        if (mkdir(path_workspace.c_str(), 0700) != 0) {
+            logger.error() << "Cannot create path workspace " << path_workspace << ": " << strerror(errno) << std::endl;
+        }
+        const std::string arena = path_workspace + "/graph.arena";
+        const int graph_fd = open(arena.c_str(), O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+        if (graph_fd < 0) {
+            logger.error() << "Cannot create graph arena " << arena << ": " << strerror(errno) << std::endl;
+        }
+        try {
+            mapped_graph = new bdsg::MappedPackedGraph(graph_fd, path_workspace_initial_bytes);
+        } catch (...) {
+            close(graph_fd);
+            throw;
+        }
+        // The mapped allocator keeps its own duplicated descriptor.
+        close(graph_fd);
+        graph.reset(mapped_graph);
+        mapped_graph->deserialize_packed_graph(packed_input, MAPPED_PATH_CHECKPOINT_BYTES);
+        packed_input.close();
+    } else {
+        graph = vg::io::VPKG::load_one<MutablePathDeletableHandleGraph>(vg_name);
+    }
+    auto xg_index = std::make_unique<xg::XG>();
     std::unique_ptr<gbwt::GBWT> gbwt_index;
     
     
@@ -353,23 +448,6 @@ int main_prune(int argc, char** argv) {
                       << " nodes, " << graph->get_edge_count() << " edges" << std::endl;
     }
 
-    // Remove the paths and build an XG index if needed.
-    if (mode == mode_restore || mode == mode_unfold) {
-        vector<path_handle_t> alt_path_handles;
-        graph->for_each_path_handle([&](path_handle_t path_handle) {
-            if (Paths::is_alt(graph->get_path_name(path_handle))) {
-                alt_path_handles.push_back(path_handle);
-            }
-        });
-        for (auto& alt_path_handle : alt_path_handles) {
-            graph->destroy_path(alt_path_handle);
-        }
-        xg_index.from_path_handle_graph(*graph);
-        if (show_progress) {
-            logger.info() << "Built a temporary XG index" << std::endl;
-        }
-    }
-    
     // Destroy all remaining paths. Deleting them one at a time is not merely
     // unbatched, it is quadratic in path depth: destroy_path() on the packed
     // graphs forwards to destroy_paths({path}), and the single-element case
@@ -383,16 +461,59 @@ int main_prune(int argc, char** argv) {
     // The bulk call is on MutablePathHandleGraph itself, and its default
     // implementation is exactly the loop written here, so a graph type that
     // does not override it behaves as before.
-    vector<path_handle_t> path_handles;
-    graph->for_each_path_handle([&](path_handle_t path_handle) {
-        path_handles.push_back(path_handle);
-    });
-    graph->destroy_paths(path_handles);
-    
-    if (show_progress) {
-        logger.info() << "Removed all paths" << std::endl;
-    }
+    auto destroy_all_paths = [&]() {
+        vector<path_handle_t> path_handles;
+        graph->for_each_path_handle([&](path_handle_t path_handle) {
+            path_handles.push_back(path_handle);
+        });
+        graph->destroy_paths(path_handles);
+        if (mapped_graph != nullptr) {
+            mapped_graph->checkpoint_and_evict();
+        }
 
+        if (show_progress) {
+            logger.info() << "Removed all paths" << std::endl;
+        }
+    };
+
+    // Remove the paths and build an XG index if needed.
+    if (mode == mode_restore || mode == mode_unfold) {
+        vector<path_handle_t> alt_path_handles;
+        graph->for_each_path_handle([&](path_handle_t path_handle) {
+            if (Paths::is_alt(graph->get_path_name(path_handle))) {
+                alt_path_handles.push_back(path_handle);
+            }
+        });
+        for (auto& alt_path_handle : alt_path_handles) {
+            graph->destroy_path(alt_path_handle);
+        }
+        // XG has copied the topology and walks before invoking this callback.
+        // Release their mutable copies before allocating its reverse index.
+        uint64_t path_bytes_since_checkpoint = 0;
+        auto on_path_read = [&](size_t steps) {
+            // XG enumerates paths more than once. Evict during every traversal,
+            // while all input handles and the arena remain valid.
+            constexpr uint64_t STEPS_PER_CHECKPOINT = MAPPED_PATH_CHECKPOINT_BYTES / sizeof(handle_t);
+            if (steps >= STEPS_PER_CHECKPOINT ||
+                path_bytes_since_checkpoint >= MAPPED_PATH_CHECKPOINT_BYTES - steps * sizeof(handle_t)) {
+                mapped_graph->checkpoint_and_evict();
+                path_bytes_since_checkpoint = 0;
+            } else {
+                path_bytes_since_checkpoint += steps * sizeof(handle_t);
+            }
+        };
+        if (mapped_graph != nullptr) {
+            xg_index->from_path_handle_graph(*graph, destroy_all_paths, on_path_read);
+        } else {
+            xg_index->from_path_handle_graph(*graph, destroy_all_paths);
+        }
+        if (show_progress) {
+            logger.info() << "Built a temporary XG index" << std::endl;
+        }
+    } else {
+        destroy_all_paths();
+    }
+    
     // Remove high-degree nodes.
     if (max_degree > 0) {
         algorithms::remove_high_degree_nodes(*graph, max_degree);
@@ -418,7 +539,7 @@ int main_prune(int argc, char** argv) {
     if (mode == mode_restore) {
         // Make an empty GBWT index to pass along
         gbwt::GBWT empty_gbwt;
-        PhaseUnfolder unfolder(xg_index, empty_gbwt, max_node_id + 1);
+        PhaseUnfolder unfolder(*xg_index, empty_gbwt, max_node_id + 1);
         unfolder.restore_paths(*graph, show_progress);
         if (verify_paths) {
             size_t failures = unfolder.verify_paths(*graph, show_progress);
@@ -442,7 +563,7 @@ int main_prune(int argc, char** argv) {
             gbwt_index = unique_ptr<gbwt::GBWT>(new gbwt::GBWT());
             // TODO: Let us pass in null pointers instead.
         }
-        PhaseUnfolder unfolder(xg_index, *gbwt_index, max_node_id + 1);
+        PhaseUnfolder unfolder(*xg_index, *gbwt_index, max_node_id + 1);
         if (append_mapping) {
             unfolder.read_mapping(mapping_name);
         }
@@ -458,9 +579,16 @@ int main_prune(int argc, char** argv) {
         }
     }
 
-    // Serialize.
-    
-    vg::io::save_handle_graph(graph.get(), std::cout);
+    // No PhaseUnfolder remains alive here. Its read-only indexes are no longer
+    // needed and should not overlap the final graph serialization.
+    xg_index.reset();
+    gbwt_index.reset();
+
+    if (mapped_graph != nullptr) {
+        mapped_graph->serialize_packed_graph(std::cout);
+    } else {
+        vg::io::save_handle_graph(graph.get(), std::cout);
+    }
     if (show_progress) {
         logger.info() << "Serialized the graph: " << graph->get_node_count()
                       << " nodes, " << graph->get_edge_count() << " edges" << std::endl;
@@ -471,4 +599,3 @@ int main_prune(int argc, char** argv) {
 
 // Register subcommand
 static Subcommand vg_prune("prune", "prune the graph for GCSA2 indexing", TOOLKIT, main_prune);
-

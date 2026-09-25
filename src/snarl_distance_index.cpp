@@ -63,6 +63,12 @@ void fill_in_distance_index(SnarlDistanceIndex* distance_index, const HandleGrap
              << temp_index.most_oversized_snarl_size << " nodes), which may make mapping slow" << endl;
         cerr << "\ttry increasing --snarl-limit when building the distance index" << endl;
     }
+    if (temp_index.staged_distance_conflicts != 0) {
+        //The index keeps one distance per pair of node sides, so the traversals from either side
+        //should agree. Report it if they don't rather than silently keeping one.
+        cerr << "warning: " << temp_index.staged_distance_conflicts << " snarl distances disagreed with "
+             << "the distance already found for the same pair of node sides; kept the first found" << endl;
+    }
 
     //And fill in the permanent distance index
     vector<const SnarlDistanceIndex::TemporaryDistanceIndex*> indexes;
@@ -1063,15 +1069,22 @@ void populate_snarl_index(
      */
 
 
-    if (size_limit != 0 && !only_top_level_chain_distances) { 
-        //If we are saving distances
-        //Reserve enough space to store all possible distances
-        temp_snarl_record.distances.reserve( temp_snarl_record.node_count > size_limit
-                ? temp_snarl_record.node_count * 2
-                : temp_snarl_record.node_count * temp_snarl_record.node_count);
+    if (size_limit != 0 && !only_top_level_chain_distances) {
+        //If we are saving distances, stage them in the layout of the finished record.
+        //Oversized snarls store no distances between internal children, so they stage none.
+        if (temp_snarl_record.node_count <= size_limit) {
+            temp_snarl_record.allocate_staged_distances();
+        }
     } else {
         temp_snarl_record.include_distances = false;
     }
+
+    //For each traversal below, which child sides it has recorded a distance to, marked with the
+    //traversal's number. A traversal starts from one side of one child, so this records each
+    //(start, next) pair of sides once, as a set of those pairs would.
+    vector<size_t> recorded_in_traversal (size_limit == 0 ? 0 : (temp_snarl_record.node_count + 2) * 2,
+                                          std::numeric_limits<size_t>::max());
+    size_t traversal_number = 0;
 
     if (size_limit != 0 && temp_snarl_record.node_count > size_limit) {
         temp_index.most_oversized_snarl_size = std::max(temp_index.most_oversized_snarl_size, temp_snarl_record.node_count);
@@ -1141,6 +1154,7 @@ void populate_snarl_index(
             //Start a dijkstra traversal from start_index going in the direction indicated by start_rev
             //Record the distances to each node (child of the snarl) found
             size_t reachable_node_count = 0; //How many nodes can we reach from this node side?
+            traversal_number++;
 
 #ifdef debug_distance_indexing
             cerr << "  Starting from child " << temp_index.structure_start_end_as_string(start_index)
@@ -1323,11 +1337,18 @@ void populate_snarl_index(
                                     added_new_distance = true; 
                                 }
                             }
-                        } else if (!next_is_boundary && !temp_snarl_record.distances.count(make_pair(start, next))) {
+                        } else if (!next_is_boundary
+                                   && recorded_in_traversal.at(next.first * 2 + next.second) != traversal_number) {
                             //Otherwise the snarl stores it in its distance
                             //If the distance isn't from an internal node to a bound and we haven't stored the distance yet
 
-                            temp_snarl_record.distances[make_pair(start, next)] = current_distance;
+                            recorded_in_traversal.at(next.first * 2 + next.second) = traversal_number;
+                            if (!temp_snarl_record.distances.empty() &&
+                                !temp_snarl_record.stage_distance(
+                                    temp_snarl_record.staged_distance_offset(start.first, start.second, next.first, next.second),
+                                    current_distance)) {
+                                temp_index.staged_distance_conflicts++;
+                            }
                             added_new_distance = true;
 #ifdef debug_distance_indexing
                             cerr << "           Adding distance between ranks " << start.first << " " << start.second << " and " << next.first << " " << next.second << ": " << current_distance << endl;

@@ -584,3 +584,36 @@ runs never hit it. It does not make a path-embedded XG cheap at chr2 scale: the 
 55.0 GB and cost 68.52 GiB to build, and mpmap's peak tracked its size, so a chr2 XG carrying
 all 29.9 million paths would be several times larger. A graph with no embedded paths avoids
 both costs; that is the route proposed for chr2. One run per arm, five reads, loaded host.
+
+## 20. The path-free route: chr21 maps identically at 4.34 GiB
+
+Run 2026-09-24 to validate mapping against a graph with no embedded paths before using it on
+chr2. `vg paths -d -p genic.names` dropped all 2,804,175 path labels from `genic.pg`; node IDs
+and edges are unchanged (2,056,621 nodes, 2,726,485 edges, 0 paths). A graph-only XG was built
+from it, and the five reads were mapped with the same binary (`4f495d70`), GCSA2
+(`chr21.gcsa`), distance index (`chr21.dist`) and `-t 4` as sections 16 and 19. Receipts in
+`chr21_gbz_indexing_fixture_20260920/path_free_route/`.
+
+| step | wall | peak RSS | output |
+|---|---|---|---|
+| strip all paths | 0:30:57 | 44.06 GiB | 1,051,109,312-byte graph (from 37,068,417,249) |
+| graph-only XG | 0:00:55 | 1.92 GiB | 78,571,348 bytes (the full XG is 55,013,545,597) |
+| mpmap, five reads | 0:00:35 | 4.34 GiB | identical to sections 16 and 19 |
+
+| mpmap `-x` | wall | peak RSS |
+|---|---|---|
+| GBZ (section 16) | 0:19:17 | 154.56 GiB |
+| full XG (section 19) | 0:02:57 | 58.59 GiB |
+| path-free XG | 0:00:35 | 4.34 GiB |
+
+All five reads map at MAPQ 60 with the same subpath counts (10, 12, 16, 7, 8) and the same node
+sets under all three graphs.
+
+**What it establishes.** For single-end reads written as multipath alignments, mpmap needs
+neither the transcript paths nor any index over them: 97.2% of the chr21 graph file is path
+data, and removing it changes nothing in the output while cutting mpmap's peak from 154.56 GiB
+to 4.34 GiB. What it does not test: paired-end pair rescue (`--path-rescue-graph` needs
+embedded paths), surjection to linear coordinates for SAM/BAM output, and anything beyond five
+self-derived reads. The distance index is required on this route -- mpmap warns that without
+embedded paths, speed and accuracy suffer severely without one -- so on chr2 the distance
+index, which exceeded 300 GB (section 18), is the remaining blocker.

@@ -1089,6 +1089,7 @@ void populate_snarl_index(
     if (size_limit != 0 && temp_snarl_record.node_count > size_limit) {
         temp_index.most_oversized_snarl_size = std::max(temp_index.most_oversized_snarl_size, temp_snarl_record.node_count);
         temp_index.use_oversized_snarls = true;
+        temp_snarl_record.is_oversized = true;
     }
 
     //Add the start and end nodes to the list of children so that we include them in the traversal 

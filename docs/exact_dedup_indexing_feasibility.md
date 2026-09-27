@@ -7,6 +7,21 @@ adversarially verified survey of GBZ-reachable levers against the source
 (`exact_dedup_indexing_feasibility/GBZ_INDEXING_SURVEY.md`). Each figure below
 states whether it is measured, projected, or unmeasured, and on which binary.
 
+**Update, 2026-09-24 to 2026-09-27.** Item 3 of "What this assessment does not
+establish" below is now measured on a five-read smoke test, not merely
+projected (`RECEIPTS.md` section 19): holding the GCSA2, a GBZ-built distance
+index, five reads and thread count fixed, `-x XG` and `-x GBZ` give identical
+output at 58.59 GiB/0:02:57 and 154.56 GiB/0:19:17. Separately, chr2's mapping
+route moved away from GBZ-as-`-x` entirely: three distance-index construction
+fixes let a chr2 clustering distance index build within budget, and a
+path-free mapping graph (no embedded paths at all, not a GBZ) replaced the GBZ
+as `-x`, avoiding the overlay cost this document analyzes below. `vg mpmap`
+then mapped 2,001,384 real chr2 reads for the first time in this generation.
+None of this resolves the open questions below about a correctly-sensed GBZ,
+panCollapse's position query, or the joint 23-chromosome build; it changes
+which route chr2 mapping actually uses. See `CLAUDE.md`'s "Current state" and
+`RECEIPTS.md` sections 21-24.
+
 Binary anchor for every measured figure below:
 `4f495d705c5547a39d1334a9c6cd7d4e02ece9e50fe65831ea79ba2679b4273c`, except the
 chr21 OR-vs-exact arms, which are the 2026-09-13 binary `35867c7f...`, and the
@@ -71,7 +86,7 @@ alignment graph needs to carry it is worked out under "The wall is a design
 decision, not a physical limit."
 
 The second conflation to guard against: **a GBZ removes neither `vg prune` nor
-GCSA2.** `vg mpmap` hard-exits without `-g` (`mpmap_main.cpp:1633-1635`), and
+GCSA2.** `vg mpmap` hard-exits without `-g` (`mpmap_main.cpp:1651-1653`), and
 all three seeders -- `find_mems_deep`, `find_fanout_mems`, `find_stripped_matches`
 (`src/multipath_mapper.cpp:707-723`) -- and the splice scorer (`:3801`) are
 GCSA2 queries. GCSA2 also syntactically accepts a GBZ as direct input
@@ -208,7 +223,7 @@ embeds the full exact transcript path set. As "Two graphs, and what GBZ
 changes" states up front, the source says it does not have to.
 
 `vg mpmap` hard-requires exactly two inputs: a graph via `-x`
-(`mpmap_main.cpp:1629-1631`) and a GCSA2 index via `-g` (`:1633-1635`). The
+(`mpmap_main.cpp:1647-1649`) and a GCSA2 index via `-g` (`:1651-1653`). The
 distance index `-d` is required only by the minimum-distance and
 target-value-search clusterers (`:1569-1574`), not by default operation.
 
@@ -463,9 +478,9 @@ identifiers -- not a change to the graph or the index structure.
 
 ## The GBZ as mpmap's graph index
 
-`vg mpmap` hard-requires only `-x` (`mpmap_main.cpp:1629-1631`) and `-g`
-(`:1633-1635`), and it loads `-x` polymorphically through
-`vg::io::VPKG::load_one<PathHandleGraph>` (`:1758`). GBZ is registered with that
+`vg mpmap` hard-requires only `-x` (`mpmap_main.cpp:1647-1649`) and `-g`
+(`:1651-1653`), and it loads `-x` polymorphically through
+`vg::io::VPKG::load_one<PathHandleGraph>` (`:1776`). GBZ is registered with that
 registry (`src/io/register_loader_saver_gbz.cpp`), and `GBWTGraph` is a
 `PathHandleGraph`, so a GBZ is loadable as mpmap's graph. Confirmed empirically:
 mpmap loaded `chr21.gbz` without error, proceeded to the GCSA2, and -- as item 3
@@ -574,7 +589,7 @@ are no longer open.
    not by mapping five reads.
 4. **`ref_path_handles` has two distinct failure modes, both silent.** It does
    not consult path sense: for each connected component it inserts the single
-   longest path (`mpmap_main.cpp:1845-1855`), so on a graph whose only paths
+   longest path (`mpmap_main.cpp:1853-1873`), so on a graph whose only paths
    are transcripts and retention pads, mpmap adopts the longest transcript per
    component as that component's splice-alignment "reference" -- exit 0, no
    warning, no MAPQ collapse visible in the five-read smoke test, but
@@ -667,11 +682,15 @@ transcript, including the 398,365 bp on chr21 that the OR rule deletes.
   haplotype compressibility rather than PackedGraph bytes; the two track on
   chr21, and the joint 23-chromosome GBWT's compressibility is unmeasured.
   "Order of tens of GB" is the claim, not 35 GB.
-- **mpmap throughput on a GBZ versus an XG is not measured.** The 5/5-read smoke
-  test establishes loadability and correctness on five reads, not speed, and vg
-  itself warns "Graph is not in XG format. XG format is recommended for most
-  mapping tasks." The GBZ is the artifact that *fits*; that it maps at
-  acceptable speed is a separate, unanswered question.
+- **mpmap wall and peak RSS on a GBZ versus an XG are now measured on a
+  five-read smoke test**, holding `-g` and `-d` fixed (`RECEIPTS.md` section
+  19, 2026-09-24): 0:02:57 at 58.59 GiB for `-x XG` against 0:19:17 at
+  154.56 GiB for `-x GBZ`, identical output. This is still five reads, not a
+  throughput measurement at production read volumes, and vg itself still warns
+  "Graph is not in XG format. XG format is recommended for most mapping
+  tasks." What it does establish is that the GBZ's extra cost at this scale is
+  the reference-path overlay's per-startup rebuild, not the graph format by
+  itself.
 - **A distance index cost is measured from both a GBZ and an XG (2:31.32 at
   8.06 GiB versus 3:45.47 at 60.59 GiB on chr21), and the GBZ-built one has now
   been opened by a mapper.** A rebuild on 2026-09-20 gave 2:07.95 at 7.83 GiB,
@@ -786,9 +805,10 @@ explicit `vg prune -u` step.
    choice hold up once the graph carries a real reference?** The five-read
    smoke test is positive (5/5 mapped, MAPQ 60, genuine multipath structure)
    but is not this answer.
-3. **mpmap throughput, GBZ versus XG, on a realistic read set with `-d`
-   supplied.** Both a GBZ and an XG now exist for chr21, and both distance
-   indexes are built; the comparison that would use them has not been run.
+3. **mpmap throughput, GBZ versus XG, at production read volumes.** A
+   five-read smoke test with `-d` supplied exists (`RECEIPTS.md` section 19,
+   2026-09-24): identical output, XG 0:02:57 at 58.59 GiB, GBZ 0:19:17 at
+   154.56 GiB. The comparison at a realistic read count has not been run.
 4. **Does the GBWT's compressibility hold across a joint 23-chromosome build?**
    The whole-genome GBZ projection rests on this one assumption.
 5. **Does `rpvg` stay in the joint pipeline, and if so, is its XG requirement

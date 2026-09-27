@@ -5,7 +5,9 @@ survey in `GBZ_INDEXING_SURVEY.md`, and the failed pipeline in
 `MPMAP_INDEX_PIPELINE_PROPOSAL.md`. This is a proposal. One item has since been
 authorized and run -- the GBZ-built distance index under "Do now" below, on 2026-09-20.
 Everything else here remains unauthorized, including the two checks below that must pass
-before any chr2 or GCSA2 work.
+before any chr2 or GCSA2 work. Since then, chr2 GCSA2 and a chr2 mapping test have both run
+without a record that either of those two checks passed -- see "Do not do" below, which this
+supersedes without resolving it.
 
 ## What is settled, so nobody re-derives it
 
@@ -45,6 +47,34 @@ component-labeling deletion is 3.5 m; the larger term is **null-model calibratio
 4.7 m -> 0.4 m**, which was not predicted and had not been identified as
 distance-index-sensitive. The overlay is untouched at 13.6 m and still dominates startup.
 Receipts and limits: `RECEIPTS.md` section 16.
+
+## Done since (2026-09-26/27), and what it does not settle
+
+**A chr2 clustering distance index now builds.** Three distance-index construction fixes (dense
+snarl-distance staging, trimming unused capacity before saving, correctly sizing oversized-snarl
+records -- vg `71aabe214`, `76cadf3bb`, `1695cc89a`) let the same `chr2.gbz` that stopped at the
+300 GB cap after 2:26:33 build a clustering distance index in **1:21:34 at 163.7 GiB** (53.46 GB
+file, binary `bin/vg-1695cc89a`). `RECEIPTS.md` section 21.
+
+**chr2 has a first mpmap run.** Dropping chr2's 14,952,173 embedded paths before building the
+mapping graph (`vg paths -d`, then a path-free XG) avoids the reference-path overlay that made
+GBZ-as-`-x` exceed 300 GB. `vg mpmap` (binary `bin/vg-bd3420ceb`, after `bd3420ceb` fixed an abort
+in the component clusterer on the clustering index's 214,119-child oversized snarl) mapped
+2,001,384 real chr2 reads in **2:32:17 at 81.32 GiB**, with a second, splice-edge-free distance
+index supplied as `--intron-dist` (vg `64365dc63`, fixed in `fda1bfede`) restoring a non-edge
+splice join in 9,209 reads. Checked against Cell Ranger's STAR alignments of the same reads, most
+of those joins are not plausible canonical splicing (only 993, 10.8%, match a canonical STAR
+junction within 10 bp), so this is evidence about mpmap's own non-edge-join behavior, not a
+demonstrated splice-discovery gain. `RECEIPTS.md` sections 22-24; the underlying chr21 tests
+(reference-path splice test, intron-ruler test) that validated the ruler and the recipe are in the
+downstream `hprc_v2_vg_rna` workspace at `notes/evidence/chr21_reference_path_splice_test_20260926/`
+and `notes/evidence/chr21_intron_ruler_test_20260926/`.
+
+**What this does not settle.** The two checks below still have not both passed against the two
+runs above (see "Do not do"). Neither the choice between `--intron-dist` and keeping CHM13
+gene-body paths as the production splice-length source, nor which of the newer binaries becomes
+production, nor the joint node-ID space this document's plan requires, is decided by any of the
+above.
 
 ## What has already been run end to end, and what that does to the transcript-sequence consistency check
 
@@ -283,7 +313,12 @@ scale and should carry a mapping-header check around every prune.
 - Do not route a pad-carrying graph through `vg autoindex` or `vg prune -r`.
   `PhaseUnfolder::restore_paths` (`src/phase_unfolder.cpp:73-75`) filters to
   `{GENERIC, REFERENCE}` and silently drops HAPLOTYPE-covered nodes at exit 0.
-- Do not run chr2, and do not run GCSA2 at any scale, until both checks pass.
+- Do not run chr2, and do not run GCSA2 at any scale, until both checks pass. **Recorded, not
+  resolved (2026-09-27): chr2 GCSA2 ran 2026-09-23/24 (`RECEIPTS.md` section 18) and a chr2
+  mapping test ran 2026-09-26/27 (`RECEIPTS.md` sections 21-24), and no record here or in the
+  downstream workspace shows either of the two checks above was run, or shows this gate
+  deliberately lifted. This is an open item for the project owner: either run the checks against
+  what already exists, or record that the gate no longer applies.**
 
 ## Research, but do not block on it
 

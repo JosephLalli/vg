@@ -282,7 +282,7 @@ Full startup timeline of `vg mpmap -x chr21.ref.gbz -g chr21.gcsa` (no `-d`):
    27:29.23 total, 162,068,556 KiB (154.55 GiB) peak, exit 0
 
 **Two distinct costs, and the larger one is the overlay.** The 3.3 -> 17.6 m gap is
-`overlay_helper.apply()` at `src/subcommand/mpmap_main.cpp:1830-1831` -- **14.3 minutes**,
+`overlay_helper.apply()` at `src/subcommand/mpmap_main.cpp:1848-1849` -- **14.3 minutes**,
 four times the 3.5-minute component-labeling pass. An earlier revision of this section
 claimed the overlay was *not* the mechanism; that was wrong and is retracted.
 
@@ -311,7 +311,7 @@ indexes.
 get_path_count() > 0`, so supplying `-d` removes it.
 
 **A semantic note that matters more than either cost.** `ref_path_handles`
-(`mpmap_main.cpp:1845-1855`) does **not** consult path sense. For each connected component
+(`mpmap_main.cpp:1853-1873`) does **not** consult path sense. For each connected component
 it inserts the single *longest* path. On a graph whose only paths are transcripts and
 retention pads, mpmap therefore adopts the longest transcript per component as that
 component's "reference" for spliced alignment, silently and without warning. That is not a
@@ -616,4 +616,232 @@ to 4.34 GiB. What it does not test: paired-end pair rescue (`--path-rescue-graph
 embedded paths), surjection to linear coordinates for SAM/BAM output, and anything beyond five
 self-derived reads. The distance index is required on this route -- mpmap warns that without
 embedded paths, speed and accuracy suffer severely without one -- so on chr2 the distance
-index, which exceeded 300 GB (section 18), is the remaining blocker.
+index, which exceeded 300 GB (section 18), is the remaining blocker. **Superseded 2026-09-26,
+below: sections 21-24 build a chr2 distance index that fits and use it to map chr2.**
+
+## 21. chr2's clustering distance index builds with the fork's distance-index fixes
+
+Run 2026-09-26, downstream workspace. Binary `bin/vg-1695cc89a` (SHA256 `f8baf01e...`), vg
+`1695cc89a` plus libbdsg `4705606`, stacking three fixes: dense 32-bit snarl-distance staging
+freed once copied (vg `71aabe214`, libbdsg `5a598ae`); records rebuilt in an allocation sized to
+fit before saving, so the file carries no unused capacity or outgrown blocks (vg `76cadf3bb`,
+libbdsg `418366a`); and non-root oversized snarls predicted without a distance matrix when the
+records are reserved and their entry width chosen (vg `1695cc89a`, libbdsg `4705606`). On chr21
+these three fixes give records identical to the production binary's in four modes, files
+differing by about 1 KB, and mpmap output identical to section 20
+(`notes/evidence/chr21_distance_dense_staging_20260925/README.md` in the downstream workspace).
+
+Same command, `chr2.gbz` (SHA256 `8786a585...`), 24 threads, default snarl limit, 300G cap, no
+swap -- the same input that stopped the unpatched fork (`0965e2fd`) at the cap after 2:26:33
+(section 18) and that a dense-staging-only build (`71aabe214` alone) cancelled at 2:25:26 while
+writing a 511.9 GB padded file (records measured at 53,458,277,140 bytes, 40-bit entries).
+
+**Result: built.** Exit 0 after **1:21:34**. GNU-time peak RSS 171,616,500 KiB (**163.7 GiB**);
+unit cgroup `memory.peak` 179,494,658,048 bytes (167.2 GiB) of the 300G cap. Memory by phase
+(10 s samples): about 57 GiB through staging (0:55:00), 76-85 GiB while records are written
+(1:05:00), 147.7-163.3 GiB during compaction's two transient copies (1:10:00-1:12:00, which set
+the peak; without them it would have been about 92 GiB), 86-92 GiB while saving.
+
+Output `chr2.fork_compact.dist`, 53,458,278,208 bytes, SHA256 `02d71ff2...`: 10,691,655,428
+entries at 40 bits, matching the dense-staging-only build's record count. The entry width stayed
+40 bits with the corrected estimate -- set by `22 + bit_width(children)` for the graph's largest
+snarl (214,119 children) -- even though the fix's purpose was to size this correctly rather than
+to shrink it. `vg stats -b` lists the same 2,537,330 snarls, with identical bounds and child
+counts, as a stock v1.77.0 census of the same graph.
+
+| chr2 distance index build | outcome | wall | peak RSS | file |
+|---|---|---|---|---|
+| unpatched fork `0965e2fd`, 300G | stopped at the cap | 2:26:33 | 299.0 GiB | none |
+| dense staging only `71aabe214`, 300G | cancelled while writing padding | 2:25:26 | 62.5 GiB anon + file pages to the cap | 511.9 GB (53.5 GB records) |
+| all three fixes `1695cc89a`, 300G | built | 1:21:34 | 163.7 GiB | 53.46 GB |
+| stock v1.77.0, 500G | built | 5:07:12 | 482.3 GiB | 161.9 GB v5 (hub labels; one-third zero tail) |
+
+**Not established here:** that this index gives correct distances on chr2 beyond what the chr21
+records comparison and unit tests show -- there is no unpatched chr2 reference -- or anything
+about mapping with it (section 24 uses it without an independent check of its distances). The
+index stores no internal distances for the 214,119-child snarl. Evidence:
+`hprc_v2_vg_rna/chr2_exact_corrected_prune_v1_current/distance_index_fork_compact_20260926/README.md`.
+
+## 22. chr21 reference-path splice test: mpmap's non-edge splice search needs paths, and CHM13 body paths mostly restore it
+
+Run 2026-09-26, downstream workspace. Binary `vg-control` = production `0965e2fd`. mpmap's search
+for a splice join that is not already a graph edge measures the implied intron along the longest
+embedded path per connected component (`src/subcommand/mpmap_main.cpp:1853-1873`); with no paths
+`get_reference_dist` returns unknown and every such candidate join is dropped
+(`src/multipath_mapper.cpp:3121-3126`, `:3413-3420`). Three mapping graphs, all built from the
+September 14 chr21 exact arm's `genic.pg` (2,056,621 nodes, 2,726,485 edges, identical across
+arms), differing only in embedded paths: **pathfree** (0 paths), **chm13body** (3,124 CHM13-origin
+gene-body segment paths only), **fullxg** (all 2,804,175 paths -- 1,401,760 transcripts, 1,402,415
+body segments). Fixed: GCSA2, a clustering distance index, mpmap defaults (RNA preset, spliced
+alignment on), `-t 32`, 1,031,847 real chr21 10x R2 reads, two runs per arm.
+
+**Result.**
+
+| arm | reads with a non-edge splice join (any / first record) | joins | first-record MAPQ >= 30 | peak RSS |
+|---|---:|---:|---:|---:|
+| pathfree | 0 / 0 | 0 | 380,276 | 5.17 GiB |
+| chm13body | 2,387 / 2,368 | 6,379 | 380,646 | 5.25 GiB |
+| fullxg | 2,639 / 2,611 | 7,041 | 380,674 | 59.41 GiB |
+
+Both runs of each arm give identical counts; run-to-run noise is 19 (pathfree), 19 (chm13body),
+23 (fullxg) reads. **pathfree makes zero non-edge joins over 1,031,847 reads** -- confirming the
+code reading above rather than refuting it. **chm13body recovers 90.5% of fullxg's join reads**
+(2,387 of 2,639), with an identical record set in 76.1% of them (2,008), at pathfree's memory
+scale (5.25 against 5.17 GiB; fullxg needs 59.4 GiB). 252 fullxg join reads (0.024% of all reads)
+are not recovered by chm13body; their cause is uncharacterized, but a fallback of the longest
+body path per component is the next thing to test.
+
+**What this establishes and what it does not.** These are 10x 3' reads (90 bp, single-end, 3'
+biased), which under-represent junction-spanning reads relative to full-length RNA-seq, so the
+0.26% of reads affected by paths at all, and the 90.5% chm13body recovery rate, need not hold for
+other libraries. Pair rescue and surjection were not tested; surjection against a chm13body graph
+would report positions within `panSCbody1_*` paths, not chr21 coordinates. Nothing here ran on
+chr2. Evidence: `hprc_v2_vg_rna/notes/evidence/chr21_reference_path_splice_test_20260926/README.md`.
+
+## 23. chr21 intron-ruler test: two splice-length sources for a path-free graph, and defects found and fixed
+
+Run 2026-09-26, downstream workspace. Binary `vg-intron` = vg `64365dc63` (adds `--intron-gbwt`
+and `--intron-dist` as optional intron-length sources for a splice join that is not a graph edge,
+used only when no path spans it: `--intron-gbwt` walks up to 32 unspliced-GBWT threads from one
+splice site to the other and takes the longest; `--intron-dist` takes the minimum distance in a
+distance index). Four rulers, all on the path-free chr21 XG (section 20), GCSA2, a clustering
+distance index, `-t 32`, the same 1,031,847 reads as section 22, two runs each:
+
+| arm | intron option | ruler graph |
+|---|---|---|
+| pathfree_new | none | -- |
+| gbwt | `--intron-gbwt` | `genomic.gbwt` -- the guide GBWT with all 1,401,760 transcript paths removed (`vg gbwt --remove-paths`) |
+| genomic_dist | `--intron-dist` | `genomic.dist` -- a distance index built from a GBZ made from `genomic.gbwt` (no splice edges) |
+| spliced_dist | `--intron-dist` | the clustering index (has splice edges) |
+
+**Options off matches the earlier pathfree arm.** pathfree_new (different binary from section
+22's pathfree) differs from it by 18-21 of 1,031,847 reads across four run pairings, against 19
+within each arm's own repeat; neither arm makes a join.
+
+**Joins, against fullxg's 2,639 (section 22).**
+
+| arm | join reads | of fullxg's 2,639: joined / identical record set | joins fullxg did not make |
+|---|---:|---:|---:|
+| gbwt | 2,610 | 2,608 / 2,330 | 2 |
+| genomic_dist | 2,713 | 2,639 / 2,350 | 74 |
+| spliced_dist | 2,946 | 2,639 / 1,775 | 307 |
+
+The extra joins nest (gbwt's 2 within genomic_dist's 74 within spliced_dist's 307). The strict
+identity gap between gbwt and genomic_dist is not significant (exact McNemar p = 0.19).
+
+**The spliced-edge index measures introns several-fold too short, not down to one exon.** At the
+same first-record splice sites as fullxg, the spliced-edge ruler (`spliced_dist`) scores higher
+(shorter measured intron) at 609 of 2,452 joins against 56 of 2,467 for the splice-edge-free ruler
+(`genomic_dist`); at 540 such sites the median length is 2,142.5 bp from the clustering index
+against 13,189 bp from `genomic.dist` (ratio 5.45), through chains of transcript-only edges
+(median 16 edges). This is why the production route builds `--intron-dist`'s index from a GBWT
+with transcript paths removed rather than from the clustering index.
+
+**gbwt's misses are the 32-thread sample, not the graph.** Of the 31 fullxg join reads `gbwt`
+does not join, 30 are caused by the 32-thread cap missing the body threads that reach the
+acceptor; lifting the cap makes all 30 byte-identical to fullxg. Cost: `gbwt` +23-68% user time
+against the no-ruler arm in the same round (only this direction is firm; the host was shared with
+an unrelated 96-core job); `genomic_dist` and `spliced_dist` add well under 20%. Peak RSS
+5.84-5.89 GiB for `gbwt`, 5.15-5.21 GiB otherwise.
+
+**Defects found by the verification, fixed in `fda1bfede`.** In `64365dc63`: the `--intron-gbwt`
+load check used a node-ID range test instead of checking the GBWT is non-empty; the
+`--intron-dist` load check trusted `has_node()`, which does not bound IDs above the index's
+range; `--intron-dist` passed the mapping graph (with splice edges) for distance searches inside
+oversized snarls, letting an index built without splice edges still measure spliced lengths
+there; `vg gbwt --remove-paths` left sample/contig/haplotype counts from before the removal. None
+of these fires on chr21's inputs. On the 300-read subset, `fda1bfede`'s `genomic_dist` and `gbwt`
+runs give the same per-read record sets as the `64365dc63` runs for 300 of 300 reads; unit test
+`[gbwt_path_distance]` and integration tests 33, 35 and 37 pass (37 now checks the metadata fix).
+
+**Clusterer fix (`bd3420ceb`) rerun.** chr2 mapping had aborted in mpmap's component clusterer on
+an oversized snarl (section 24); the fix passes the mapping graph to the clusterer, as giraffe
+does. Rerunning `pathfree` and `genomic_dist` on chr21 (no oversized snarl in this clustering
+index) with the fix: join-read sets identical to the pre-fix runs in all runs (0 and 2,713); a
+handful of reads flip between runs but carry no join and keep their MAPQ, consistent with
+ordinary run-to-run variation.
+
+**What this does not establish.** fullxg is the comparison arm, not ground truth: which alignment
+is correct for the reads whose confident first alignment changes is unknown. Reads are single-end
+90 bp 10x 3' reads; pair rescue and surjection are untested. Nothing here ran on chr2. Evidence:
+`hprc_v2_vg_rna/notes/evidence/chr21_intron_ruler_test_20260926/README.md`.
+
+## 24. chr2's first mpmap run: the path-free route, with an intron-length ruler
+
+Run 2026-09-26/27, downstream workspace. First mpmap run on chr2 in this generation. Binary
+reports `v0.11-57-gfda1bfede`: built from the working tree 21 minutes before commit `bd3420ceb`,
+whose three changed files (`cluster.cpp`, `cluster.hpp`, `multipath_mapper.cpp`) had not changed
+since before the build and are clean in git, so the compiled source matches `bd3420ceb` for those
+files even though the binary does not self-report that commit. Route: strip all 14,952,173
+embedded paths from the pre-prune, pad-stripped `genic.pg` (`vg paths -d`, 5:16:05 at 206.33 GiB),
+build a path-free XG (0:03:19 at 10.12 GiB, 427,896,382 bytes) as `-x`, use the fork-compact
+distance index (section 21) as `-d`, and supply a second, splice-edge-free distance index
+(`genomic.dist`, 44.59 GB, built the way section 23 validated on chr21) as `--intron-dist`. GCSA2
+and the fork-compact `-d` are section 18's and 21's artifacts.
+
+**First attempt crashed; fixed by `bd3420ceb`.** On `bin/vg-fda1bfede` both the `--intron-dist`
+and control runs aborted at 0:03:14: "is_regular_snarl requires a graph if the distance index
+doesn't contain distances." mpmap's component clusterer built seed zipcodes and its
+`SnarlDistanceIndexClusterer` without a graph, which fails for a seed inside the clustering
+index's 214,119-child oversized snarl. `bd3420ceb` passes the mapping graph to both, as giraffe
+does; on chr21 (no oversized snarl) the fix changes no read beyond run-to-run variation
+(section 23).
+
+**Result, 2,001,384 real chr2 10x R2 reads, `-t 32`, verified independently against the raw GAMP
+JSON (three checks, `verify/`):**
+
+| | with `--intron-dist` | control |
+|---|---:|---:|
+| wall / peak RSS | 2:32:17 / 81.32 GiB | 2:27:53 / 82.23 GiB |
+| reads with a non-edge splice join (any / first record) | 9,209 / 9,153 | 0 / 0 |
+| first-record MAPQ >= 30 | 1,883,241 | 1,881,433 |
+| first-record MAPQ 0 (of which unmapped) | 35,393 (12,920) | 35,519 (12,920) |
+
+The two GAMPs hold the identical 2,001,384 read names, the same 12,920 unmapped reads, and every
+read's first-emitted record is its only primary in both. The whole MAPQ >= 30 gain (+1,808 reads)
+and the whole MAPQ-0 change are confined to the 9,209 joined reads; the 91 reads that differ
+without a join contribute zero net change to either count.
+
+**Most of the 9,209 joins are not plausible canonical splicing.** Graph motifs at the 9,153
+first-record joins: GT-AG 56.9%, GC-AG 24.6%, AT-AC 16.7% -- against mpmap's own priors of
+99.24%, 0.69%, 0.05%. Checked against Cell Ranger's STAR alignment of the same reads (GRCh38):
+STAR splits 69.6% of join reads at a non-canonical junction, 21.6% at a canonical one, and leaves
+8.8% unspliced; only 993 (10.8%) have a canonical STAR junction within 10 bp of the ruler's
+length. In 9,188 of 9,209 reads the control's primary is soft-clipped and the join extends it
+into a spliced alignment at the same locus (95.3% keep one side of the control's locus; median
+aligned length 62 to 90 bp; score higher in 9,150, never lower). chr21's fullxg arm (section 22),
+which used reference paths and no ruler, shows the same motif and STAR-class profile, so this is
+mpmap's own non-edge-join behavior surfacing through the ruler, not an artifact the ruler
+introduces. **The MAPQ gain is confidence in mostly non-canonical split alignments, not a
+demonstrated splicing or mapping-accuracy gain** -- report the 9,209 as non-edge connections, not
+as rescued splice junctions.
+
+**Joins are not concentrated.** 8,700 distinct node pairs carry the 9,209 join reads; the top 10
+carry 0.9% of them.
+
+**Cost, one concurrent, unrepeated pair of runs (both started 06:49:50 CDT, `-t 32` each, same
+host -- no noise floor).** User CPU +0.18% (214,934.51 vs 214,541.14 s) with `--intron-dist`;
+peak RSS did not rise (81.32 vs 82.23 GiB, 0.91 GiB *lower* with the option) because the 44.59 GB
+intron index is memory-mapped and only touched pages count toward RSS -- this does not show what
+the index would cost under memory pressure or at a higher join rate. Both runs logged 100
+"oversized snarl without a graph" warnings each before vg suppressed further ones, so the true
+count of unmeasured intron-length queries inside `genomic.dist`'s one 207,494-child oversized
+snarl is unknown in either run.
+
+**The 91 non-joined differing reads are a mixture, not simply noise.** About 15 carry the intron
+option's fingerprint (soft-clipped or MAPQ-only changes consistent with an unemitted spliced
+alternate entering the MAPQ pool) and about 76 resemble mpmap's ordinary tie-break
+nondeterminism, enriched for 10-record multimappers. Scaling chr21's run-to-run floor (19-26
+reads per 1,031,847, sections 22-23) by read count to chr2's 2,001,384 is not valid, because the
+two read sets differ sharply in multimapper share (62.46% on chr21 against 1.60% on chr2); chr2
+has no repeat run, so it has no measured noise floor of its own.
+
+**Limits.** No path-embedded chr2 graph exists to compare against, so whether these joins match
+what a full-path graph would make is untested at chr2 scale (chr21: the splice-edge-free ruler
+gave all 2,639 full-path join reads a join, 2,350 with an identical record set -- section 23).
+mpmap on chr2 ran roughly 5 to 10 times slower per read than on chr21 at the same `-t 32`; the
+214,119-child oversized snarl is the suspected cause but the running process could not be
+profiled (`perf_event_paranoid` 4, `ptrace_scope` 1, no sudo). Single-end 90 bp reads only; pair
+rescue, surjection and panCollapse counting are untested. Evidence:
+`hprc_v2_vg_rna/chr2_exact_corrected_prune_v1_current/path_free_mapping_20260926/README.md` and
+`verify/verification_summaries.json` in the same directory.

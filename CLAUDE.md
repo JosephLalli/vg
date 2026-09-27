@@ -9,7 +9,7 @@ A fork of `vgteam/vg` (variation-graph toolkit) at release **v1.75.1**, carrying
 to compile here. Everything else is stock upstream `vg` and behaves as documented
 in `README.md`.
 
-Read the reference for an area before touching it. Status is as of 2026-09-20.
+Read the reference for an area before touching it. Status is as of 2026-09-27.
 
 | Area | Status | Reference |
 |---|---|---|
@@ -29,6 +29,7 @@ subsystems — they are measurement and production records:
 | chr2 prune phase profile | terminal (2026-09-18) | [docs/prune_scheduling/README.md](docs/prune_scheduling/README.md) |
 | Exact-dedup indexing feasibility (XG vs. GBZ) | chr21-scale, measured 2026-09-20; open items listed | [docs/exact_dedup_indexing_feasibility.md](docs/exact_dedup_indexing_feasibility.md) |
 | Next steps for exact-dedup mpmap indexing | proposal, gated; nothing authorized | [docs/exact_dedup_indexing_feasibility/WAY_FORWARD.md](docs/exact_dedup_indexing_feasibility/WAY_FORWARD.md) |
+| Distance-index construction fixes (dense staging, compaction, oversized-snarl sizing); mpmap intron-length sources and the clusterer fix | merged; chr21/chr2 tested at chromosome scale; not in the production binary | [RECEIPTS.md sections 21-24](docs/exact_dedup_indexing_feasibility/RECEIPTS.md) |
 
 `docs/` holds three kinds of file. The subdirectories named in the tables
 above (`gbwt_creation/`, `prune_scheduling/`, `transcript_path_memory/`,
@@ -68,8 +69,21 @@ uncommitted source, without the GBWT insertion workers); measurements in these
 docs name the binary they ran on, and most name `4f495d70`. The rebuild left
 `lib/libhandlegraph.so` at `9f927257...dab250`, the hash pinned copies check.
 
-**chr2 mapping index (2026-09-24) — GCSA2 and GBZ built; distance index and mpmap do not
-fit in 300 GB.** A per-chromosome test build on the terminal prune below, production binary
+Since 2026-09-25, four further named binaries have been built on top of
+`0965e2fd` and none has been promoted: `bin/vg-1695cc89a` (dense snarl-distance
+staging, unused-capacity trimming before saving, and corrected oversized-snarl
+sizing — `71aabe214`, `76cadf3bb`, `1695cc89a`), `bin/vg-64365dc63` (mpmap's
+`--intron-gbwt`/`--intron-dist` splice-length sources and `vg gbwt
+--remove-paths`), `bin/vg-fda1bfede` (load-check and path-removal-metadata
+fixes for those two options), and `bin/vg-bd3420ceb` (gives the component
+clusterer the graph, fixing an mpmap abort on an oversized snarl). `bin/vg`
+itself is unchanged at `0965e2fd` and carries none of the four; which of them,
+if any, becomes production is an open owner decision. → [RECEIPTS.md sections
+21-24](docs/exact_dedup_indexing_feasibility/RECEIPTS.md)
+
+**chr2 mapping index (2026-09-24) — GCSA2 and GBZ built; the GBZ-built distance index and
+GBZ-as-`-x` mpmap did not fit in 300 GB on `0965e2fd` (superseded 2026-09-26/27, below).**
+A per-chromosome test build on the terminal prune below, production binary
 `0965e2fd`, one unit capped at 300G: GCSA2 9:16:19 at 64.72 GiB (3.63 GB + 1.20 GB LCP,
 128.07 GB peak workspace); GBZ 0:15:50 at 218.87 GiB (3.31 GB); the distance index built from
 the GBZ was stopped at the cap after 2:26:33 (pinned at 299.0 GiB), and mpmap without it was
@@ -77,6 +91,33 @@ stopped at the cap after 0:46:42 while still building its reference-path overlay
 GBZ's 29.9 million paths. chr21 needed 7.83 GiB and 154.56 GiB for those two. Receipts:
 `hprc_v2_vg_rna/chr2_exact_corrected_prune_v1_current/mapping_index_20260923/` and
 [RECEIPTS.md section 18](docs/exact_dedup_indexing_feasibility/RECEIPTS.md).
+
+**chr2 mapping index, superseded (2026-09-26/27) — a fork-compact distance index and a
+path-free mapping route both work.** Three distance-index construction fixes (dense staging,
+unused-capacity trimming, corrected oversized-snarl sizing — vg `71aabe214`, `76cadf3bb`,
+`1695cc89a`, with matching `libbdsg` commits) let the same `chr2.gbz` build a clustering
+distance index in **1:21:34 at 163.7 GiB** (53.46 GB file; binary `bin/vg-1695cc89a`) instead
+of stopping at the 300 GB cap. Separately, dropping all 14,952,173 embedded paths from the
+pre-prune, pad-stripped `genic.pg` (`vg paths -d`) before building the mapping graph avoids the
+reference-path overlay that drove the earlier GBZ-as-`-x` attempt over budget: a path-free XG
+(427,896,382 bytes; 0:03:19 at 10.12 GiB) replaces the GBZ as `-x`. On that graph, `vg mpmap`
+(binary `bin/vg-bd3420ceb`, after `bd3420ceb` fixed an abort in the component clusterer on the
+clustering index's 214,119-child oversized snarl) mapped 2,001,384 real chr2 10x reads in
+**2:32:17 at 81.32 GiB** with a second, splice-edge-free distance index supplied as
+`--intron-dist` (**2:27:53 at 82.23 GiB** without it); both runs exited 0. A path-free graph
+drops every splice join that is not already a graph edge; `--intron-dist` (vg `64365dc63`,
+fixed in `fda1bfede`) restored a non-edge join in 9,209 of the 2,001,384 reads, but most of
+those joins are not plausible canonical splicing — checked against Cell Ranger's STAR
+alignments of the same reads, only 993 (10.8%) match a canonical STAR junction within 10 bp,
+so this measures mpmap's own non-edge-join behavior, not a demonstrated splice-discovery gain.
+Receipts: `hprc_v2_vg_rna/chr2_exact_corrected_prune_v1_current/distance_index_fork_compact_20260926/README.md`,
+`hprc_v2_vg_rna/chr2_exact_corrected_prune_v1_current/path_free_mapping_20260926/README.md`, and
+[RECEIPTS.md sections 21-24](docs/exact_dedup_indexing_feasibility/RECEIPTS.md). This is
+chr2-only, at test scale: it authorizes no other chromosome's RNA or prune, no joint
+whole-genome node-ID space, GCSA2, distance index or GAMP, no choice between `--intron-dist`
+and keeping CHM13 gene-body paths as the production splice-length source, and no
+production-binary promotion. A 2026-09-27 survey of what else blocks whole-genome alignment is
+at `hprc_v2_vg_rna/notes/evidence/whole_genome_alignment_barriers_20260927/README.md`.
 
 **chr2 production index — prune is terminal.**
 `vg prune -p -u -k 32 -M 0 -t 24` exited 0 in 12:47:16 at 341.07 GiB GNU-time
@@ -94,8 +135,14 @@ unchanged 154.56 GiB peak, left all five reads at MAPQ 60, and strictly
 enriched the multipath output. The **XG-built** distance index has still never
 been opened by a mapper. `vg mpmap -x GBZ` loads and produces valid
 multipath output on that five-read smoke test, which establishes usability, not
-accuracy, throughput, or behavior at scale; no controlled `-x XG` vs `-x GBZ`
-mpmap comparison exists. It stays blocked by named issues (an `rpvg`
+accuracy, throughput, or behavior at scale. A controlled `-x XG` vs `-x GBZ`
+mpmap comparison does exist, holding `-g`, the GBZ-built `-d`, the reads and
+the thread count fixed and varying only `-x` (RECEIPTS.md section 19,
+2026-09-24): the two arms produce identical output, with the XG at 0:02:57 and
+58.59 GiB against the GBZ at 0:19:17 and 154.56 GiB, so on this smoke test the
+GBZ's extra cost is the reference-path overlay it rebuilds at every startup,
+not the mapping itself. This is still five reads, not a throughput or accuracy
+comparison at production scale. It stays blocked by named issues (an `rpvg`
 dependency on XG input, an unindexed-path-sense cost in mpmap's reference-path
 overlay, and a reference-selection semantics gap). See
 [docs/exact_dedup_indexing_feasibility.md](docs/exact_dedup_indexing_feasibility.md);
@@ -452,7 +499,7 @@ Full method, patches and per-run results are in
   file's history shows all three being read as the strong one.
 - **`vg mpmap` is GCSA2-only, and a GBZ does not change that.** All three MEM
   seeders and the splice scorer are GCSA2 queries (`src/multipath_mapper.cpp:707-723`,
-  `:3801`), and mpmap hard-exits without `-g` (`src/subcommand/mpmap_main.cpp:1633-1635`).
+  `:3801`), and mpmap hard-exits without `-g` (`src/subcommand/mpmap_main.cpp:1651-1653`).
   A prior version of this file said "zero commits to `multipath_mapper.cpp`,
   `mpmap_main.cpp` or `splicing.cpp` since v1.76.1, mpmap's last algorithm
   commit is 2022-12-13" as if that were true of this checkout; it is the

@@ -153,6 +153,61 @@ int64_t ref_path_distance(const PathPositionHandleGraph* graph, const pos_t& pos
     
     return approx_ref_dist;
 }
+
+int64_t gbwt_path_distance(const gbwt::GBWT& index, const HandleGraph& graph,
+                           const pos_t& pos_1, const pos_t& pos_2,
+                           int64_t max_dist, size_t max_threads) {
+    
+    int64_t longest_dist = numeric_limits<int64_t>::max();
+    
+    gbwt::node_type node_1 = gbwt::Node::encode(id(pos_1), is_rev(pos_1));
+    gbwt::node_type node_2 = gbwt::Node::encode(id(pos_2), is_rev(pos_2));
+    if (!index.contains(node_1) || !index.contains(node_2)) {
+        return longest_dist;
+    }
+    if (node_1 == node_2 && offset(pos_2) >= offset(pos_1)) {
+        return offset(pos_2) - offset(pos_1);
+    }
+    
+    // spread the sampled threads across the node's record, since neighboring threads in the
+    // BWT share their history and would mostly repeat the same walk
+    size_t occurrences = index.nodeSize(node_1);
+    size_t num_samples = min(occurrences, max_threads);
+    for (size_t j = 0; j < num_samples; ++j) {
+        gbwt::size_type i = (j * occurrences) / num_samples;
+        
+#ifdef debug_ref_path_distance
+        cerr << "[gbwt_path_distance] walking occurrence " << i << " of " << occurrences << " on node " << id(pos_1) << endl;
+#endif
+        
+        // the distance from the start of pos_1's node to the start of the current node
+        int64_t node_start = 0;
+        gbwt::edge_type here(node_1, i);
+        while (true) {
+            node_start += graph.get_length(graph.get_handle(gbwt::Node::id(here.first)));
+            if (node_start - offset(pos_1) > max_dist) {
+                break;
+            }
+            here = index.LF(here);
+            if (here.first == gbwt::ENDMARKER || here == gbwt::invalid_edge()) {
+                break;
+            }
+            if (here.first == node_2) {
+                int64_t dist = node_start + offset(pos_2) - offset(pos_1);
+                if (longest_dist == numeric_limits<int64_t>::max() || dist > longest_dist) {
+                    longest_dist = dist;
+                }
+                break;
+            }
+        }
+    }
+    
+#ifdef debug_ref_path_distance
+    cerr << "[gbwt_path_distance] longest thread distance is " << longest_dist << " after walking " << num_samples << " threads" << endl;
+#endif
+    
+    return longest_dist;
+}
     
 }
 }

@@ -239,6 +239,12 @@ namespace vg {
         // the maximum number of pairs of each motif that we will consider during spliced alignment
         size_t max_motif_pairs = 1024;
         unordered_set<path_handle_t> ref_path_handles;
+        // Intron lengths are measured along ref_path_handles when possible, otherwise along the
+        // unspliced threads of intron_gbwt, otherwise with intron_distance_index. The thread cap
+        // bounds the walk cost per splice candidate; any one unspliced thread gives the length.
+        const gbwt::GBWT* intron_gbwt = nullptr;
+        size_t intron_gbwt_max_threads = 32;
+        SnarlDistanceIndex* intron_distance_index = nullptr;
 
         // A function for computing band padding
         std::function<size_t(const Alignment&, const HandleGraph&)> choose_band_padding;

@@ -83,6 +83,7 @@ struct GBWTConfig {
 
     // Sample names and metadata
     std::set<std::string> to_remove; // Sample names to remove.
+    std::string paths_to_remove; // File of path names to remove.
     std::map<std::string, std::string> tags_to_set; // Tag changes to apply to the GBWT
     
     GBWTConfig() {
@@ -194,8 +195,8 @@ int main_gbwt(int argc, char** argv) {
         step_2_merge_gbwts(gbwts, config);
     }
 
-    // Edit the GBWT (remove samples, apply tags).
-    if (!config.to_remove.empty() || !config.tags_to_set.empty()) {
+    // Edit the GBWT (remove samples or paths, apply tags).
+    if (!config.to_remove.empty() || !config.paths_to_remove.empty() || !config.tags_to_set.empty()) {
         step_3_alter_gbwt(gbwts, graphs, config);
     }
 
@@ -334,6 +335,7 @@ void help_gbwt(char** argv) {
     std::cerr << std::endl;
     std::cerr << "Step 3: Alter GBWT (requires -o and one input GBWT):" << std::endl;
     std::cerr << "  -R, --remove-sample X   remove sample X from the index (may repeat)" << std::endl;
+    std::cerr << "      --remove-paths X    remove the paths named in file X (one per line)" << std::endl;
     std::cerr << "      --set-tag K=V       set a GBWT tag (may repeat)" << std::endl;
     std::cerr << "      --set-reference X   set sample X as the reference (may repeat)" << std::endl;
     std::cerr << std::endl;
@@ -456,6 +458,7 @@ GBWTConfig parse_gbwt_config(int argc, char** argv) {
     constexpr int OPT_MERGE_JOBS = 1204;
     constexpr int OPT_SET_TAG = 1300;
     constexpr int OPT_SET_REFERENCE = 1301;
+    constexpr int OPT_REMOVE_PATHS = 1302;
     constexpr int OPT_PASS_PATHS = 1400;
     constexpr int OPT_GBZ_V1 = 1500;
     constexpr int OPT_TAGS = 1700;
@@ -540,6 +543,7 @@ GBWTConfig parse_gbwt_config(int argc, char** argv) {
         { "remove-sample", required_argument, 0, 'R' },
         { "set-tag", required_argument, 0, OPT_SET_TAG },
         { "set-reference", required_argument, 0, OPT_SET_REFERENCE },
+        { "remove-paths", required_argument, 0, OPT_REMOVE_PATHS },
 
         // Path cover
         { "augment-gbwt", no_argument, 0, 'a' },
@@ -786,6 +790,9 @@ GBWTConfig parse_gbwt_config(int argc, char** argv) {
         case 'R':
             config.to_remove.insert(optarg);
             break;
+        case OPT_REMOVE_PATHS:
+            config.paths_to_remove = require_exists(config.logger, optarg);
+            break;
         case OPT_SET_TAG:
             {
                 string tag_name, tag_value;
@@ -1026,6 +1033,15 @@ void validate_gbwt_config(GBWTConfig& config) {
         }
         if (!(config.input_filenames.size() == 1 || config.merge != GBWTConfig::merge_none) || !has_gbwt_output) {
             config.logger.error() << "removing samples requires one input GBWT and output GBWT" << std::endl;
+        }
+    }
+
+    if (!config.paths_to_remove.empty()) {
+        if (config.build == GBWTConfig::build_gbz) {
+            config.logger.error() << "the GBWT extracted from GBZ cannot have paths modified" << std::endl;
+        }
+        if (!(config.input_filenames.size() == 1 || config.merge != GBWTConfig::merge_none) || !has_gbwt_output) {
+            config.logger.error() << "removing paths requires one input GBWT and output GBWT" << std::endl;
         }
     }
     
@@ -1524,6 +1540,65 @@ void remove_samples(GBWTHandler& gbwts, GBWTConfig& config) {
     report_time_memory("Samples removed", start, config);
 }
 
+void remove_paths(GBWTHandler& gbwts, GBWTConfig& config) {
+    double start = gbwt::readTimer();
+
+    std::unordered_set<std::string> names;
+    {
+        std::ifstream in(config.paths_to_remove);
+        std::string line;
+        while (std::getline(in, line)) {
+            if (!line.empty()) {
+                names.insert(line);
+            }
+        }
+    }
+    if (names.empty()) {
+        config.logger.error() << "no path names in " << config.paths_to_remove << std::endl;
+    }
+
+    // Match names the way --path-names prints them, which needs the compressed index.
+    gbwts.use_compressed();
+    const gbwt::GBWT* index = gbwts.get_compressed();
+    if (!(index->hasMetadata() && index->metadata.hasPathNames())) {
+        config.logger.error() << "the index does not contain metadata with path names" << std::endl;
+    }
+    auto reference_samples = gbwtgraph::parse_reference_samples_tag(*index);
+    std::vector<gbwt::size_type> path_ids;
+    std::vector<gbwt::PathName> kept;
+    std::unordered_set<std::string> found;
+    for (size_t i = 0; i < index->metadata.paths(); i++) {
+        PathSense sense = gbwtgraph::get_path_sense(*index, i, reference_samples);
+        std::string name = gbwtgraph::compose_path_name(*index, i, sense);
+        if (names.count(name)) {
+            path_ids.push_back(i);
+            found.insert(name);
+        } else {
+            kept.push_back(index->metadata.path(i));
+        }
+    }
+    if (found.size() < names.size()) {
+        config.logger.error() << (names.size() - found.size()) << " of the " << names.size()
+                              << " paths named in " << config.paths_to_remove
+                              << " are not in the index" << std::endl;
+    }
+    if (config.show_progress) {
+        config.logger.info() << "Removing " << path_ids.size() << " paths, keeping "
+                             << kept.size() << std::endl;
+    }
+
+    // The remaining sequences keep their order, so the kept path names line up with them.
+    gbwts.use_dynamic();
+    gbwts.dynamic.remove(path_ids);
+    gbwts.dynamic.metadata.clearPathNames();
+    for (const gbwt::PathName& path_name : kept) {
+        gbwts.dynamic.metadata.addPath(path_name);
+    }
+    gbwts.unbacked(); // We modified the GBWT.
+
+    report_time_memory("Paths removed", start, config);
+}
+
 void set_tags(GBWTHandler& gbwts, GraphHandler& graphs, GBWTConfig& config) {
     double start = gbwt::readTimer();
     if (config.show_progress) {
@@ -1557,6 +1632,9 @@ void set_tags(GBWTHandler& gbwts, GraphHandler& graphs, GBWTConfig& config) {
 void step_3_alter_gbwt(GBWTHandler& gbwts, GraphHandler& graphs, GBWTConfig& config) {
     if (!config.to_remove.empty()) {
         remove_samples(gbwts, config);
+    }
+    if (!config.paths_to_remove.empty()) {
+        remove_paths(gbwts, config);
     }
     if (!config.tags_to_set.empty()) {
         set_tags(gbwts, graphs, config);

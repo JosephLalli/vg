@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH # for vg
 
-plan tests 168
+plan tests 173
 
 
 # Build vg graphs for two chromosomes
@@ -214,7 +214,22 @@ is $? 0 "multiple samples can be removed from a GBWT index"
 is $(vg gbwt -c removed.gbwt) 4 "sample 2: 4 paths"
 is $(vg gbwt -H removed.gbwt) 2 "sample 2: 2 haplotypes"
 
-rm -f all.gbwt removed.gbwt
+# Remove the paths of sample 1 by name; the rest must keep their names and threads
+vg gbwt -T all.gbwt | grep "^sample1#" > sample1.names
+vg gbwt --remove-paths sample1.names -o named.gbwt all.gbwt
+is $? 0 "paths can be removed from a GBWT index by name"
+is $(vg gbwt -c named.gbwt) 8 "without sample 1: 8 paths"
+is "$(vg gbwt -T named.gbwt)" "$(vg gbwt -T all.gbwt | grep -v "^sample1#")" "the remaining paths keep their names"
+vg gbwt -R sample1 -o sample1.gbwt all.gbwt
+vg gbwt -e named.threads named.gbwt
+vg gbwt -e sample1.threads sample1.gbwt
+cmp named.threads sample1.threads
+is $? 0 "removing by name leaves the same threads as removing the sample"
+echo "no_such_path" > missing.names
+vg gbwt --remove-paths missing.names -o missing.gbwt all.gbwt 2> /dev/null
+isnt $? 0 "removing a path that is not in the index fails"
+
+rm -f all.gbwt removed.gbwt sample1.names named.gbwt sample1.gbwt named.threads sample1.threads missing.names missing.gbwt
 
 
 # Extract paths from GBWT

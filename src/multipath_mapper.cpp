@@ -3126,6 +3126,16 @@ namespace vg {
                                                          max_splice_ref_search_length);
                     
                 }
+                if (intron_gbwt && dist == numeric_limits<int64_t>::max()) {
+                    dist = algorithms::gbwt_path_distance(*intron_gbwt, *xindex, pos_1, pos_2,
+                                                          max_intron_length, intron_gbwt_max_threads);
+                }
+                if (intron_distance_index && dist == numeric_limits<int64_t>::max()) {
+                    size_t min_dist = minimum_distance(*intron_distance_index, pos_1, pos_2, false, xindex);
+                    if (min_dist != numeric_limits<size_t>::max()) {
+                        dist = min_dist;
+                    }
+                }
                 
 //                if (distance_index && dist == numeric_limits<int64_t>::max()) {
 //                    // FIXME: this will still sometimes produce finite distances for reads that

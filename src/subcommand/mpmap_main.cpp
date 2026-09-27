@@ -210,6 +210,10 @@ void help_mpmap(char** argv) {
          << "                            one (possibly disconnected) alignment" << endl
          << "  -r, --intron-distr FILE   intron length distribution" << endl
          << "                            (from scripts/intron_length_distribution.py)" << endl
+         << "      --intron-gbwt FILE    measure intron lengths along the unspliced threads" << endl
+         << "                            of this GBWT when no path spans the splice" << endl
+         << "      --intron-dist FILE    measure intron lengths with this distance index" << endl
+         << "                            when no path or --intron-gbwt thread spans it" << endl
          << "  -Q, --mq-max INT          cap mapping quality estimates at this much [60]" << endl
          << "  -b, --frag-sample INT     look for INT unambiguous mappings to" << endl
          << "                            estimate the fragment length distribution [1000]" << endl
@@ -346,6 +350,8 @@ int main_mpmap(int argc, char** argv) {
     constexpr int OPT_SJ_MIN_UNIQUE = 1072;
     constexpr int OPT_SJ_SLIDE = 1073;
     constexpr int OPT_SPLICE_DENOVO = 1074;
+    constexpr int OPT_INTRON_GBWT = 1075;
+    constexpr int OPT_INTRON_DIST = 1076;
     string matrix_file_name;
     string graph_name;
     string gcsa_name;
@@ -360,6 +366,8 @@ int main_mpmap(int argc, char** argv) {
     string ref_paths_name;
     std::unordered_set<std::string> reference_assembly_names;
     string intron_distr_name;
+    string intron_gbwt_name;
+    string intron_dist_name;
     string splice_motif_scores_name;
     string sj_out_name;
     string sj_reads_name;
@@ -648,6 +656,8 @@ int main_mpmap(int argc, char** argv) {
             {"splice-eval-all", no_argument, 0, OPT_SPLICE_EVAL_ALL},
             {"splice-whole-read", no_argument, 0, OPT_SPLICE_WHOLE_READ},
             {"splice-denovo", no_argument, 0, OPT_SPLICE_DENOVO},
+            {"intron-gbwt", required_argument, 0, OPT_INTRON_GBWT},
+            {"intron-dist", required_argument, 0, OPT_INTRON_DIST},
             {"splice-whole-read-context", required_argument, 0, OPT_SPLICE_WHOLE_READ_CONTEXT},
             {"splice-whole-read-topk", required_argument, 0, OPT_SPLICE_WHOLE_READ_TOPK},
             {"splice-whole-read-motif-weight", required_argument, 0, OPT_SPLICE_WHOLE_READ_MOTIF_WEIGHT},
@@ -1159,6 +1169,14 @@ int main_mpmap(int argc, char** argv) {
 
             case OPT_SPLICE_DENOVO:
                 splice_denovo = true;
+                break;
+
+            case OPT_INTRON_GBWT:
+                intron_gbwt_name = require_exists(logger, optarg);
+                break;
+
+            case OPT_INTRON_DIST:
+                intron_dist_name = require_exists(logger, optarg);
                 break;
 
             case OPT_SPLICE_WHOLE_READ_CONTEXT:
@@ -2015,6 +2033,56 @@ int main_mpmap(int argc, char** argv) {
         log_progress("Labeling embedded paths by their connected component");
     }
     
+    // A GBWT or distance index over different node IDs would leave every splice unmeasured
+    // and silently drop the joins, so check that each one describes this graph.
+    unique_ptr<gbwt::GBWT> intron_gbwt;
+    if (!intron_gbwt_name.empty()) {
+        log_progress("Loading intron GBWT from " + intron_gbwt_name);
+        intron_gbwt = vg::io::VPKG::load_one<gbwt::GBWT>(intron_gbwt_name);
+        if (!intron_gbwt->bidirectional()) {
+            logger.error() << "intron GBWT (--intron-gbwt) must be bidirectional" << endl;
+        }
+        size_t gbwt_nodes = 0, missing_from_graph = 0;
+        for (gbwt::node_type node = intron_gbwt->firstNode(); node < intron_gbwt->sigma(); ++node) {
+            if (!gbwt::Node::is_reverse(node) && intron_gbwt->contains(node)) {
+                ++gbwt_nodes;
+                if (!path_position_handle_graph->has_node(gbwt::Node::id(node))) {
+                    ++missing_from_graph;
+                }
+            }
+        }
+        if (missing_from_graph != 0) {
+            logger.error() << missing_from_graph << " of " << gbwt_nodes << " nodes in the intron GBWT ("
+                           << intron_gbwt_name << ") are not in the graph" << endl;
+        }
+        log_progress("Completed loading intron GBWT: its threads visit " + to_string(gbwt_nodes)
+                     + " of the graph's " + to_string(path_position_handle_graph->get_node_count()) + " nodes");
+    }
+    unique_ptr<SnarlDistanceIndex> intron_distance_index_owned;
+    SnarlDistanceIndex* intron_distance_index = nullptr;
+    if (!intron_dist_name.empty()) {
+        if (intron_dist_name == distance_index_name && distance_index) {
+            intron_distance_index = distance_index.get();
+        }
+        else {
+            log_progress("Loading intron distance index from " + intron_dist_name);
+            intron_distance_index_owned = vg::io::VPKG::load_one<SnarlDistanceIndex>(intron_dist_name);
+            intron_distance_index = intron_distance_index_owned.get();
+        }
+        size_t missing_from_index = 0;
+        path_position_handle_graph->for_each_handle([&](const handle_t& handle) {
+            if (!intron_distance_index->has_node(path_position_handle_graph->get_id(handle))) {
+                ++missing_from_index;
+            }
+        });
+        if (missing_from_index != 0) {
+            logger.error() << missing_from_index << " of the graph's " << path_position_handle_graph->get_node_count()
+                           << " nodes are not in the intron distance index (" << intron_dist_name << ")" << endl;
+        }
+        log_progress("Completed loading intron distance index: it covers all "
+                     + to_string(path_position_handle_graph->get_node_count()) + " graph nodes");
+    }
+    
     MultipathMapper multipath_mapper(path_position_handle_graph, gcsa_index.get(), lcp_array.get(), haplo_score_provider,
         snarl_manager.get(), distance_index.get());
     // give it the MEMAccelerator
@@ -2154,6 +2222,8 @@ int main_mpmap(int argc, char** argv) {
     multipath_mapper.sj_slide = sj_slide;
     multipath_mapper.splice_rescue_graph_std_devs = splice_rescue_graph_std_devs;
     multipath_mapper.ref_path_handles = std::move(ref_path_handles);
+    multipath_mapper.intron_gbwt = intron_gbwt.get();
+    multipath_mapper.intron_distance_index = intron_distance_index;
     // De-novo discovery registers all 256 dinucleotide pairs, and max_motif_pairs is a GLOBAL budget
     // shared across motifs: at the default 200 the true donor/acceptor pairing for a non-canonical
     // junction is sampled out (empirically caps de-novo non-canonical recall at ~4/30). Scale the budget

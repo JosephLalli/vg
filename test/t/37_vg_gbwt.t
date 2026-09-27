@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH # for vg
 
-plan tests 173
+plan tests 174
 
 
 # Build vg graphs for two chromosomes
@@ -225,6 +225,7 @@ vg gbwt -e named.threads named.gbwt
 vg gbwt -e sample1.threads sample1.gbwt
 cmp named.threads sample1.threads
 is $? 0 "removing by name leaves the same threads as removing the sample"
+is "$(vg gbwt -S -H -C named.gbwt)" "$(vg gbwt -S -H -C sample1.gbwt)" "removing all of a sample's paths by name drops the sample and its haplotypes"
 echo "no_such_path" > missing.names
 vg gbwt --remove-paths missing.names -o missing.gbwt all.gbwt 2> /dev/null
 isnt $? 0 "removing a path that is not in the index fails"

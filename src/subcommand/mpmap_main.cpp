@@ -2044,7 +2044,7 @@ int main_mpmap(int argc, char** argv) {
         }
         size_t gbwt_nodes = 0, missing_from_graph = 0;
         for (gbwt::node_type node = intron_gbwt->firstNode(); node < intron_gbwt->sigma(); ++node) {
-            if (!gbwt::Node::is_reverse(node) && intron_gbwt->contains(node)) {
+            if (!gbwt::Node::is_reverse(node) && !intron_gbwt->empty(node)) {
                 ++gbwt_nodes;
                 if (!path_position_handle_graph->has_node(gbwt::Node::id(node))) {
                     ++missing_from_graph;
@@ -2069,9 +2069,19 @@ int main_mpmap(int argc, char** argv) {
             intron_distance_index_owned = vg::io::VPKG::load_one<SnarlDistanceIndex>(intron_dist_name);
             intron_distance_index = intron_distance_index_owned.get();
         }
+        // has_node() does not bound IDs above the index's range, so also require the node's
+        // record to name the same node; lookups outside the range throw.
         size_t missing_from_index = 0;
         path_position_handle_graph->for_each_handle([&](const handle_t& handle) {
-            if (!intron_distance_index->has_node(path_position_handle_graph->get_id(handle))) {
+            nid_t node_id = path_position_handle_graph->get_id(handle);
+            bool present = false;
+            try {
+                present = intron_distance_index->has_node(node_id)
+                    && intron_distance_index->node_id(intron_distance_index->get_node_net_handle(node_id)) == node_id;
+            }
+            catch (const std::out_of_range&) {}
+            catch (const std::runtime_error&) {}
+            if (!present) {
                 ++missing_from_index;
             }
         });

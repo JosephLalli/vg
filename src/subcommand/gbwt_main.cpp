@@ -1587,12 +1587,70 @@ void remove_paths(GBWTHandler& gbwts, GBWTConfig& config) {
                              << kept.size() << std::endl;
     }
 
+    // Drop the samples, contigs and haplotypes that only the removed paths used, so that the
+    // counts and dictionaries describe what remains. Those no path used are kept as they were.
+    const gbwt::Metadata& old = index->metadata;
+    std::vector<bool> sample_before(old.samples(), false), sample_after(old.samples(), false);
+    std::vector<bool> contig_before(old.contigs(), false), contig_after(old.contigs(), false);
+    std::set<std::pair<gbwt::size_type, gbwt::size_type>> haplotypes_before, haplotypes_after;
+    for (size_t i = 0; i < old.paths(); i++) {
+        const gbwt::PathName& path_name = old.path(i);
+        sample_before[path_name.sample] = true;
+        contig_before[path_name.contig] = true;
+        haplotypes_before.emplace(path_name.sample, path_name.phase);
+    }
+    for (const gbwt::PathName& path_name : kept) {
+        sample_after[path_name.sample] = true;
+        contig_after[path_name.contig] = true;
+        haplotypes_after.emplace(path_name.sample, path_name.phase);
+    }
+    std::vector<gbwt::size_type> new_sample(old.samples()), new_contig(old.contigs());
+    std::vector<std::string> sample_names, contig_names;
+    gbwt::size_type sample_count = 0, contig_count = 0;
+    for (size_t i = 0; i < old.samples(); i++) {
+        if (sample_after[i] || !sample_before[i]) {
+            new_sample[i] = sample_count++;
+            if (old.hasSampleNames()) {
+                sample_names.push_back(old.sample(i));
+            }
+        }
+    }
+    for (size_t i = 0; i < old.contigs(); i++) {
+        if (contig_after[i] || !contig_before[i]) {
+            new_contig[i] = contig_count++;
+            if (old.hasContigNames()) {
+                contig_names.push_back(old.contig(i));
+            }
+        }
+    }
+    gbwt::size_type haplotype_count = old.haplotypes() - (haplotypes_before.size() - haplotypes_after.size());
+    bool has_sample_names = old.hasSampleNames(), has_contig_names = old.hasContigNames();
+
     // The remaining sequences keep their order, so the kept path names line up with them.
     gbwts.use_dynamic();
     gbwts.dynamic.remove(path_ids);
-    gbwts.dynamic.metadata.clearPathNames();
-    for (const gbwt::PathName& path_name : kept) {
-        gbwts.dynamic.metadata.addPath(path_name);
+    gbwt::Metadata& metadata = gbwts.dynamic.metadata;
+    metadata.clearPathNames();
+    // setSamples() and setContigs() ignore an empty name list, so set the counts first.
+    if (has_sample_names) {
+        metadata.clearSampleNames();
+    }
+    metadata.setSamples(sample_count);
+    if (!sample_names.empty()) {
+        metadata.setSamples(sample_names);
+    }
+    if (has_contig_names) {
+        metadata.clearContigNames();
+    }
+    metadata.setContigs(contig_count);
+    if (!contig_names.empty()) {
+        metadata.setContigs(contig_names);
+    }
+    metadata.setHaplotypes(haplotype_count);
+    for (gbwt::PathName path_name : kept) {
+        path_name.sample = new_sample[path_name.sample];
+        path_name.contig = new_contig[path_name.contig];
+        metadata.addPath(path_name);
     }
     gbwts.unbacked(); // We modified the GBWT.
 

@@ -3131,7 +3131,9 @@ namespace vg {
                                                           max_intron_length, intron_gbwt_max_threads);
                 }
                 if (intron_distance_index && dist == numeric_limits<int64_t>::max()) {
-                    size_t min_dist = minimum_distance(*intron_distance_index, pos_1, pos_2, false, xindex);
+                    // no graph: inside an oversized snarl the index would search the graph it is
+                    // given, and this one has the splice edges, so leave those introns unmeasured
+                    size_t min_dist = minimum_distance(*intron_distance_index, pos_1, pos_2, false, nullptr);
                     if (min_dist != numeric_limits<size_t>::max()) {
                         dist = min_dist;
                     }

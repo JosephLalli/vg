@@ -677,7 +677,7 @@ namespace vg {
         // choose a clusterer (ordered by expected most likely use for better branch prediction)
         unique_ptr<MEMClusterer> clusterer;
         if (!no_clustering && use_min_dist_clusterer && component_min_dist) {
-            clusterer = unique_ptr<MEMClusterer>(new ComponentMinDistanceClusterer(distance_index));
+            clusterer = unique_ptr<MEMClusterer>(new ComponentMinDistanceClusterer(distance_index, xindex));
         }
         else if (!no_clustering && !use_min_dist_clusterer && !use_tvs_clusterer) {
             clusterer = unique_ptr<MEMClusterer>(new OrientedDistanceClusterer(*distance_measurer,

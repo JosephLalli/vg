@@ -743,10 +743,13 @@ protected:
  */
 class ComponentMinDistanceClusterer : public MinDistanceClusterer {
 public:
-    ComponentMinDistanceClusterer(SnarlDistanceIndex* distance_index);
+    /// The graph is needed for seeds in snarls whose distances the index does not store
+    ComponentMinDistanceClusterer(SnarlDistanceIndex* distance_index, const HandleGraph* graph = nullptr);
     ~ComponentMinDistanceClusterer() = default;
     
 protected:
+    
+    const HandleGraph* graph;
     
     /// Concrete implementation of virtual method from MEMClusterer, overides the inherited one from MinDistanceClusterer
     HitGraph make_hit_graph(const Alignment& alignment, const vector<MaximalExactMatch>& mems, const GSSWAligner* aligner,

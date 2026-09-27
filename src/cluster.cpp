@@ -3647,7 +3647,8 @@ MEMClusterer::HitGraph GreedyMinDistanceClusterer::make_hit_graph(const Alignmen
     return hit_graph;
 }
 
-ComponentMinDistanceClusterer::ComponentMinDistanceClusterer(SnarlDistanceIndex* distance_index) : MinDistanceClusterer(distance_index) {
+ComponentMinDistanceClusterer::ComponentMinDistanceClusterer(SnarlDistanceIndex* distance_index, const HandleGraph* graph) :
+    MinDistanceClusterer(distance_index), graph(graph) {
     // nothing else to do
 }
 
@@ -3662,11 +3663,11 @@ MEMClusterer::HitGraph ComponentMinDistanceClusterer::make_hit_graph(const Align
     vector<SnarlDistanceIndexClusterer::Seed> positions(hit_graph.nodes.size());
     for (size_t i = 0; i < hit_graph.nodes.size(); ++i)  {
         positions[i].pos = hit_graph.nodes[i].start_pos;
-        positions[i].zipcode.fill_in_zipcode_from_pos(*distance_index, hit_graph.nodes[i].start_pos, true);
+        positions[i].zipcode.fill_in_zipcode_from_pos(*distance_index, hit_graph.nodes[i].start_pos, true, graph);
     }
  
     typedef SnarlDistanceIndexClusterer::Cluster Cluster;
-    SnarlDistanceIndexClusterer seed_clusterer(*distance_index);
+    SnarlDistanceIndexClusterer seed_clusterer(*distance_index, graph);
     // TODO: magic number, want enough space for the max gap and the inter-seed distance but how to do this in
     // a principled way?
     std::vector<Cluster> distance_components = seed_clusterer.cluster_seeds(positions, 2 * max_gap);

@@ -4,6 +4,10 @@
 
 #include <omp.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <cerrno>
+#include <cstring>
 #include <ctime>
 #include <getopt.h>
 #include <thread>
@@ -128,6 +132,123 @@ pair<vector<double>, vector<pair<double, double>>> parse_intron_distr_file(const
         }
     }
     return make_pair(weights, params);
+}
+
+// bdsg::yomo::Manager::BASE_SIZE, which is protected. Mapping a shorter file means growing it.
+static const ::off_t MIN_MAPPABLE_INDEX_BYTES = 1024;
+
+// The distance index file is read below as a 4-byte prefix, a yomo allocator header of
+// three Pointers, and then its first allocation, the MappedIntVector of records. A
+// Pointer is an int64 offset from itself followed by its "local" flag; the vector's
+// last member is the Pointer to its words. A change to either type must fail here.
+static_assert(sizeof(bdsg::yomo::Pointer<uint64_t>) == 16, "distance index header layout changed");
+static_assert(sizeof(bdsg::MappedIntVector) == 56, "distance index header layout changed");
+
+// Returns true if the pointer to the index's record words is flagged local in the file.
+// Otherwise explains in why_not whether it is clear or the header was not recognized.
+static bool distance_index_records_flagged_local(int fd, ::off_t file_size, string& why_not) {
+    const ::off_t first_allocated_at = 4 + 2 * 16;
+    int64_t first_allocated;
+    if (pread(fd, &first_allocated, sizeof(first_allocated), first_allocated_at) != sizeof(first_allocated)
+        || first_allocated < 0 || first_allocated > file_size) {
+        why_not = "its allocator header was not recognized";
+        return false;
+    }
+    int64_t vector_at = first_allocated_at + first_allocated;
+    int64_t vector_fields[7];
+    if (vector_at < 4 + 3 * 16 || vector_at > file_size - (int64_t) sizeof(vector_fields)
+        || pread(fd, vector_fields, sizeof(vector_fields), vector_at) != sizeof(vector_fields)) {
+        why_not = "its record vector was not found";
+        return false;
+    }
+    // The words follow the vector, so their offset from the Pointer is at least its size.
+    int64_t reserved_words = vector_fields[4];
+    int64_t words_offset = vector_fields[5];
+    uint8_t local = (uint8_t) vector_fields[6];
+    if (words_offset < 16 || words_offset > file_size || reserved_words < 0 || local > 1) {
+        why_not = "its record vector does not lie within the file";
+        return false;
+    }
+    int64_t words_at = vector_at + 5 * 8 + words_offset;
+    if (words_at > file_size || reserved_words > (file_size - words_at) / 8) {
+        why_not = "its record vector does not lie within the file";
+        return false;
+    }
+    if (!local) {
+        why_not = "its record pointer is not flagged local";
+        return false;
+    }
+    return true;
+}
+
+// Loading a distance index by file name maps it read-write, and its first lookup then
+// writes a cached flag (the record pointer's "local" byte, offset 140, which cmp reports
+// as byte 141) back into the file, changing the hash of an index that other runs have
+// pinned. Neither route here writes the file. An index whose flag is already set is
+// mapped read-only, so concurrent mappers share one copy in the page cache. Any other
+// index is copied into memory: libbdsg never caches the flag on a read-only mapping, so
+// every record lookup would take its global lock, which made 16-thread mapping 20 times
+// slower. Setting that one byte before pinning an index lets it be shared.
+static unique_ptr<SnarlDistanceIndex> load_distance_index_without_writing(const Logger& logger, const string& filename,
+                                                                          string& route) {
+    int fd = open(filename.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd == -1) {
+        logger.error() << "cannot open distance index " << filename << ": " << strerror(errno) << endl;
+    }
+    struct stat file_info;
+    if (fstat(fd, &file_info) != 0) {
+        logger.error() << "cannot stat distance index " << filename << ": " << strerror(errno) << endl;
+    }
+    unique_ptr<SnarlDistanceIndex> index(new SnarlDistanceIndex());
+    const string prefix = index->get_prefix();
+    auto require_prefix = [&](const char* first_bytes, bool all_read) {
+        if (!all_read || !std::equal(prefix.begin(), prefix.end(), first_bytes)) {
+            logger.error() << "cannot load distance index " << filename
+                           << ": it does not begin with the distance index magic number" << endl;
+        }
+    };
+    string why_not;
+    if (!S_ISREG(file_info.st_mode)) {
+        why_not = "it is not a regular file";
+    }
+    else {
+        // The route decision reads header offsets that mean something only in a distance index.
+        char first_bytes[4];
+        require_prefix(first_bytes, pread(fd, first_bytes, sizeof(first_bytes), 0) == sizeof(first_bytes));
+        if (file_info.st_size < MIN_MAPPABLE_INDEX_BYTES) {
+            why_not = "it is smaller than one mapped link";
+        }
+    }
+    bool map_it = why_not.empty() && distance_index_records_flagged_local(fd, file_info.st_size, why_not);
+    try {
+        if (map_it) {
+            index->deserialize(fd);
+            // Fault the pages in here, so a background load still does its reading
+            // before mapping starts instead of stalling the first reads.
+            index->preload(true);
+            route = "mapped read-only";
+        }
+        else {
+            ifstream strm(filename);
+            if (!strm) {
+                logger.error() << "cannot open distance index " << filename << endl;
+            }
+            // A stream load only warns about a wrong magic number and then reads the file as
+            // records anyway, which crashes. Checking here also covers a pipe, which the
+            // check above cannot read without consuming it.
+            char first_bytes[4];
+            strm.read(first_bytes, sizeof(first_bytes));
+            require_prefix(first_bytes, strm.gcount() == sizeof(first_bytes));
+            index->deserialize_members(strm);
+            route = "copied into memory because " + why_not;
+        }
+    }
+    catch (const std::exception& e) {
+        logger.error() << "cannot load distance index " << filename << ": " << e.what() << endl;
+    }
+    // A mapping holds its own duplicate of the descriptor.
+    close(fd);
+    return index;
 }
 
 static void error_if_negative(const Logger& logger, double value, const string& longform,
@@ -1679,11 +1800,6 @@ int main_mpmap(int argc, char** argv) {
         intron_distr_stream.open(intron_distr_name);
     }
     
-    ifstream distance_index_stream;
-    if (!distance_index_name.empty() && !(no_clustering && !snarls_name.empty())) {
-        distance_index_stream.open(distance_index_name);
-    }
-    
     ifstream snarl_stream;
     if (!snarls_name.empty()) {
         if (distance_index_name.empty() || no_clustering) {
@@ -1904,6 +2020,7 @@ int main_mpmap(int argc, char** argv) {
     }
     
     unique_ptr<SnarlDistanceIndex> distance_index;
+    string distance_index_route;
     if (!distance_index_name.empty() && !(no_clustering && !snarls_name.empty())) {
         // try to add an active thread
         int curr_thread_active = threads_active++;
@@ -1911,16 +2028,16 @@ int main_mpmap(int argc, char** argv) {
             // take back the increment and don't let it go multithreaded
             --threads_active;
             log_progress("Loading distance index from " + distance_index_name);
-            distance_index = vg::io::VPKG::load_one<SnarlDistanceIndex>(distance_index_stream);
-            log_progress("Completed loading distance index");
+            distance_index = load_distance_index_without_writing(logger, distance_index_name, distance_index_route);
+            log_progress("Completed loading distance index: " + distance_index_route);
         }
         else {
             // do the process in a background thread
             background_processes.emplace_back([&]() {
                 log_progress("Loading distance index from " + distance_index_name + " (in background)");
-                distance_index = vg::io::VPKG::load_one<SnarlDistanceIndex>(distance_index_stream);
+                distance_index = load_distance_index_without_writing(logger, distance_index_name, distance_index_route);
                 --threads_active;
-                log_progress("Completed loading distance index");
+                log_progress("Completed loading distance index: " + distance_index_route);
             });
         }
     }
@@ -2066,8 +2183,10 @@ int main_mpmap(int argc, char** argv) {
         }
         else {
             log_progress("Loading intron distance index from " + intron_dist_name);
-            intron_distance_index_owned = vg::io::VPKG::load_one<SnarlDistanceIndex>(intron_dist_name);
+            string intron_dist_route;
+            intron_distance_index_owned = load_distance_index_without_writing(logger, intron_dist_name, intron_dist_route);
             intron_distance_index = intron_distance_index_owned.get();
+            log_progress("Loaded intron distance index: " + intron_dist_route);
         }
         // has_node() does not bound IDs above the index's range, so also require the node's
         // record to name the same node; lookups outside the range throw.

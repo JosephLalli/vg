@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <getopt.h>
 
+#include <limits>
 #include <set>
 
 #include "subcommand.hpp"
@@ -21,6 +22,7 @@
 #include <vg/io/vpkg.hpp>
 
 #include <gbwt/fast_locate.h>
+#include <gbwt/internal.h>
 #include <gbwtgraph/gfa.h>
 #include <gbwtgraph/path_cover.h>
 
@@ -85,6 +87,10 @@ struct GBWTConfig {
     std::set<std::string> to_remove; // Sample names to remove.
     std::string paths_to_remove; // File of path names to remove.
     std::map<std::string, std::string> tags_to_set; // Tag changes to apply to the GBWT
+
+    // Node id shift. A flag rather than a nonzero test, so that a zero shift still runs.
+    bool shift_ids = false;
+    nid_t id_shift = 0;
     
     GBWTConfig() {
         this->merge_parameters.setMergeJobs(default_merge_jobs());
@@ -195,8 +201,9 @@ int main_gbwt(int argc, char** argv) {
         step_2_merge_gbwts(gbwts, config);
     }
 
-    // Edit the GBWT (remove samples or paths, apply tags).
-    if (!config.to_remove.empty() || !config.paths_to_remove.empty() || !config.tags_to_set.empty()) {
+    // Edit the GBWT (remove samples or paths, apply tags, shift node ids).
+    if (!config.to_remove.empty() || !config.paths_to_remove.empty() || !config.tags_to_set.empty()
+        || config.shift_ids) {
         step_3_alter_gbwt(gbwts, graphs, config);
     }
 
@@ -338,6 +345,8 @@ void help_gbwt(char** argv) {
     std::cerr << "      --remove-paths X    remove the paths named in file X (one per line)" << std::endl;
     std::cerr << "      --set-tag K=V       set a GBWT tag (may repeat)" << std::endl;
     std::cerr << "      --set-reference X   set sample X as the reference (may repeat)" << std::endl;
+    std::cerr << "      --shift-ids N       add N >= 0 to every node id (requires -o;" << std::endl;
+    std::cerr << "                          not with -Z, -g, --translation, or step 4)" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Step 4: Path cover GBWT construction " << std::endl;
     std::cerr << "(requires an input graph, -o, and one of { -a, -l, -P }):" << std::endl;
@@ -459,6 +468,7 @@ GBWTConfig parse_gbwt_config(int argc, char** argv) {
     constexpr int OPT_SET_TAG = 1300;
     constexpr int OPT_SET_REFERENCE = 1301;
     constexpr int OPT_REMOVE_PATHS = 1302;
+    constexpr int OPT_SHIFT_IDS = 1303;
     constexpr int OPT_PASS_PATHS = 1400;
     constexpr int OPT_GBZ_V1 = 1500;
     constexpr int OPT_TAGS = 1700;
@@ -544,6 +554,7 @@ GBWTConfig parse_gbwt_config(int argc, char** argv) {
         { "set-tag", required_argument, 0, OPT_SET_TAG },
         { "set-reference", required_argument, 0, OPT_SET_REFERENCE },
         { "remove-paths", required_argument, 0, OPT_REMOVE_PATHS },
+        { "shift-ids", required_argument, 0, OPT_SHIFT_IDS },
 
         // Path cover
         { "augment-gbwt", no_argument, 0, 'a' },
@@ -792,6 +803,14 @@ GBWTConfig parse_gbwt_config(int argc, char** argv) {
             break;
         case OPT_REMOVE_PATHS:
             config.paths_to_remove = require_exists(config.logger, optarg);
+            break;
+        case OPT_SHIFT_IDS:
+            // Parsed signed: an unsigned parse would wrap "-1" to 2^64 - 1.
+            config.id_shift = parse<nid_t>(optarg);
+            if (config.id_shift < 0) {
+                config.logger.error() << "--shift-ids must be non-negative, not " << optarg << std::endl;
+            }
+            config.shift_ids = true;
             break;
         case OPT_SET_TAG:
             {
@@ -1048,6 +1067,19 @@ void validate_gbwt_config(GBWTConfig& config) {
     if (!config.tags_to_set.empty()) {
         if (!(config.input_filenames.size() == 1 || config.merge != GBWTConfig::merge_none) || !has_gbwt_output) {
             config.logger.error() << "setting tags requires one input GBWT and output GBWT" << std::endl;
+        }
+    }
+
+    if (config.shift_ids) {
+        if (!(config.input_filenames.size() == 1 || config.merge != GBWTConfig::merge_none)
+            || config.gbwt_output.empty()) {
+            config.logger.error() << "shifting node ids requires one input GBWT and -o" << std::endl;
+        }
+        // Each of these pairs the GBWT with a graph or translation whose node ids do not move.
+        if (config.build == GBWTConfig::build_gbz || !config.graph_output.empty()
+            || !config.segment_translation.empty() || config.path_cover != GBWTConfig::path_cover_none) {
+            config.logger.error() << "shifting node ids cannot be combined with -Z, -g, --translation, "
+                                  << "or step 4" << std::endl;
         }
     }
 
@@ -1687,6 +1719,91 @@ void set_tags(GBWTHandler& gbwts, GraphHandler& graphs, GBWTConfig& config) {
     report_time_memory("Tags set", start, config);
 }
 
+void shift_node_ids(GBWTHandler& gbwts, GBWTConfig& config) {
+    double start = gbwt::readTimer();
+    if (config.show_progress) {
+        config.logger.info() << "Adding " << config.id_shift << " to the node ids" << std::endl;
+    }
+
+    gbwts.use_compressed();
+    gbwt::GBWT* index = gbwts.get_compressed();
+
+    // Without node records there is nothing to move, and a GBWT built from an empty
+    // graph keeps offset 0 whatever its ids would have been.
+    if (index->effective() <= 1) {
+        report_time_memory("Node ids shifted", start, config);
+        return;
+    }
+
+    // Symbols are 2 * id + orientation. Files store them in 64 bits, but with
+    // GBWT_SAVE_MEMORY the library decodes record edges and extracted paths into
+    // edge_type::first_type, so a larger symbol would load and then silently truncate.
+    // The top value of that type is also invalid_edge(), the empty-cell sentinel that
+    // CachedGBWT probes for (cached_gbwt.cpp:99, 251): the reverse symbol of node
+    // 2^31 - 1 is that sentinel, so GBWTGraph traversal of such a node reads out of
+    // bounds. The largest usable node id is therefore one below it.
+    // Since id_shift <= INT64_MAX, 2 * id_shift itself cannot overflow.
+    const gbwt::size_type max_id = gbwt::Node::id(gbwt::invalid_edge().first) - 1;
+    const gbwt::node_type max_symbol = gbwt::Node::encode(max_id, true);
+    gbwt::size_type shift = 2 * static_cast<gbwt::size_type>(config.id_shift);
+    gbwt::node_type last_symbol = index->sigma() - 1;
+    if (last_symbol > max_symbol || shift > max_symbol - last_symbol) {
+        config.logger.error() << "adding " << config.id_shift << " to the node ids of "
+                              << (config.gbwt_name.empty() ? std::string("the input GBWT") : config.gbwt_name)
+                              << " (largest node id " << gbwt::Node::id(last_symbol)
+                              << ") exceeds the largest node id the GBWT can use ("
+                              << max_id << ")" << std::endl;
+    }
+
+    // Records are indexed by symbol - offset, so moving the offset with the symbols keeps
+    // every record, run and DA sample where it is. Within a record the outgoing edges are
+    // sorted and delta-coded from 0, so only the first edge to a real node stores an
+    // absolute symbol. Its code may change length, which is why the record index is rebuilt.
+    const gbwt::RecordArray& source = index->bwt;
+    gbwt::RecordArray shifted(source.size());
+    {
+        // A code grows by at most the length of the shift's own code.
+        std::vector<gbwt::byte_type> shift_code;
+        gbwt::ByteCode::write(shift_code, shift);
+        shifted.data.reserve(source.data.size() + source.size() * shift_code.size());
+    }
+    std::vector<gbwt::size_type> offsets;
+    offsets.reserve(source.size());
+    auto iter = source.index.one_begin();
+    for (gbwt::size_type comp = 0; comp < source.size(); comp++) {
+        gbwt::size_type pos = iter->second;
+        ++iter;
+        gbwt::size_type limit = iter->second;
+        offsets.push_back(shifted.data.size());
+        gbwt::size_type outdegree = gbwt::ByteCode::read(source.data, pos);
+        gbwt::ByteCode::write(shifted.data, outdegree);
+        for (gbwt::size_type edge = 0; edge < outdegree; edge++) {
+            // Until the first real node, every delta is from 0 and is the symbol itself.
+            gbwt::node_type to = gbwt::ByteCode::read(source.data, pos);
+            gbwt::size_type rank = gbwt::ByteCode::read(source.data, pos);
+            bool real = (to != gbwt::ENDMARKER);
+            gbwt::ByteCode::write(shifted.data, real ? to + shift : to);
+            gbwt::ByteCode::write(shifted.data, rank);
+            if (real) {
+                break;
+            }
+        }
+        shifted.data.insert(shifted.data.end(), source.data.begin() + pos, source.data.begin() + limit);
+    }
+    shifted.buildIndex(offsets);
+    offsets = std::vector<gbwt::size_type>();
+    index->bwt = std::move(shifted);
+    index->header.offset += shift;
+    index->header.alphabet_size += shift;
+
+    // The cached endmarker holds the first symbol of every path, and -e and -r walk the
+    // index in this process without reloading it.
+    index->endmarker_record = gbwt::DecompressedRecord(index->record(gbwt::ENDMARKER));
+    gbwts.unbacked(); // We modified the GBWT.
+
+    report_time_memory("Node ids shifted", start, config);
+}
+
 void step_3_alter_gbwt(GBWTHandler& gbwts, GraphHandler& graphs, GBWTConfig& config) {
     if (!config.to_remove.empty()) {
         remove_samples(gbwts, config);
@@ -1696,6 +1813,9 @@ void step_3_alter_gbwt(GBWTHandler& gbwts, GraphHandler& graphs, GBWTConfig& con
     }
     if (!config.tags_to_set.empty()) {
         set_tags(gbwts, graphs, config);
+    }
+    if (config.shift_ids) {
+        shift_node_ids(gbwts, config);
     }
 }
 

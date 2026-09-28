@@ -40,6 +40,7 @@ const size_t DEFAULT_SNARL_LIMIT = 50000;
 
 void help_index(char** argv) {
     cerr << "usage: " << argv[0] << " index [options] <graph1.vg> [graph2.vg ...]" << endl
+         << "   or: " << argv[0] << " index --merge-dist OUT.dist PART.dist:ID_OFFSET [PART.dist:ID_OFFSET ...]" << endl
          << "Creates an index on the specified graph or graphs. All graphs indexed must " << endl
          << "already be in a joint ID space." << endl
          << "general options:" << endl
@@ -87,6 +88,10 @@ void help_index(char** argv) {
                                      << "[" << DEFAULT_SNARL_LIMIT << "]" << endl
          << "                            if 0 then don't store distances, only the snarl tree" << endl
          << "      --no-nested-distance  only store distances along the top-level chain" << endl
+         << "      --merge-dist FILE     merge the distance indexes given as arguments, each" << endl
+         << "                            PART.dist:ID_OFFSET, into FILE; parts must be built" << endl
+         << "                            on disjoint graphs, and ID_OFFSET is added to PART's" << endl
+         << "                            node IDs (as vg ids -i shifted its graph)" << endl
          << "  -w, --upweight-node N     upweight the node with ID N to push it to be part" << endl
          << "                            of a top-level chain (may repeat)" << endl
          << "  -P, --path-prefix NAME    upweight tips of paths with given prefix to orient" << endl
@@ -118,6 +123,7 @@ int main_index(int argc, char** argv) {
     constexpr int OPT_GCSA_COMPRESSION_WORKERS = 1013;
     constexpr int OPT_GCSA_COMPRESSION_LEVEL = 1014;
     constexpr int OPT_GCSA_CLEAN_OBSOLETE = 1015;
+    constexpr int OPT_MERGE_DIST = 1016;
 
     // Which indexes to build.
     bool build_xg = false, build_gcsa = false, build_dist = false;
@@ -129,6 +135,7 @@ int main_index(int argc, char** argv) {
 
     // Files we should write.
     string xg_name, gcsa_name, dist_name;
+    string merge_dist_name;
 
     // General
     bool show_progress = false;
@@ -223,6 +230,7 @@ int main_index(int argc, char** argv) {
             {"snarl-limit", required_argument, 0, OPT_DISTANCE_SNARL_LIMIT},
             {"dist-name", required_argument, 0, 'j'},
             {"no-nested-distance", no_argument, 0, OPT_DISTANCE_NESTING},
+            {"merge-dist", required_argument, 0, OPT_MERGE_DIST},
             {"upweight-node", required_argument, 0, 'w'},
             {"path-prefix", required_argument, 0, 'P'},
             {0, 0, 0, 0}
@@ -364,6 +372,11 @@ int main_index(int argc, char** argv) {
         case OPT_DISTANCE_NESTING:
             only_top_level_chain_distances = true;
             break;
+        case OPT_MERGE_DIST:
+            // Not ensure_writable(): it creates the file, and a refused merge would leave an
+            // empty index behind. The merge writes OUT.incomplete and renames it when done.
+            merge_dist_name = optarg;
+            break;
         case 'w':
             // We use += so you can repeat a node and make it even more
             // heavier.
@@ -381,6 +394,32 @@ int main_index(int argc, char** argv) {
         default:
             abort ();
         }
+    }
+
+    if (!merge_dist_name.empty()) {
+        if (!xg_name.empty() || !gcsa_name.empty() || !dist_name.empty() || build_gai_index || build_vgi_index) {
+            logger.error() << "--merge-dist cannot be combined with building other indexes" << endl;
+        }
+        if (optind >= argc) {
+            logger.error() << "--merge-dist needs at least one PART.dist:ID_OFFSET argument" << endl;
+        }
+        vector<pair<string, nid_t>> parts;
+        for (int i = optind; i < argc; i++) {
+            // The offset is required: a forgotten one would silently leave a part's IDs unshifted.
+            string argument = argv[i];
+            size_t colon = argument.rfind(':');
+            if (colon == string::npos || colon == 0 || colon + 1 == argument.size()) {
+                logger.error() << "distance index part " << argument << " is not PART.dist:ID_OFFSET" << endl;
+            }
+            nid_t offset = parse<nid_t>(argument.substr(colon + 1));
+            parts.emplace_back(argument.substr(0, colon), offset);
+        }
+        try {
+            SnarlDistanceIndex::merge_indexes(merge_dist_name, parts, show_progress ? &cerr : nullptr);
+        } catch (const std::runtime_error& e) {
+            logger.error() << e.what() << endl;
+        }
+        return 0;
     }
 
     vector<string> file_names;

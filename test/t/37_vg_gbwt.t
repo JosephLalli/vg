@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH # for vg
 
-plan tests 174
+plan tests 186
 
 
 # Build vg graphs for two chromosomes
@@ -367,6 +367,51 @@ is $(vg gbwt -H -Z augmented.gbz) 18 "augmented: 18 haplotypes"
 is $(vg gbwt -S -Z augmented.gbz) 17 "augmented: 17 samples"
 
 rm -f x.gbwt augmented.gbz
+
+
+# Shift node ids: the result must be the GBWT built from the graph after vg ids -i
+vg ids -i 1000000 x.vg > shift.vg
+vg gbwt -E --num-jobs 1 -o x.ref.gbwt -x x.vg
+vg gbwt -E --num-jobs 1 -o shift.ref.rebuilt.gbwt -x shift.vg
+vg gbwt --shift-ids 1000000 -o shift.ref.gbwt x.ref.gbwt
+is $? 0 "node ids can be shifted in a GBWT"
+cmp shift.ref.gbwt shift.ref.rebuilt.gbwt
+is $? 0 "shifting a paths GBWT matches building it from the shifted graph"
+vg gbwt -x x.vg -o x.gbwt -v small/xy2.vcf.gz
+vg gbwt -x shift.vg -o shift.rebuilt.gbwt -v small/xy2.vcf.gz
+vg gbwt --shift-ids 1000000 -o shift.gbwt -e shift.extract x.gbwt
+cmp shift.gbwt shift.rebuilt.gbwt
+is $? 0 "shifting a haplotype GBWT matches building it from the shifted graph"
+vg gbwt -e shift.rebuilt.extract shift.rebuilt.gbwt
+cmp shift.extract shift.rebuilt.extract
+is $? 0 "paths extracted in the shifting run match the rebuilt GBWT"
+is "$(vg gbwt -c -M shift.gbwt)" "$(vg gbwt -c -M x.gbwt)" "shifting keeps the path count and metadata"
+is "$(vg gbwt -T shift.gbwt)" "$(vg gbwt -T x.gbwt)" "shifting keeps the path names"
+vg gbwt --shift-ids 0 -o shift.zero.gbwt x.gbwt
+cmp shift.zero.gbwt x.gbwt
+is $? 0 "shifting by 0 leaves the GBWT unchanged"
+
+# The GBWT decodes symbols (2 * id + orientation) into 32 bits, and the top 32-bit value
+# is the empty-cell sentinel of CachedGBWT, so the largest usable node id is 2^31 - 2;
+# the largest node id in x.vg is 69. Building a GBZ traverses every node through
+# CachedGBWT, which is what crashes one id higher.
+vg ids -i 2147483577 x.vg > shift.limit.vg
+vg gbwt -x shift.limit.vg -o shift.limit.rebuilt.gbwt -v small/xy2.vcf.gz
+vg gbwt --shift-ids 2147483577 -o shift.limit.gbwt x.gbwt
+cmp shift.limit.gbwt shift.limit.rebuilt.gbwt
+is $? 0 "node ids can be shifted up to the largest id the GBWT can use"
+vg gbwt -x shift.limit.vg -g shift.limit.gbz --gbz-format shift.limit.gbwt
+is $? 0 "a GBZ can be built from a GBWT shifted to the largest usable id"
+vg gbwt --shift-ids 2147483578 -o shift.over.gbwt x.gbwt 2> /dev/null
+isnt $? 0 "shifting past the largest id the GBWT can use fails"
+vg gbwt --shift-ids -1 -o shift.over.gbwt x.gbwt 2> /dev/null
+isnt $? 0 "a negative shift fails"
+vg gbwt --shift-ids 1 -x x.vg -g shift.gbz x.gbwt 2> /dev/null
+isnt $? 0 "shifting cannot be combined with GBZ construction"
+
+rm -f shift.vg shift.limit.vg x.ref.gbwt x.gbwt
+rm -f shift.ref.gbwt shift.ref.rebuilt.gbwt shift.gbwt shift.rebuilt.gbwt shift.zero.gbwt
+rm -f shift.extract shift.rebuilt.extract shift.limit.gbwt shift.limit.rebuilt.gbwt shift.limit.gbz shift.over.gbwt shift.gbz
 
 
 # Remove the graphs

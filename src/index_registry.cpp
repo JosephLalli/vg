@@ -3740,6 +3740,9 @@ IndexRegistry VGIndexes::get_vg_index_registry() {
         params.setCompressionLevel(IndexingParameters::gcsa_compression_level);
         params.setCleanObsolete(IndexingParameters::gcsa_clean_obsolete);
         params.setWorkerExecutable(IndexingParameters::gcsa_worker_executable);
+        // GCSA2 admits concurrent workers against this process's open-file
+        // limit, and service managers commonly start processes at 1,024.
+        gcsa::raiseOpenFileLimit();
         if (!IndexingParameters::gcsa_work_directory.empty()) {
             params.setWorkDirectory(IndexingParameters::gcsa_work_directory);
             bool has_build_manifest = filesystem::is_regular_file(

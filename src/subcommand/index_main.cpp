@@ -534,6 +534,10 @@ int main_index(int argc, char** argv) {
             ? gcsa::Verbosity::EXTENDED
             : gcsa::Verbosity::SILENT);
 
+        // GCSA2 admits concurrent workers against this process's open-file
+        // limit, and service managers commonly start processes at 1,024.
+        gcsa::raiseOpenFileLimit();
+
         double start = gcsa::readTimer();
 
         // Generate temporary kmer files

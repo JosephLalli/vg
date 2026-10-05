@@ -119,7 +119,13 @@ struct TranscriptPath {
         copy_id = 1;
     }
 
-    virtual ~TranscriptPath() {};
+    // Explicit copy and move operations preserve moves with a virtual destructor.
+    TranscriptPath(const TranscriptPath &) = default;
+    TranscriptPath & operator=(const TranscriptPath &) = default;
+    TranscriptPath(TranscriptPath &&) = default;
+    TranscriptPath & operator=(TranscriptPath &&) = default;
+
+    virtual ~TranscriptPath() = default;
 
     string get_name() const;
 };
@@ -135,8 +141,6 @@ struct EditedTranscriptPath : public TranscriptPath {
     EditedTranscriptPath(const string & transcript_name, const string & embedded_path_name, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, embedded_path_name, is_reference_in, is_haplotype_in) {}
     EditedTranscriptPath(const string & transcript_name, const gbwt::size_type & haplotype_gbwt_id, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, haplotype_gbwt_id, is_reference_in, is_haplotype_in) {}
 
-    ~EditedTranscriptPath() {};
-
     handle_t get_first_node_handle(const HandleGraph & graph) const;
 
 };
@@ -151,7 +155,6 @@ struct CompletedTranscriptPath : public TranscriptPath {
 
     CompletedTranscriptPath(const EditedTranscriptPath & edited_transcript_path);
     CompletedTranscriptPath(const EditedTranscriptPath & edited_transcript_path, const HandleGraph & graph);
-    ~CompletedTranscriptPath() {};
 
     handle_t get_first_node_handle(const HandleGraph & graph) const;
 };

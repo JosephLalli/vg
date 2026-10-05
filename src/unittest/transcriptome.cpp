@@ -7,6 +7,7 @@
 #include <iostream>
 
 #include "gbwt/dynamic_gbwt.h"
+#include "bdsg/hash_graph.hpp"
 #include "bdsg/packed_graph.hpp"
 
 #include "../transcriptome.hpp"
@@ -859,6 +860,66 @@ namespace vg {
                 REQUIRE(transcriptome.graph().get_sequence(transcriptome.graph().get_handle(10)) == "CC");
                 REQUIRE(transcriptome.graph().get_sequence(transcriptome.graph().get_handle(11)) == "A");
                 REQUIRE(transcriptome.graph().get_sequence(transcriptome.graph().get_handle(12)) == "AAA");             
+            }
+        }
+
+        TEST_CASE("Transcriptome filters transcribed nodes with dense and sparse IDs", "[transcriptome]") {
+
+            for (bool sparse_ids : {false, true}) {
+                for (int32_t threads : {1, 4}) {
+                    unique_ptr<MutablePathDeletableHandleGraph> graph;
+                    vector<nid_t> ids;
+                    if (sparse_ids) {
+                        graph.reset(new bdsg::HashGraph);
+                        ids = {1, 1000000000000, 2000000000000, 3000000000000};
+                    } else {
+                        graph.reset(new bdsg::PackedGraph);
+                        ids = {1, 2, 3, 4};
+                    }
+
+                    vector<handle_t> handles;
+                    for (const auto& id : ids) {
+                        handles.push_back(graph->create_handle(string(1, "ACGT"[handles.size()]), id));
+                    }
+                    for (size_t i = 1; i < handles.size(); ++i) {
+                        graph->create_edge(handles[i - 1], handles[i]);
+                    }
+                    path_handle_t reference = graph->create_path_handle("reference");
+                    for (const auto& handle : handles) {
+                        graph->append_step(reference, handle);
+                    }
+
+                    Transcriptome transcriptome(std::move(graph));
+                    transcriptome.num_threads = threads;
+                    unique_ptr<gbwt::GBWT> empty_haplotype_index(new gbwt::GBWT());
+                    stringstream transcripts;
+                    transcripts << "reference\t.\texon\t1\t1\t.\t+\t.\ttranscript_id \"forward1\";" << endl;
+                    transcripts << "reference\t.\texon\t1\t1\t.\t+\t.\ttranscript_id \"forward2\";" << endl;
+                    transcripts << "reference\t.\texon\t3\t3\t.\t-\t.\ttranscript_id \"reverse\";" << endl;
+
+                    REQUIRE(transcriptome.add_reference_transcripts({&transcripts}, empty_haplotype_index, false, false) == 3);
+                    const auto expected_paths = transcript_paths_to_int_vectors(transcriptome.transcript_paths());
+                    const auto expected_sequences = transcript_paths_to_sequences(transcriptome.transcript_paths(), transcriptome.graph());
+                    REQUIRE(expected_paths == vector<vector<uint64_t>>({
+                        {bdsg::as_integer(handles[0])},
+                        {bdsg::as_integer(handles[0])},
+                        {bdsg::as_integer(transcriptome.graph().flip(handles[2]))}
+                    }));
+                    REQUIRE(expected_sequences == vector<string>({"A", "A", "C"}));
+
+                    transcriptome.remove_non_transcribed_nodes();
+
+                    vector<nid_t> retained_ids;
+                    transcriptome.graph().for_each_handle([&](const handle_t& handle) {
+                        retained_ids.push_back(transcriptome.graph().get_id(handle));
+                    });
+                    sort(retained_ids.begin(), retained_ids.end());
+                    REQUIRE(retained_ids == vector<nid_t>({ids[0], ids[2]}));
+                    REQUIRE(transcriptome.graph().get_edge_count() == 0);
+                    REQUIRE(transcriptome.graph().get_path_count() == 0);
+                    REQUIRE(transcript_paths_to_int_vectors(transcriptome.transcript_paths()) == expected_paths);
+                    REQUIRE(transcript_paths_to_sequences(transcriptome.transcript_paths(), transcriptome.graph()) == expected_sequences);
+                }
             }
         }
     }

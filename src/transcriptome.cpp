@@ -1,9 +1,13 @@
 
 #include <thread>
+#include <array>
+#include <exception>
+#include <typeinfo>
 
 #include <gbwtgraph/utils.h>
 
 #include "../io/save_handle_graph.hpp"
+#include "../io/converted_hash_graph.hpp"
 
 #include "transcriptome.hpp"
 #include "../augment.hpp"
@@ -16,6 +20,96 @@ using namespace vg::io;
 using namespace std;
 
 // #define transcriptome_debug
+
+namespace {
+
+bool supports_parallel_edge_queries(const MutablePathDeletableHandleGraph& graph) {
+
+    const type_info& graph_type = typeid(graph);
+    return (graph_type == typeid(bdsg::PackedGraph) ||
+            graph_type == typeid(GFAHandleGraph) ||
+            graph_type == typeid(bdsg::HashGraph) ||
+            graph_type == typeid(ConvertedHashGraph) ||
+            graph_type == typeid(VG));
+}
+
+template<class Paths, class Visit>
+void add_transcript_edges_in_order(MutablePathDeletableHandleGraph& graph,
+                                   const Paths& paths, int32_t num_threads,
+                                   const Visit& visit) {
+
+    auto add_path = [&](const auto& path) {
+        visit(path, [&](const handle_t& left, const handle_t& right) {
+            graph.create_edge(left, right);
+            return true;
+        });
+    };
+
+    if (num_threads <= 1 || paths.size() < 2 || !supports_parallel_edge_queries(graph)) {
+        for (const auto& path : paths) {
+            add_path(path);
+        }
+        return;
+    }
+
+    constexpr size_t batch_size = 4096;
+    constexpr size_t maximum_missing_edges = 128;
+    struct Discovery {
+        array<pair<handle_t, handle_t>, maximum_missing_edges> missing;
+        size_t count = 0;
+        bool use_serial = false;
+        exception_ptr error;
+    };
+
+    const HandleGraph& read_graph = graph;
+    auto next = paths.begin();
+    while (next != paths.end()) {
+        vector<const typename Paths::value_type*> batch;
+        batch.reserve(batch_size);
+        while (next != paths.end() && batch.size() < batch_size) {
+            batch.push_back(&*next++);
+        }
+
+        vector<Discovery> discovered(batch.size());
+        #pragma omp parallel for num_threads(num_threads) schedule(dynamic, 16)
+        for (size_t i = 0; i < batch.size(); ++i) {
+            auto& result = discovered[i];
+            try {
+                bool complete = true;
+                visit(*batch[i], [&](const handle_t& left, const handle_t& right) {
+                    if (!read_graph.has_edge(left, right)) {
+                        if (result.count == maximum_missing_edges) {
+                            complete = false;
+                            return false;
+                        }
+                        result.missing[result.count++] = make_pair(left, right);
+                    }
+                    return true;
+                });
+                result.use_serial = !complete;
+            } catch (...) {
+                result.error = current_exception();
+            }
+        }
+
+        // The parallel region has joined, so graph mutation is serial and ordered.
+        for (size_t i = 0; i < batch.size(); ++i) {
+            const auto& result = discovered[i];
+            if (result.error) {
+                rethrow_exception(result.error);
+            }
+            if (result.use_serial) {
+                add_path(*batch[i]);
+            } else {
+                for (size_t j = 0; j < result.count; ++j) {
+                    graph.create_edge(result.missing[j].first, result.missing[j].second);
+                }
+            }
+        }
+    }
+}
+
+}
 
 bool operator==(const Exon & lhs, const Exon & rhs) { 
 
@@ -2503,44 +2597,40 @@ void Transcriptome::update_transcript_paths(const spp::sparse_hash_map<handle_t,
 
 void Transcriptome::add_splice_junction_edges(const list<EditedTranscriptPath> & edited_transcript_paths) {
 
-    for (auto & transcript_path: edited_transcript_paths) {
-
-        for (size_t i = 1; i < transcript_path.path.mapping_size(); i++) {
-
-            auto & prev_mapping = transcript_path.path.mapping(i - 1);
-            auto & cur_mapping = transcript_path.path.mapping(i);
-
-            auto prev_handle = mapping_to_handle(prev_mapping, *_graph);
-            auto cur_handle = mapping_to_handle(cur_mapping, *_graph);
-            
-            // Ensure the edge exists.
-            _graph->create_edge(prev_handle, cur_handle);
-        }
-    }
+    add_transcript_edges_in_order(*_graph, edited_transcript_paths, num_threads,
+        [&](const auto& transcript_path, const auto& iteratee) {
+            for (size_t i = 1; i < transcript_path.path.mapping_size(); ++i) {
+                auto previous = mapping_to_handle(transcript_path.path.mapping(i - 1), *_graph);
+                auto current = mapping_to_handle(transcript_path.path.mapping(i), *_graph);
+                if (!iteratee(previous, current)) {
+                    break;
+                }
+            }
+        });
 }
 
 void Transcriptome::add_splice_junction_edges(const list<CompletedTranscriptPath> & completed_transcript_paths) {
 
-    for (auto & transcript_path: completed_transcript_paths) {
-
-        for (size_t i = 1; i < transcript_path.path.size(); i++) {
-            
-            // Ensure the edge exists.
-            _graph->create_edge(transcript_path.path.at(i - 1), transcript_path.path.at(i));
-        }
-    }
+    add_transcript_edges_in_order(*_graph, completed_transcript_paths, num_threads,
+        [&](const auto& transcript_path, const auto& iteratee) {
+            for (size_t i = 1; i < transcript_path.path.size(); ++i) {
+                if (!iteratee(transcript_path.path.at(i - 1), transcript_path.path.at(i))) {
+                    break;
+                }
+            }
+        });
 }
 
 void Transcriptome::add_splice_junction_edges(const vector<CompletedTranscriptPath> & completed_transcript_paths) {
 
-    for (auto & transcript_path: completed_transcript_paths) {
-
-        for (size_t i = 1; i < transcript_path.path.size(); i++) {
-            
-            // Ensure the edge exists.
-            _graph->create_edge(transcript_path.path.at(i - 1), transcript_path.path.at(i));
-        }
-    }
+    add_transcript_edges_in_order(*_graph, completed_transcript_paths, num_threads,
+        [&](const auto& transcript_path, const auto& iteratee) {
+            for (size_t i = 1; i < transcript_path.path.size(); ++i) {
+                if (!iteratee(transcript_path.path.at(i - 1), transcript_path.path.at(i))) {
+                    break;
+                }
+            }
+        });
 }
 
 void Transcriptome::sort_transcript_paths_update_copy_id() {

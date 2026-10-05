@@ -375,8 +375,8 @@ int main_prune(int argc, char** argv) {
     graph->for_each_path_handle([&](path_handle_t path_handle) {
         path_handles.push_back(path_handle);
     });
-    for (auto path_handle : path_handles) {
-        graph->destroy_path(path_handle);
+    if (!path_handles.empty()) {
+        graph->destroy_paths(path_handles);
     }
     
     if (show_progress) {

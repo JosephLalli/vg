@@ -343,7 +343,7 @@ int main_prune(int argc, char** argv) {
     // Handle the input.
     std::unique_ptr<MutablePathDeletableHandleGraph> graph;
     graph = vg::io::VPKG::load_one<MutablePathDeletableHandleGraph>(vg_name);
-    xg::XG xg_index;
+    auto xg_index = std::make_unique<xg::XG>();
     std::unique_ptr<gbwt::GBWT> gbwt_index;
     
     
@@ -364,7 +364,7 @@ int main_prune(int argc, char** argv) {
         for (auto& alt_path_handle : alt_path_handles) {
             graph->destroy_path(alt_path_handle);
         }
-        xg_index.from_path_handle_graph(*graph);
+        xg_index->from_path_handle_graph(*graph);
         if (show_progress) {
             logger.info() << "Built a temporary XG index" << std::endl;
         }
@@ -408,7 +408,7 @@ int main_prune(int argc, char** argv) {
     if (mode == mode_restore) {
         // Make an empty GBWT index to pass along
         gbwt::GBWT empty_gbwt;
-        PhaseUnfolder unfolder(xg_index, empty_gbwt, max_node_id + 1);
+        PhaseUnfolder unfolder(*xg_index, empty_gbwt, max_node_id + 1);
         unfolder.restore_paths(*graph, show_progress);
         if (verify_paths) {
             size_t failures = unfolder.verify_paths(*graph, show_progress);
@@ -432,7 +432,7 @@ int main_prune(int argc, char** argv) {
             gbwt_index = unique_ptr<gbwt::GBWT>(new gbwt::GBWT());
             // TODO: Let us pass in null pointers instead.
         }
-        PhaseUnfolder unfolder(xg_index, *gbwt_index, max_node_id + 1);
+        PhaseUnfolder unfolder(*xg_index, *gbwt_index, max_node_id + 1);
         if (append_mapping) {
             unfolder.read_mapping(mapping_name);
         }
@@ -447,6 +447,10 @@ int main_prune(int argc, char** argv) {
             }
         }
     }
+
+    // Release temporary XG and GBWT indexes before serialization.
+    xg_index.reset();
+    gbwt_index.reset();
 
     // Serialize.
     

@@ -19,6 +19,8 @@
 #include "types.hpp"
 #include "gbwt_helper.hpp"
 
+#include "shared_transcript_path.hpp"
+
 namespace vg {
 
 using namespace std;
@@ -167,12 +169,35 @@ struct EditedTranscriptPath : public TranscriptPath {
     /// boundaries.
     vector<EditedMapping> path;
 
+    /// Shared source slices for GBWT reference paths when no path collapse is
+    /// requested. Whole internal steps are decoded only when consumed.
+    SharedTranscriptPath<EditedMapping> shared_path;
+
     EditedTranscriptPath(const string & transcript_name, const string & embedded_path_name, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, embedded_path_name, is_reference_in, is_haplotype_in) {}
     EditedTranscriptPath(const string & transcript_name, const gbwt::size_type & haplotype_gbwt_id, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, haplotype_gbwt_id, is_reference_in, is_haplotype_in) {}
 
-    ~EditedTranscriptPath() {};
+    // See the note on TranscriptPath: the destructor suppresses the implicit
+    // moves, and this class is the one carrying the step vector.
+    EditedTranscriptPath(const EditedTranscriptPath &) = default;
+    EditedTranscriptPath & operator=(const EditedTranscriptPath &) = default;
+    EditedTranscriptPath(EditedTranscriptPath &&) = default;
+    EditedTranscriptPath & operator=(EditedTranscriptPath &&) = default;
+
+    ~EditedTranscriptPath() = default;
 
     handle_t get_first_node_handle(const HandleGraph & graph) const;
+
+    /// Iterate a resident edited path in its original walk order.
+    template<class Iteratee>
+    void for_each_mapping(const HandleGraph & graph, const Iteratee & iteratee) const {
+        if (!shared_path.empty()) {
+            shared_path.for_each_mapping([&](const handle_t & handle) {
+                return graph.flip(handle);
+            }, iteratee);
+        } else {
+            for (size_t i = 0; i < path.size(); ++i) { iteratee(path[i], i); }
+        }
+    }
 
 };
 
@@ -184,11 +209,47 @@ struct CompletedTranscriptPath : public TranscriptPath {
     /// Transcript path.
     vector<handle_t> path;
 
+    /// Whole-node slices of immutable sources, shared by named transcripts.
+    SharedTranscriptPath<EditedMapping> shared_path;
+
     CompletedTranscriptPath(const EditedTranscriptPath & edited_transcript_path);
     CompletedTranscriptPath(const EditedTranscriptPath & edited_transcript_path, const HandleGraph & graph);
-    ~CompletedTranscriptPath() {};
+    CompletedTranscriptPath(const CompletedTranscriptPath &) = default;
+    CompletedTranscriptPath & operator=(const CompletedTranscriptPath &) = default;
+    CompletedTranscriptPath(CompletedTranscriptPath &&) = default;
+    CompletedTranscriptPath & operator=(CompletedTranscriptPath &&) = default;
+
+    ~CompletedTranscriptPath() = default;
 
     handle_t get_first_node_handle(const HandleGraph & graph) const;
+
+    uint64_t resident_size() const {
+        return shared_path.empty() ? path.size() : shared_path.size();
+    }
+
+    template<class Iteratee>
+    void for_each_handle(const HandleGraph & graph, const Iteratee & iteratee) const {
+        if (!shared_path.empty()) {
+            shared_path.for_each_mapping([&](const handle_t & handle) {
+                return graph.flip(handle);
+            }, [&](const EditedMapping & mapping, uint64_t rank) {
+                iteratee(mapping.handle, rank);
+            });
+        } else {
+            for (size_t i = 0; i < path.size(); ++i) { iteratee(path[i], i); }
+        }
+    }
+
+    /// Expand an explicitly requested copy, preserving the legacy vector API.
+    void materialize(const HandleGraph & graph) {
+        if (!shared_path.empty()) {
+            path.reserve(shared_path.size());
+            for_each_handle(graph, [&](const handle_t & handle, uint64_t) {
+                path.emplace_back(handle);
+            });
+            shared_path = {};
+        }
+    }
 };
 
 struct EditedMappingHash
@@ -248,7 +309,7 @@ class Transcriptome {
         /// in a GBWT index. Returns the number of haplotype transcript paths projected.   
         int32_t add_haplotype_transcripts(vector<istream *> transcript_streams, const gbwt::GBWT & haplotype_index, const bool proj_emded_paths);
 
-        /// Returns transcript paths.
+        /// Returns resident transcript paths; shared walks use for_each_handle.
         const vector<CompletedTranscriptPath> & transcript_paths() const;
 
         /// Returns the reference transcript paths.

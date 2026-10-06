@@ -1,4 +1,5 @@
 
+#include <exception>
 #include <thread>
 
 #include <gbwtgraph/utils.h>
@@ -2624,6 +2625,113 @@ const MutablePathDeletableHandleGraph & Transcriptome::graph() const {
 }
 
 void Transcriptome::collect_transcribed_nodes(spp::sparse_hash_set<nid_t> * transcribed_nodes) const {
+
+    const size_t requested = static_cast<size_t>(max(1, num_threads));
+    constexpr size_t scratch_budget = size_t(1) << 30;
+    const size_t node_count = _graph->get_node_count();
+
+    if (requested > 1 && !_transcript_paths.empty() && node_count != 0 &&
+        node_count <= scratch_budget / sizeof(nid_t)) {
+        vector<nid_t> node_ids(node_count);
+        size_t next = 0;
+        _graph->for_each_handle([&](const handle_t & handle) {
+            if (next == node_ids.size()) { throw logic_error("Graph node count does not match iteration"); }
+            node_ids[next++] = _graph->get_id(handle);
+        });
+        if (next != node_count) { throw logic_error("Graph node count does not match iteration"); }
+
+        const auto limits = minmax_element(node_ids.begin(), node_ids.end());
+        const uint64_t minimum = static_cast<uint64_t>(*limits.first);
+        const uint64_t span = static_cast<uint64_t>(*limits.second) - minimum;
+        // Sparse IDs use a bounded rank table instead of an ID-span allocation.
+        const bool dense = span < 4 * node_count;
+        const size_t bits = dense ? static_cast<size_t>(span + 1) : node_count;
+        const size_t words = bits / 64 + (bits % 64 != 0);
+
+        size_t rank_slots = 0;
+        if (!dense) {
+            rank_slots = 1;
+            while (rank_slots < 2 * node_count) { rank_slots *= 2; }
+        }
+
+        const bool node_ids_fit = node_ids.capacity() <= scratch_budget / sizeof(nid_t);
+        const size_t node_id_bytes = node_ids_fit ? node_ids.capacity() * sizeof(nid_t) : scratch_budget;
+        if (node_ids_fit && rank_slots <= (scratch_budget - node_id_bytes) / sizeof(size_t)) {
+            const size_t fixed_bytes = node_id_bytes + rank_slots * sizeof(size_t);
+            const size_t worker_bytes = words * sizeof(uint64_t) + sizeof(vector<uint64_t>) + sizeof(exception_ptr);
+            const size_t workers = min({requested, _transcript_paths.size(),
+                                        (scratch_budget - fixed_bytes) / worker_bytes});
+
+            if (workers > 1) {
+                vector<size_t> ranks(rank_slots, 0);
+                if (!dense) {
+                    for (size_t i = 0; i < node_ids.size(); ++i) {
+                        size_t slot = wang_hash<nid_t>()(node_ids[i]) & (rank_slots - 1);
+                        while (ranks[slot] != 0) { slot = (slot + 1) & (rank_slots - 1); }
+                        ranks[slot] = i + 1;
+                    }
+                }
+
+                auto rank_of = [&](nid_t id) -> size_t {
+                    if (dense) {
+                        const uint64_t rank = static_cast<uint64_t>(id) - minimum;
+                        if (rank >= bits) { throw invalid_argument("Transcript refers to an absent node"); }
+                        return static_cast<size_t>(rank);
+                    }
+                    size_t slot = wang_hash<nid_t>()(id) & (rank_slots - 1);
+                    while (ranks[slot] != 0) {
+                        const size_t rank = ranks[slot] - 1;
+                        if (node_ids[rank] == id) { return rank; }
+                        slot = (slot + 1) & (rank_slots - 1);
+                    }
+                    throw invalid_argument("Transcript refers to an absent node");
+                };
+
+                vector<vector<uint64_t>> marked;
+                marked.reserve(workers);
+                for (size_t worker = 0; worker < workers; ++worker) { marked.emplace_back(words, 0); }
+                vector<exception_ptr> errors(workers);
+
+                #pragma omp parallel num_threads(workers)
+                {
+                    const size_t worker = omp_get_thread_num();
+                    auto & local = marked[worker];
+                    #pragma omp for schedule(dynamic, 64)
+                    for (size_t i = 0; i < _transcript_paths.size(); ++i) {
+                        if (errors[worker]) { continue; }
+                        try {
+                            const auto & path = _transcript_paths[i];
+                            assert(path.path.size() > 0);
+                            for (const auto & handle : path.path) {
+                                const size_t rank = rank_of(_graph->get_id(handle));
+                                local[rank / 64] |= uint64_t(1) << (rank % 64);
+                            }
+                        } catch (...) { errors[worker] = current_exception(); }
+                    }
+                }
+
+                for (const auto & error : errors) { if (error) { rethrow_exception(error); } }
+
+                uint64_t marked_count = 0;
+                #pragma omp parallel for num_threads(workers) reduction(+:marked_count)
+                for (size_t word = 0; word < words; ++word) {
+                    for (size_t worker = 1; worker < workers; ++worker) { marked[0][word] |= marked[worker][word]; }
+                    marked_count += __builtin_popcountll(marked[0][word]);
+                }
+
+                uint64_t valid_count = 0;
+                for (size_t i = 0; i < node_ids.size(); ++i) {
+                    const size_t rank = dense ? static_cast<uint64_t>(node_ids[i]) - minimum : i;
+                    if (marked[0][rank / 64] & (uint64_t(1) << (rank % 64))) {
+                        transcribed_nodes->emplace(node_ids[i]);
+                        ++valid_count;
+                    }
+                }
+                if (valid_count != marked_count) { throw invalid_argument("Transcript refers to an absent node"); }
+                return;
+            }
+        }
+    }
 
     for (auto & transcript_path: _transcript_paths) {
 

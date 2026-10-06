@@ -27,54 +27,61 @@ SourceSinkOverlay::SourceSinkOverlay(const HandleGraph* backing, size_t length, 
     cerr << "Make overlay for kmer size " << length << " with source " << this->source_id << " and sink " << this->sink_id << endl;
 #endif
     
-    // We have to divide the graph into connected components and get ahold of the tips.
-    vector<pair<unordered_set<id_t>, vector<handle_t>>> components = handlealgs::weakly_connected_components_with_tips(backing);
-    
-    for (auto& component : components) {
-        // Unpack each component
-        auto& component_ids = component.first;
-        auto& component_tips = component.second;
-        
-#ifdef debug
-        cerr << "Weakly connected component of " << component_ids.size() << " has " << component_tips.size() << " tips:" << endl;
-        for (auto& tip : component_tips) {
-            cerr << "\t" << backing->get_id(tip) << " orientation " << backing->get_is_reverse(tip) << endl;
+    // Retain tips and one representative per tipless component, without
+    // keeping a second set of every node grouped by component.
+    unordered_set<id_t> traversed;
+    backing->for_each_handle([&](const handle_t& initial) {
+        const handle_t root = backing->forward(initial);
+        if (!traversed.insert(backing->get_id(root)).second) {
+            return;
         }
-#endif
-        
-        // All the components need to be nonempty
-        assert(!component_ids.empty());
-        
-        for (auto& handle : component_tips) {
-            // We need to cache the heads and tails as sets of handles, so we know to
-            // make edges to all of them when reading out of our synthetic source and
-            // sink nodes.
-            
-            if (backing->get_is_reverse(handle)) {
-                // It's a tail. Insert it forward as a tail.
-                backing_tails.insert(backing->flip(handle));
-            } else {
-                // It's a head
-                backing_heads.insert(handle);
+
+        vector<handle_t> stack(1, root);
+        bool component_has_tip = false;
+        while (!stack.empty()) {
+            const handle_t here = stack.back();
+            stack.pop_back();
+
+            auto visit_neighbor = [&](const handle_t& neighbor) {
+                const handle_t forward = backing->forward(neighbor);
+                if (traversed.insert(backing->get_id(forward)).second) {
+                    stack.push_back(forward);
+                }
+                return true;
+            };
+
+            size_t degree = 0;
+            backing->follow_edges(here, false, [&](const handle_t& neighbor) {
+                ++degree;
+                return visit_neighbor(neighbor);
+            });
+            if (degree == 0) {
+                // `here` reads out of this component in forward orientation.
+                backing_tails.insert(here);
+                component_has_tip = true;
             }
-            
+
+            degree = 0;
+            backing->follow_edges(here, true, [&](const handle_t& neighbor) {
+                ++degree;
+                return visit_neighbor(neighbor);
+            });
+            if (degree == 0) {
+                backing_heads.insert(here);
+                component_has_tip = true;
+            }
         }
-        
-        if (component_tips.empty() && break_disconnected) {
-            // If we're supposed to break open cycles, we also mix in an arbitrary node
-            // from each tipless component as a head, and each handle that reads into
-            // it as a tail.
-            
-            // Choose a fake head arbitrarily
-            handle_t fake_head = backing->get_handle(*component_ids.begin(), false);
-            backing_heads.insert(fake_head);
-            
-            // Find the fake tails that are to the left of it
-            backing->follow_edges(fake_head, true, [&](const handle_t& fake_tail) {
+
+        if (!component_has_tip && break_disconnected) {
+            // As historically allowed, choose an arbitrary node in a tipless
+            // component; using the traversal root makes that choice repeatable
+            // for a backing graph with stable for_each_handle() order.
+            backing_heads.insert(root);
+            backing->follow_edges(root, true, [&](const handle_t& fake_tail) {
                 backing_tails.insert(fake_tail);
             });
         }
-    }
+    });
     
     
 }

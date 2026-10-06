@@ -2204,6 +2204,10 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
     // Augment graph with edited paths. 
     augment(static_cast<MutablePathMutableHandleGraph *>(_graph.get()), exon_boundary_paths, "GAM", &translations, "", false, !is_introns);
 
+    // The boundary paths are no longer needed after augmentation.
+    // Release their storage before updating haplotypes and transcript paths.
+    vector<Path>().swap(exon_boundary_paths);
+
 #ifdef transcriptome_debug
     cerr << "\t\tDEBUG Augmented graph with " << translations.size() << " translations: " << gcsa::readTimer() - time_augment_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif 

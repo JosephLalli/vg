@@ -2923,6 +2923,26 @@ void Transcriptome::write_transcript_info(ostream * tsv_ostream, const gbwt::GBW
     // Parse reference sample tags.
     auto gbwt_reference_samples = gbwtgraph::parse_reference_samples_tag(haplotype_index);
 
+    constexpr size_t name_budget = 32 * 1024 * 1024;
+    constexpr size_t maximum_name = 4096;
+    vector<string> base_names;
+    bool cache_names = haplotype_index.metadata.paths() <= name_budget / sizeof(string);
+    if (cache_names) {
+        base_names.reserve(haplotype_index.metadata.paths());
+        size_t used = base_names.capacity() * sizeof(string);
+        if (used > name_budget) { cache_names = false; }
+        for (size_t i = 0; cache_names && i < haplotype_index.metadata.paths(); ++i) {
+            string name = get_base_gbwt_path_name(haplotype_index, i, gbwt_reference_samples);
+            if (name.size() > maximum_name || name.capacity() + 1 > name_budget - used) {
+                cache_names = false;
+                break;
+            }
+            used += name.capacity() + 1;
+            base_names.emplace_back(std::move(name));
+        }
+        if (!cache_names) { vector<string>().swap(base_names); }
+    }
+
     int32_t num_written_info = 0;
 
     for (auto & transcript_path: _transcript_paths) {
@@ -2983,7 +3003,11 @@ void Transcriptome::write_transcript_info(ostream * tsv_ostream, const gbwt::GBW
                 continue;
             }
 
-            hap_name_count[get_base_gbwt_path_name(haplotype_index, id.first, gbwt_reference_samples)]++;
+            if (cache_names) {
+                hap_name_count[base_names.at(id.first)]++;
+            } else {
+                hap_name_count[get_base_gbwt_path_name(haplotype_index, id.first, gbwt_reference_samples)]++;
+            }
         }
         
         is_first = true;

@@ -294,6 +294,15 @@ std::unique_ptr<gbwt::DynamicGBWT> HaplotypeIndexer::build_gbwt(const std::vecto
                                                                 const PathHandleGraph* graph,
                                                                 const std::unordered_set<path_handle_t>* paths,
                                                                 bool skip_unvisited_paths) const {
+    return build_gbwt_impl(vcf_parse_files, job_name, graph, paths, skip_unvisited_paths, 1);
+}
+
+std::unique_ptr<gbwt::DynamicGBWT> HaplotypeIndexer::build_gbwt_impl(const std::vector<std::string>& vcf_parse_files,
+                                                                     const std::string& job_name,
+                                                                     const PathHandleGraph* graph,
+                                                                     const std::unordered_set<path_handle_t>* paths,
+                                                                     bool skip_unvisited_paths,
+                                                                     size_t insertion_threads) const {
 
     // GBWT index.
     std::unique_ptr<gbwt::DynamicGBWT> index(new gbwt::DynamicGBWT());
@@ -367,7 +376,8 @@ std::unique_ptr<gbwt::DynamicGBWT> HaplotypeIndexer::build_gbwt(const std::vecto
         }
         
         // GBWT construction, into existing cumulative index.
-        gbwt::GBWTBuilder builder(gbwt_node_width(*graph), this->gbwt_buffer_size * gbwt::MILLION, this->id_interval);
+        gbwt::GBWTBuilder builder(gbwt_node_width(*graph), this->gbwt_buffer_size * gbwt::MILLION,
+                                  this->id_interval, insertion_threads);
         builder.swapIndex(*index);
         
         std::unordered_set<std::string> visited_contig_names;
@@ -411,8 +421,12 @@ std::unique_ptr<gbwt::DynamicGBWT> HaplotypeIndexer::build_gbwt(const std::vecto
 }
 
 std::unique_ptr<gbwt::DynamicGBWT> HaplotypeIndexer::build_gbwt(const PathHandleGraph& graph) const {
-    // Fall back to the general vcf-and-graph implementation
-    return build_gbwt({}, "GBWT", &graph);
+    return build_gbwt(graph, 1);
+}
+
+std::unique_ptr<gbwt::DynamicGBWT> HaplotypeIndexer::build_gbwt(const PathHandleGraph& graph,
+                                                                 size_t insertion_threads) const {
+    return build_gbwt_impl({}, "GBWT", &graph, nullptr, false, insertion_threads);
 }
 
 //------------------------------------------------------------------------------

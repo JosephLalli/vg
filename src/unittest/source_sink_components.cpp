@@ -1,6 +1,7 @@
 #include "catch.hpp"
 #include "../source_sink_overlay.hpp"
 #include <bdsg/packed_graph.hpp>
+#include <bdsg/hash_graph.hpp>
 
 namespace vg {
 namespace unittest {
@@ -60,7 +61,7 @@ TEST_CASE("SourceSinkOverlay handles empty and tipless components", "[overlay][c
 }
 
 TEST_CASE("SourceSinkOverlay handles dense and sparse ID spans", "[overlay][components]") {
-    bdsg::PackedGraph graph;
+    bdsg::HashGraph graph;
     SECTION("dense IDs cross bitmap word boundaries") {
         for (handlegraph::nid_t id = 1; id <= 129; ++id) {
             graph.create_handle("A", id);

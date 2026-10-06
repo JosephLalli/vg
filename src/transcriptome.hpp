@@ -352,6 +352,8 @@ class Transcriptome {
 
         /// Writes selected transcript paths with the graph, generating ordinary
         /// PackedGraph path output directly when the graph is eligible.
+        /// Eligible output leaves the graph unchanged; the fallback embeds
+        /// the selected paths before writing through the ordinary graph saver.
         void write_graph_with_transcript_paths(ostream * graph_ostream, const bool add_reference_transcripts, const bool add_haplotype_transcripts);
     
     private:

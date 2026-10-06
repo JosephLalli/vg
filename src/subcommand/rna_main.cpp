@@ -570,3 +570,4 @@ int32_t main_rna(int32_t argc, char** argv) {
 
 // Register subcommand
 static Subcommand vg_rna("rna", "construct splicing graphs and pantranscriptomes", PIPELINE, 3, main_rna);
+

@@ -66,4 +66,29 @@ TEST_CASE("Shared slices validate boundaries and preserve copied vector API", "[
     REQUIRE(copy.shared_path.empty());
     REQUIRE(!whole.shared_path.empty());
 }
+TEST_CASE("Shared endpoint scans retain partial mappings and walk ranks", "[shared_transcript_path]") {
+    bdsg::HashGraph graph;
+    auto one = graph.create_handle("AAAA", 1);
+    auto two = graph.create_handle("CCCCC", 2);
+    auto source = make_shared<SharedTranscriptPath<EditedMapping>::Source>(vector<EditedMapping>{
+        {one, 0, 4}, {two, 0, 5}, {one, 0, 4}});
+    for (bool reverse : {false, true}) {
+        EditedTranscriptPath path("partial", gbwt::Path::id(0), true, false);
+        path.shared_path.append(source, 0, 3, 1, 3);
+        if (reverse) path.shared_path.reverse_complement();
+        auto expanded = shared_mappings(path, graph);
+        vector<pair<EditedMapping, uint64_t>> boundary;
+        path.shared_path.for_each_boundary([&](const handle_t& handle) { return graph.flip(handle); },
+            [&](const EditedMapping& mapping, uint64_t rank) { boundary.emplace_back(mapping, rank); });
+        REQUIRE(boundary.size() == 2);
+        REQUIRE(boundary.front() == make_pair(expanded.front(), uint64_t(0)));
+        REQUIRE(boundary.back() == make_pair(expanded.back(), uint64_t(2)));
+    }
+    EditedTranscriptPath one_step("one", gbwt::Path::id(0), true, false);
+    one_step.shared_path.append(source, 1, 2, 1, 3);
+    size_t count = 0;
+    one_step.shared_path.for_each_boundary([&](const handle_t& h) { return graph.flip(h); },
+        [&](const EditedMapping& mapping, uint64_t rank) { ++count; REQUIRE(rank == 0); REQUIRE(mapping.length == 2); });
+    REQUIRE(count == 1);
+}
 } }

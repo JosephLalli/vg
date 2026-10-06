@@ -7,7 +7,7 @@ PATH=../bin:$PATH # for vg
 
 export LC_ALL="en_US.utf8" # force ekg's favorite sort order
 
-plan tests 53
+plan tests 55
 
 # Single graph without haplotypes
 vg construct -r small/x.fa -v small/x.vcf.gz > x.vg
@@ -24,13 +24,16 @@ is $? 0 "building a fresh external GCSA and LCP pair"
 cmp x.gcsa external.gcsa && cmp x.gcsa.lcp external.gcsa.lcp
 is $? 0 "external construction preserves ordinary index bytes"
 is "$(find "$gcsa_scratch" -mindepth 1 | wc -l)" 0 "successful external construction cleans scratch"
+vg index -t 1 -g invalid.gcsa --gcsa-memory 1 -b "$gcsa_scratch" x.vg 2>/dev/null
+is $? 1 "external construction rejects an insufficient positive budget"
+is "$(find "$gcsa_scratch" -mindepth 1 | wc -l)" 0 "failed external construction cleans scratch"
 vg index -g invalid.gcsa --gcsa-memory invalid x.vg 2>/dev/null
 is $? 1 "external construction rejects an invalid memory size"
 vg index -g invalid.gcsa --gcsa-memory 0 x.vg 2>/dev/null
 is $? 1 "external construction rejects a zero memory size"
 vg index -x invalid.xg --gcsa-memory 64M x.vg 2>/dev/null
 is $? 1 "the construction memory setting requires GCSA output"
-rm -f external.gcsa external.gcsa.lcp
+rm -f external.gcsa external.gcsa.lcp invalid.gcsa invalid.gcsa.lcp invalid.xg
 rmdir "$gcsa_scratch"
 
 vg index -x x2.xg -g x2.gcsa x.vg

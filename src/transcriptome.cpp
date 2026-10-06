@@ -1533,7 +1533,7 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
                                 incomplete_transcript_paths_it->first.shared_path.append(shared_source,
                                     source_rank, source_rank + 1, offset, offset + edit_length);
                             } else {
-                            incomplete_transcript_paths_it->first.path.emplace_back(EditedMapping{node_handle, static_cast<uint32_t>(offset), static_cast<uint32_t>(edit_length)});
+                                incomplete_transcript_paths_it->first.path.emplace_back(EditedMapping{node_handle, static_cast<uint32_t>(offset), static_cast<uint32_t>(edit_length)});
                             }
 
                             if (node_start_pos + node_length <= exon_coords.second) {
@@ -1555,7 +1555,7 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
                             if (share_source) {
                                 incomplete_transcript_paths_it->first.shared_path.reverse_complement();
                             } else {
-                            reverse_complement_edited_path_in_place(&(incomplete_transcript_paths_it->first.path), *_graph);
+                                reverse_complement_edited_path_in_place(&(incomplete_transcript_paths_it->first.path), *_graph);
                             }
                         } 
 

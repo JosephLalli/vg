@@ -176,8 +176,7 @@ struct EditedTranscriptPath : public TranscriptPath {
     EditedTranscriptPath(const string & transcript_name, const string & embedded_path_name, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, embedded_path_name, is_reference_in, is_haplotype_in) {}
     EditedTranscriptPath(const string & transcript_name, const gbwt::size_type & haplotype_gbwt_id, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, haplotype_gbwt_id, is_reference_in, is_haplotype_in) {}
 
-    // See the note on TranscriptPath: the destructor suppresses the implicit
-    // moves, and this class is the one carrying the step vector.
+    // Enable move operations despite the user-declared destructor.
     EditedTranscriptPath(const EditedTranscriptPath &) = default;
     EditedTranscriptPath & operator=(const EditedTranscriptPath &) = default;
     EditedTranscriptPath(EditedTranscriptPath &&) = default;

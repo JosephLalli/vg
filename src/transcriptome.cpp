@@ -2262,6 +2262,9 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
         sort(translation.second.begin(), translation.second.end());
     }
 
+    // The index owns the needed translation data; release the original records.
+    vector<Translation>().swap(translations);
+
 #ifdef transcriptome_debug
     cerr << "\t\tDEBUG Indexed " << translation_index.size() << " translated nodes: " << gcsa::readTimer() - time_index_1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 #endif 

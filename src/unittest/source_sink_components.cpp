@@ -59,5 +59,21 @@ TEST_CASE("SourceSinkOverlay handles empty and tipless components", "[overlay][c
     }
 }
 
+TEST_CASE("SourceSinkOverlay handles dense and sparse ID spans", "[overlay][components]") {
+    bdsg::PackedGraph graph;
+    SECTION("dense IDs cross bitmap word boundaries") {
+        for (handlegraph::nid_t id = 1; id <= 129; ++id) {
+            graph.create_handle("A", id);
+        }
+    }
+    SECTION("sparse IDs do not require a max-ID allocation") {
+        graph.create_handle("A", 1);
+        graph.create_handle("C", 1000000000000LL);
+    }
+    SourceSinkOverlay overlay(&graph, 4, graph.max_node_id() + 1, graph.max_node_id() + 2);
+    REQUIRE(overlay.get_degree(overlay.get_source_handle(), false) == graph.get_node_count());
+    REQUIRE(overlay.get_degree(overlay.get_sink_handle(), true) == graph.get_node_count());
+}
+
 }
 }

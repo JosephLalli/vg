@@ -2,12 +2,80 @@
 
 #include <handlegraph/util.hpp>
 
+#include <cstdint>
+#include <limits>
+#include <vector>
+
 //#define debug
 
 namespace vg {
 
 using namespace std;
 using namespace handlegraph;
+
+namespace {
+
+/**
+ * Tracks component traversal without retaining every component's node set.
+ *
+ * Pangenome graph identifiers are normally dense. In that case one bit per
+ * possible identifier is substantially smaller than an unordered_set entry
+ * per node. Sparse identifier spaces use a hash set instead, avoiding an
+ * allocation proportional to max_node_id().
+ */
+class ComponentVisited {
+public:
+    explicit ComponentVisited(const HandleGraph* graph) : first(0), span(0) {
+        const size_t nodes = graph->get_node_count();
+        if (nodes == 0) {
+            return;
+        }
+
+        const id_t minimum = graph->min_node_id();
+        const id_t maximum = graph->max_node_id();
+        if (maximum < minimum) {
+            return;
+        }
+        // Unsigned subtraction represents the distance even across zero.
+        const uint64_t distance = uint64_t(maximum) - uint64_t(minimum);
+        if (distance == numeric_limits<uint64_t>::max()) {
+            return;
+        }
+        const uint64_t id_span = distance + 1;
+        // Compare without multiplying the node count or rounding past SIZE_MAX.
+        if (id_span <= numeric_limits<size_t>::max() &&
+            id_span / 8 + (id_span % 8 != 0) <= nodes) {
+            first = minimum;
+            span = static_cast<size_t>(id_span);
+            bits.assign(span / 64 + (span % 64 != 0), 0);
+        }
+    }
+
+    /// Marks an ID and returns true exactly once for each graph node.
+    bool mark(id_t id) {
+        if (!bits.empty()) {
+            const uint64_t offset = uint64_t(id) - uint64_t(first);
+            if (id >= first && offset < span) {
+                const uint64_t mask = uint64_t(1) << (offset & 63);
+                uint64_t& word = bits[offset >> 6];
+                if (word & mask) {
+                    return false;
+                }
+                word |= mask;
+                return true;
+            }
+        }
+        return sparse.insert(id).second;
+    }
+
+private:
+    id_t first;
+    size_t span;
+    vector<uint64_t> bits;
+    unordered_set<id_t> sparse;
+};
+
+}
 
 SourceSinkOverlay::SourceSinkOverlay(const HandleGraph* backing, size_t length, id_t source_id, id_t sink_id,
     bool break_disconnected) : node_length(length), backing(backing), source_id(source_id), sink_id(sink_id) {
@@ -29,10 +97,10 @@ SourceSinkOverlay::SourceSinkOverlay(const HandleGraph* backing, size_t length, 
     
     // Retain tips and one representative per tipless component, without
     // keeping a second set of every node grouped by component.
-    unordered_set<id_t> traversed;
+    ComponentVisited traversed(backing);
     backing->for_each_handle([&](const handle_t& initial) {
         const handle_t root = backing->forward(initial);
-        if (!traversed.insert(backing->get_id(root)).second) {
+        if (!traversed.mark(backing->get_id(root))) {
             return;
         }
 
@@ -44,7 +112,7 @@ SourceSinkOverlay::SourceSinkOverlay(const HandleGraph* backing, size_t length, 
 
             auto visit_neighbor = [&](const handle_t& neighbor) {
                 const handle_t forward = backing->forward(neighbor);
-                if (traversed.insert(backing->get_id(forward)).second) {
+                if (traversed.mark(backing->get_id(forward))) {
                     stack.push_back(forward);
                 }
                 return true;

@@ -69,7 +69,7 @@ TEST_CASE("Shared slices validate boundaries and preserve copied vector API", "[
     REQUIRE(!whole.shared_path.empty());
 }
 
-static unique_ptr<Transcriptome> make_output_transcriptome(const bool add_existing_path = false) {
+static unique_ptr<Transcriptome> make_output_transcriptome(const bool add_existing_path = false, const size_t steps = 2) {
     auto graph = make_unique<bdsg::PackedGraph>();
     const handle_t one = graph->create_handle("AAAA", 1);
     const handle_t two = graph->create_handle("CCCC", 2);
@@ -81,13 +81,19 @@ static unique_ptr<Transcriptome> make_output_transcriptome(const bool add_existi
 
     auto& paths = const_cast<vector<CompletedTranscriptPath>&>(transcriptome->transcript_paths());
     EditedTranscriptPath owned("owned", "source", true, false);
-    owned.path = {{one, 0, 4}, {two, 0, 4}};
+    for (size_t i = 0; i < steps; ++i) {
+        owned.path.push_back({i % 2 ? two : one, 0, 4});
+    }
     paths.emplace_back(owned, transcriptome->graph());
 
     using Source = SharedTranscriptPath<EditedMapping>::Source;
-    auto source = make_shared<Source>(vector<EditedMapping>{{two, 0, 4}, {one, 0, 4}});
+    vector<EditedMapping> mappings;
+    for (size_t i = 0; i < steps; ++i) {
+        mappings.push_back({i % 2 ? one : two, 0, 4});
+    }
+    auto source = make_shared<Source>(std::move(mappings));
     EditedTranscriptPath shared("shared", "source", true, false);
-    shared.shared_path.append(source, 0, 2, 0, 4);
+    shared.shared_path.append(source, 0, steps, 0, 4);
     paths.emplace_back(shared, transcriptome->graph());
 
     EditedTranscriptPath haplotype("haplotype", "source", false, true);
@@ -95,6 +101,21 @@ static unique_ptr<Transcriptome> make_output_transcriptome(const bool add_existi
     paths.emplace_back(haplotype, transcriptome->graph());
 
     return transcriptome;
+}
+
+TEST_CASE("Transcriptome parallel output preserves ordinary path bytes", "[transcriptome]") {
+    auto embedded = make_output_transcriptome(false, 1024);
+    embedded->embed_transcript_paths(true, false);
+    stringstream expected;
+    embedded->write_graph(&expected);
+    for (int32_t threads : {1, 2, 4}) {
+        auto generated = make_output_transcriptome(false, 1024);
+        generated->num_threads = threads;
+        stringstream output;
+        generated->write_graph_with_transcript_paths(&output, true, false);
+        REQUIRE(generated->graph().get_path_count() == 0);
+        REQUIRE(output.str() == expected.str());
+    }
 }
 
 TEST_CASE("Transcriptome writes eligible PackedGraph paths directly", "[transcriptome]") {

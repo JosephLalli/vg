@@ -353,6 +353,16 @@ int main_prune(int argc, char** argv) {
                       << " nodes, " << graph->get_edge_count() << " edges" << std::endl;
     }
 
+    auto destroy_all_paths = [&]() {
+        vector<path_handle_t> path_handles;
+        graph->for_each_path_handle([&](path_handle_t path_handle) {
+            path_handles.push_back(path_handle);
+        });
+        for (auto path_handle : path_handles) {
+            graph->destroy_path(path_handle);
+        }
+    };
+
     // Remove the paths and build an XG index if needed.
     if (mode == mode_restore || mode == mode_unfold) {
         vector<path_handle_t> alt_path_handles;
@@ -364,19 +374,14 @@ int main_prune(int argc, char** argv) {
         for (auto& alt_path_handle : alt_path_handles) {
             graph->destroy_path(alt_path_handle);
         }
-        xg_index.from_path_handle_graph(*graph);
+        xg_index.from_path_handle_graph(*graph, destroy_all_paths);
         if (show_progress) {
             logger.info() << "Built a temporary XG index" << std::endl;
         }
     }
     
-    // Destroy all remaining paths
-    vector<path_handle_t> path_handles;
-    graph->for_each_path_handle([&](path_handle_t path_handle) {
-        path_handles.push_back(path_handle);
-    });
-    for (auto path_handle : path_handles) {
-        graph->destroy_path(path_handle);
+    if (mode != mode_restore && mode != mode_unfold) {
+        destroy_all_paths();
     }
     
     if (show_progress) {

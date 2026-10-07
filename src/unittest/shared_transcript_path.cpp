@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -67,7 +68,6 @@ TEST_CASE("Shared slices validate boundaries and preserve copied vector API", "[
     REQUIRE(copy.shared_path.empty());
     REQUIRE(!whole.shared_path.empty());
 }
-
 TEST_CASE("Shared edited paths preserve wide node coordinates", "[shared_transcript_path][edited_mapping]") {
     bdsg::HashGraph graph;
     const auto one = graph.create_handle("A", 1);
@@ -115,5 +115,96 @@ TEST_CASE("Shared edited paths preserve wide node coordinates", "[shared_transcr
         [&](const handle_t& handle) { return graph.flip(handle); },
         [&](const EditedMapping& mapping, uint64_t) { mappings.push_back(mapping); });
     REQUIRE(mappings == vector<EditedMapping>{{two, 0, numeric_limits<int32_t>::max()}});
+
+    const auto left = graph.create_handle("G", 3);
+    const auto middle = graph.create_handle("T", 4);
+    const auto right = graph.create_handle("A", 5);
+    SharedPath translated_input;
+    translated_input.append(wide_source, 0, 1, first_offset, last_end);
+    SharedPath::TranslationCache cache;
+    cache.register_path(translated_input);
+    auto translated = cache.translate(
+        translated_input, [&](const SharedPath::SourceStep& mapping, const auto& emit) {
+            REQUIRE(mapping.handle == one);
+            emit(SharedPath::SourceStep{left, static_cast<uint64_t>(first_offset)});
+            emit(SharedPath::SourceStep{
+                middle, last_end - static_cast<uint64_t>(first_offset)});
+            emit(SharedPath::SourceStep{right, node_length - last_end});
+        });
+    REQUIRE(cache.empty());
+    mappings.clear();
+    translated.for_each_mapping(
+        [&](const handle_t& handle) { return graph.flip(handle); },
+        [&](const EditedMapping& mapping, uint64_t) { mappings.push_back(mapping); });
+    REQUIRE(mappings == vector<EditedMapping>{{middle, 0, 31}});
+}
+
+TEST_CASE("Shared translation reuses sources and preserves clipped orientations", "[shared_transcript_path]") {
+    bdsg::HashGraph graph;
+    auto one = graph.create_handle("AAAA", 1);
+    auto two = graph.create_handle("CCCCC", 2);
+    vector<handle_t> first, second;
+    for (size_t i = 0; i < 4; ++i) first.push_back(graph.create_handle("A", 10 + i));
+    for (size_t i = 0; i < 5; ++i) second.push_back(graph.create_handle("C", 20 + i));
+    using Shared = SharedTranscriptPath<EditedMapping>;
+    auto source = make_shared<Shared::Source>(vector<EditedMapping>{{one, 0, 4}, {two, 0, 5}, {one, 0, 4}});
+    Shared forward, reverse;
+    forward.append(source, 0, 3, 1, 3);
+    reverse = forward;
+    reverse.reverse_complement();
+    Shared::TranslationCache cache;
+    cache.register_path(forward); cache.register_path(reverse);
+    size_t calls = 0;
+    auto mapper = [&](const Shared::SourceStep& mapping, const auto& emit) {
+        ++calls;
+        for (const auto& handle : mapping.handle == one ? first : second) {
+            emit(Shared::SourceStep{handle, 1});
+        }
+    };
+    auto translated_forward = cache.translate(forward, mapper);
+    REQUIRE_FALSE(cache.empty());
+    auto translated_reverse = cache.translate(reverse, mapper);
+    REQUIRE(cache.empty());
+    REQUIRE(calls == 3);
+    REQUIRE(translated_forward.slices().front().source == translated_reverse.slices().front().source);
+    vector<handle_t> expected(first.begin() + 1, first.end());
+    expected.insert(expected.end(), second.begin(), second.end());
+    expected.insert(expected.end(), first.begin(), first.begin() + 3);
+    vector<handle_t> actual;
+    auto flip = [&](const handle_t& h) { return graph.flip(h); };
+    translated_forward.for_each_mapping(flip, [&](const EditedMapping& mapping, uint64_t rank) {
+        REQUIRE(rank == actual.size()); REQUIRE(mapping.offset == 0); REQUIRE(mapping.length == 1);
+        actual.push_back(mapping.handle);
+    });
+    REQUIRE(actual == expected);
+    actual.clear();
+    translated_reverse.for_each_mapping(flip, [&](const EditedMapping& mapping, uint64_t) { actual.push_back(mapping.handle); });
+    std::reverse(expected.begin(), expected.end());
+    for (auto& handle : expected) handle = graph.flip(handle);
+    REQUIRE(actual == expected);
+    REQUIRE_THROWS_AS(cache.translate(forward, mapper), logic_error);
+    REQUIRE_THROWS_AS(cache.register_path(forward), logic_error);
+}
+
+TEST_CASE("Shared translation omits unused entries and rejects invalid partitions", "[shared_transcript_path]") {
+    bdsg::HashGraph graph;
+    auto one = graph.create_handle("AAAA", 1);
+    auto two = graph.create_handle("CCCCC", 2);
+    using Shared = SharedTranscriptPath<EditedMapping>;
+    auto source = make_shared<Shared::Source>(vector<EditedMapping>{{one, 0, 4}, {two, 0, 5}, {one, 0, 4}});
+    Shared path; path.append(source, 1, 2, 0, 5);
+    Shared::TranslationCache cache; cache.register_path(path);
+    graph.destroy_handle(one);
+    REQUIRE_THROWS_AS(cache.translate(path, [&](const Shared::SourceStep& mapping,
+                                                const auto& emit) {
+        emit(Shared::SourceStep{mapping.handle, 2});
+    }), invalid_argument);
+    REQUIRE_FALSE(cache.empty());
+    size_t calls = 0;
+    auto translated = cache.translate(path, [&](const Shared::SourceStep& mapping,
+                                                 const auto& emit) {
+        ++calls; REQUIRE(mapping.handle == two); emit(mapping);
+    });
+    REQUIRE(calls == 1); REQUIRE(cache.empty()); REQUIRE(translated.size() == 1);
 }
 } }

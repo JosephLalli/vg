@@ -125,12 +125,47 @@ struct TranscriptPath {
 };
 
 /**
+ * One step of an edited transcript path: `length` matched bases starting
+ * `offset` bases into the strand of `handle`. It carries exactly what the
+ * construction phase reads back from a step -- node, orientation, offset and
+ * match length.
+ *
+ * It replaces a protobuf Mapping holding a Position and one full-match Edit.
+ *
+ * Offsets and lengths are 32-bit: the construction code already computed
+ * them in int32_t locals, so no wider node is representable than before.
+ */
+struct EditedMapping {
+
+    /// Node and orientation.
+    handle_t handle;
+
+    /// Offset of the first matched base on the strand of the handle.
+    uint32_t offset;
+
+    /// Number of matched bases.
+    uint32_t length;
+};
+
+inline bool operator==(const EditedMapping & lhs, const EditedMapping & rhs) {
+
+    return (lhs.handle == rhs.handle && lhs.offset == rhs.offset && lhs.length == rhs.length);
+}
+
+inline bool operator!=(const EditedMapping & lhs, const EditedMapping & rhs) {
+
+    return !(lhs == rhs);
+}
+
+/**
  * Data structure that defines an edited transcript path.
- */ 
+ */
 struct EditedTranscriptPath : public TranscriptPath {
 
-    /// Transcript path.
-    Path path;
+    /// Transcript path. Every step is a match; a step may start or end
+    /// inside a node until the graph has been augmented with the exon
+    /// boundaries.
+    vector<EditedMapping> path;
 
     EditedTranscriptPath(const string & transcript_name, const string & embedded_path_name, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, embedded_path_name, is_reference_in, is_haplotype_in) {}
     EditedTranscriptPath(const string & transcript_name, const gbwt::size_type & haplotype_gbwt_id, const bool is_reference_in, const bool is_haplotype_in) : TranscriptPath(transcript_name, haplotype_gbwt_id, is_reference_in, is_haplotype_in) {}
@@ -156,20 +191,15 @@ struct CompletedTranscriptPath : public TranscriptPath {
     handle_t get_first_node_handle(const HandleGraph & graph) const;
 };
 
-struct MappingHash
+struct EditedMappingHash
 {
-    size_t operator()(const Mapping & mapping) const
+    size_t operator()(const EditedMapping & mapping) const
     {
         size_t seed = 0;
 
-        spp::hash_combine(seed, mapping.position().node_id());
-        spp::hash_combine(seed, mapping.position().offset());
-        spp::hash_combine(seed, mapping.position().is_reverse());
-
-        for (auto & edit: mapping.edit()) {
-
-            spp::hash_combine(seed, edit.to_length());
-        }
+        spp::hash_combine(seed, handlegraph::as_integer(mapping.handle));
+        spp::hash_combine(seed, mapping.offset);
+        spp::hash_combine(seed, mapping.length);
 
         return seed;
     }

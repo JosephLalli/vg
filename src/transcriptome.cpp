@@ -1,5 +1,6 @@
 
 #include <thread>
+#include <unordered_map>
 
 #include <gbwtgraph/utils.h>
 
@@ -2923,25 +2924,13 @@ void Transcriptome::write_transcript_info(ostream * tsv_ostream, const gbwt::GBW
     // Parse reference sample tags.
     auto gbwt_reference_samples = gbwtgraph::parse_reference_samples_tag(haplotype_index);
 
-    constexpr size_t name_budget = 32 * 1024 * 1024;
-    constexpr size_t maximum_name = 4096;
-    vector<string> base_names;
-    bool cache_names = haplotype_index.metadata.paths() <= name_budget / sizeof(string);
-    if (cache_names) {
-        base_names.reserve(haplotype_index.metadata.paths());
-        size_t used = base_names.capacity() * sizeof(string);
-        if (used > name_budget) { cache_names = false; }
-        for (size_t i = 0; cache_names && i < haplotype_index.metadata.paths(); ++i) {
-            string name = get_base_gbwt_path_name(haplotype_index, i, gbwt_reference_samples);
-            if (name.size() > maximum_name || name.capacity() + 1 > name_budget - used) {
-                cache_names = false;
-                break;
-            }
-            used += name.capacity() + 1;
-            base_names.emplace_back(std::move(name));
-        }
-        if (!cache_names) { vector<string>().swap(base_names); }
-    }
+    // Cache only origins reached by emitted transcript rows. This bounds string
+    // payload without precomputing metadata paths that the output never uses.
+    constexpr size_t name_cache_budget = 32 * 1024 * 1024;
+    constexpr size_t maximum_cached_name = 4096;
+    constexpr size_t maximum_cached_origins = 65536;
+    size_t cached_name_bytes = 0;
+    unordered_map<gbwt::size_type, string> cached_names;
 
     int32_t num_written_info = 0;
 
@@ -3003,10 +2992,18 @@ void Transcriptome::write_transcript_info(ostream * tsv_ostream, const gbwt::GBW
                 continue;
             }
 
-            if (cache_names) {
-                hap_name_count[base_names.at(id.first)]++;
-            } else {
-                hap_name_count[get_base_gbwt_path_name(haplotype_index, id.first, gbwt_reference_samples)]++;
+            auto cached = cached_names.find(id.first);
+            if (cached != cached_names.end()) {
+                hap_name_count[cached->second]++;
+                continue;
+            }
+
+            string name = get_base_gbwt_path_name(haplotype_index, id.first, gbwt_reference_samples);
+            hap_name_count[name]++;
+            if (cached_names.size() < maximum_cached_origins && name.size() <= maximum_cached_name &&
+                name.capacity() + 1 <= name_cache_budget - cached_name_bytes) {
+                cached_name_bytes += name.capacity() + 1;
+                cached_names.emplace(id.first, std::move(name));
             }
         }
         

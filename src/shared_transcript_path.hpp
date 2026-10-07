@@ -163,6 +163,32 @@ public:
         }
     }
 
+    /**
+     * Visit only slice endpoints, in walk order, with their original ranks.
+     * All potentially partial mappings occur here. Whole internal mappings
+     * need not be expanded merely to discover graph breakpoints.
+     */
+    template<class Flip, class Iteratee>
+    void for_each_boundary(const Flip& flip, const Iteratee& iteratee) const {
+        uint64_t rank = 0;
+        auto visit = [&](const Slice& slice) {
+            const uint64_t count = slice.end - slice.begin;
+            const uint64_t first = reverse_ ? slice.end - 1 : slice.begin;
+            const uint64_t last = reverse_ ? slice.begin : slice.end - 1;
+            iteratee(mapping_at(slice, first, flip), rank);
+            if (count > 1) {
+                iteratee(mapping_at(slice, last, flip), rank + count - 1);
+            }
+            rank += count;
+        };
+        if (!reverse_) {
+            for (const Slice& slice : slices_) { visit(slice); }
+        } else {
+            for (auto slice = slices_.rbegin(); slice != slices_.rend(); ++slice) {
+                visit(*slice);
+            }
+        }
+    }
 
 private:
     template<class Flip>

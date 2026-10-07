@@ -1,3 +1,4 @@
+#include <limits>
 #include <memory>
 #include <vector>
 #include "bdsg/hash_graph.hpp"
@@ -65,5 +66,54 @@ TEST_CASE("Shared slices validate boundaries and preserve copied vector API", "[
     REQUIRE(copy.path == vector<handle_t>{one});
     REQUIRE(copy.shared_path.empty());
     REQUIRE(!whole.shared_path.empty());
+}
+
+TEST_CASE("Shared edited paths preserve wide node coordinates", "[shared_transcript_path][edited_mapping]") {
+    bdsg::HashGraph graph;
+    const auto one = graph.create_handle("A", 1);
+    const auto two = graph.create_handle("C", 2);
+    using SharedPath = SharedTranscriptPath<EditedMapping>;
+
+    const int64_t first_offset = static_cast<int64_t>(numeric_limits<uint32_t>::max()) + 17;
+    const uint64_t last_end = static_cast<uint64_t>(first_offset) + 31;
+    const uint64_t node_length = last_end + 101;
+    auto wide_source = make_shared<SharedPath::Source>(vector<SharedPath::SourceStep>{
+        {one, node_length}
+    });
+
+    SharedPath clipped;
+    clipped.append(wide_source, 0, 1, first_offset, last_end);
+    vector<EditedMapping> mappings;
+    clipped.for_each_mapping([&](const handle_t& handle) { return graph.flip(handle); },
+                             [&](const EditedMapping& mapping, uint64_t) {
+        mappings.push_back(mapping);
+    });
+    REQUIRE(mappings == vector<EditedMapping>{{one, first_offset, 31}});
+
+    clipped.reverse_complement();
+    mappings.clear();
+    clipped.for_each_mapping([&](const handle_t& handle) { return graph.flip(handle); },
+                             [&](const EditedMapping& mapping, uint64_t) {
+        mappings.push_back(mapping);
+    });
+    REQUIRE(mappings == vector<EditedMapping>{
+        {graph.flip(one), static_cast<int64_t>(node_length - last_end), 31}
+    });
+
+    SharedPath unrepresentable_whole_node;
+    REQUIRE_THROWS_AS(unrepresentable_whole_node.append(
+        wide_source, 0, 1, 0, node_length), invalid_argument);
+
+    const uint64_t maximum_edit_length = numeric_limits<int32_t>::max();
+    auto maximum_length_source = make_shared<SharedPath::Source>(vector<SharedPath::SourceStep>{
+        {two, maximum_edit_length}
+    });
+    SharedPath maximum_length_path;
+    maximum_length_path.append(maximum_length_source, 0, 1, 0, maximum_edit_length);
+    mappings.clear();
+    maximum_length_path.for_each_mapping(
+        [&](const handle_t& handle) { return graph.flip(handle); },
+        [&](const EditedMapping& mapping, uint64_t) { mappings.push_back(mapping); });
+    REQUIRE(mappings == vector<EditedMapping>{{two, 0, numeric_limits<int32_t>::max()}});
 }
 } }

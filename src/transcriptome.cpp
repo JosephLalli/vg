@@ -162,9 +162,13 @@ static void reverse_complement_edited_path_in_place(vector<EditedMapping> * path
     for (auto & mapping: *path) {
 
         const auto node_length = graph.get_length(mapping.handle);
-        assert(mapping.offset + mapping.length <= node_length);
+        if (node_length > static_cast<uint64_t>(numeric_limits<int64_t>::max())) {
+            throw overflow_error("Transcript node length exceeds Position range");
+        }
+        assert(mapping.offset >= 0 && mapping.length > 0);
+        assert(static_cast<uint64_t>(mapping.offset) + static_cast<uint64_t>(mapping.length) <= node_length);
 
-        mapping.offset = node_length - mapping.offset - mapping.length;
+        mapping.offset = static_cast<int64_t>(node_length) - mapping.offset - mapping.length;
         mapping.handle = graph.flip(mapping.handle);
     }
 
@@ -207,17 +211,18 @@ string TranscriptPath::get_name() const {
 }
 
 static SharedTranscriptPath<EditedMapping> share_completed_path(const vector<handle_t>& handles, const HandleGraph& graph) {
-    vector<EditedMapping> mappings;
+    using SharedPath = SharedTranscriptPath<EditedMapping>;
+    vector<SharedPath::SourceStep> mappings;
     mappings.reserve(handles.size());
     for (const auto& handle : handles) {
         const auto length = graph.get_length(handle);
-        if (length > numeric_limits<int32_t>::max()) {
-            throw overflow_error("Shared transcript node length exceeds Mapping Edit range");
+        if (length > static_cast<uint64_t>(numeric_limits<int64_t>::max())) {
+            throw overflow_error("Shared transcript node length exceeds Position range");
         }
-        mappings.push_back({handle, 0, static_cast<int32_t>(length)});
+        mappings.push_back({handle, static_cast<uint64_t>(length)});
     }
-    auto source = make_shared<SharedTranscriptPath<EditedMapping>::Source>(std::move(mappings));
-    SharedTranscriptPath<EditedMapping> result;
+    auto source = make_shared<SharedPath::Source>(std::move(mappings));
+    SharedPath result;
     if (!source->size()) { return result; }
     result.append(source, 0, source->size(), 0, (*source)[source->size() - 1].length);
     return result;
@@ -1407,7 +1412,8 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
 
     int32_t chrom_transcript_sets_idx = thread_idx;
     const bool share_source = path_collapse_type == "no";
-    using SharedSource = SharedTranscriptPath<EditedMapping>::Source;
+    using SharedPath = SharedTranscriptPath<EditedMapping>;
+    using SharedSource = SharedPath::Source;
 
     while (chrom_transcript_sets_idx < chrom_transcript_sets.size()) {
 
@@ -1448,15 +1454,15 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
 
             shared_ptr<const SharedSource> shared_source;
             if (share_source) {
-                vector<EditedMapping> mappings;
+                vector<SharedPath::SourceStep> mappings;
                 mappings.reserve(gbwt_haplotype.size());
                 for (auto node : gbwt_haplotype) {
                     auto handle = gbwt_to_handle(*_graph, node);
                     auto length = _graph->get_length(handle);
-                    if (length > numeric_limits<int32_t>::max()) {
-                        throw overflow_error("Shared transcript node length exceeds Mapping Edit range");
+                    if (length > static_cast<uint64_t>(numeric_limits<int64_t>::max())) {
+                        throw overflow_error("Shared transcript node length exceeds Position range");
                     }
-                    mappings.push_back({handle, 0, static_cast<int32_t>(length)});
+                    mappings.push_back({handle, static_cast<uint64_t>(length)});
                 }
                 shared_source = make_shared<SharedSource>(std::move(mappings));
             }
@@ -1535,7 +1541,8 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
                             // be reverse complemented if transcript is on the '-' strand.
                             if (share_source) {
                                 incomplete_transcript_paths_it->first.shared_path.append(shared_source,
-                                    source_rank, source_rank + 1, offset, offset + edit_length);
+                                    source_rank, source_rank + 1, offset,
+                                    static_cast<uint64_t>(offset) + static_cast<uint64_t>(edit_length));
                             } else {
                                 incomplete_transcript_paths_it->first.path.emplace_back(EditedMapping{node_handle, static_cast<int64_t>(offset), static_cast<int32_t>(edit_length)});
                             }

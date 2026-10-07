@@ -2412,7 +2412,9 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
     // Update paths to match new augmented graph and add them
     // as reference transcript paths, releasing each consumed input path.
     auto edited_transcript_paths_it = edited_transcript_paths.begin();
+
     while (edited_transcript_paths_it != edited_transcript_paths.end()) {
+
         const EditedTranscriptPath & transcript_path = *edited_transcript_paths_it;
 
         updated_transcript_paths.emplace_back(transcript_path);

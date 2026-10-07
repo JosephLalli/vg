@@ -3288,7 +3288,7 @@ void Transcriptome::write_graph_with_transcript_paths(ostream * graph_ostream, c
                 [&](size_t i, const auto& emit) {
                     selected_paths[i]->for_each_handle(*_graph,
                         [&](const handle_t& handle, uint64_t) { emit(handle); });
-                });
+                }, static_cast<size_t>(std::max(1, num_threads)), 3ULL << 30);
             return;
         }
     }

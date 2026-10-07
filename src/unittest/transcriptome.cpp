@@ -902,6 +902,21 @@ namespace vg {
             return transcriptome;
         }
 
+        TEST_CASE("Transcriptome parallel output preserves ordinary path bytes", "[transcriptome]") {
+            auto embedded = make_output_transcriptome(false, 1024);
+            embedded->embed_transcript_paths(true, false);
+            stringstream expected;
+            embedded->write_graph(&expected);
+            for (int32_t threads : {1, 2, 4}) {
+                auto generated = make_output_transcriptome(false, 1024);
+                generated->num_threads = threads;
+                stringstream output;
+                generated->write_graph_with_transcript_paths(&output, true, false);
+                REQUIRE(generated->graph().get_path_count() == 0);
+                REQUIRE(output.str() == expected.str());
+            }
+        }
+
         TEST_CASE("Transcriptome writes selected PackedGraph paths directly", "[transcriptome]") {
             auto embedded = make_output_transcriptome();
             embedded->embed_transcript_paths(true, false);

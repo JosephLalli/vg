@@ -3039,7 +3039,7 @@ void Transcriptome::write_graph_with_transcript_paths(ostream * graph_ostream, c
                     for (const handle_t& handle : selected_paths[i]->path) {
                         emit(handle);
                     }
-                });
+                }, static_cast<size_t>(std::max(1, num_threads)), 3ULL << 30);
             return;
         }
     }

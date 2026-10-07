@@ -1,3 +1,5 @@
+#include <sstream>
+#include "bdsg/packed_graph.hpp"
 #include <algorithm>
 #include <limits>
 #include <memory>
@@ -232,5 +234,61 @@ TEST_CASE("Shared endpoint scans retain partial mappings and walk ranks", "[shar
     one_step.shared_path.for_each_boundary([&](const handle_t& h) { return graph.flip(h); },
         [&](const EditedMapping& mapping, uint64_t rank) { ++count; REQUIRE(rank == 0); REQUIRE(mapping.length == 2); });
     REQUIRE(count == 1);
+}
+static unique_ptr<Transcriptome> make_output_transcriptome(const bool add_existing_path = false) {
+    auto graph = make_unique<bdsg::PackedGraph>();
+    const handle_t one = graph->create_handle("AAAA", 1);
+    const handle_t two = graph->create_handle("CCCC", 2);
+    graph->create_edge(one, two);
+    if (add_existing_path) {
+        graph->create_path_handle("existing");
+    }
+    auto transcriptome = make_unique<Transcriptome>(std::move(graph));
+
+    auto& paths = const_cast<vector<CompletedTranscriptPath>&>(transcriptome->transcript_paths());
+    EditedTranscriptPath owned("owned", "source", true, false);
+    owned.path = {{one, 0, 4}, {two, 0, 4}};
+    paths.emplace_back(owned, transcriptome->graph());
+
+    using Source = SharedTranscriptPath<EditedMapping>::Source;
+    auto source = make_shared<Source>(vector<EditedMapping>{{two, 0, 4}, {one, 0, 4}});
+    EditedTranscriptPath shared("shared", "source", true, false);
+    shared.shared_path.append(source, 0, 2, 0, 4);
+    paths.emplace_back(shared, transcriptome->graph());
+
+    EditedTranscriptPath haplotype("haplotype", "source", false, true);
+    haplotype.path = {{two, 0, 4}};
+    paths.emplace_back(haplotype, transcriptome->graph());
+
+    return transcriptome;
+}
+
+TEST_CASE("Transcriptome writes eligible PackedGraph paths directly", "[transcriptome]") {
+    auto embedded = make_output_transcriptome();
+    embedded->embed_transcript_paths(true, false);
+    REQUIRE(embedded->graph().get_path_count() == 2);
+    stringstream expected;
+    embedded->write_graph(&expected);
+
+    auto generated = make_output_transcriptome();
+    stringstream generated_output;
+    generated->write_graph_with_transcript_paths(&generated_output, true, false);
+    REQUIRE(generated->graph().get_path_count() == 0);
+    REQUIRE(generated_output.str() == expected.str());
+
+    bdsg::PackedGraph restored;
+    stringstream restored_input(generated_output.str());
+    restored.deserialize(restored_input);
+    REQUIRE(restored.has_path("owned_R1"));
+    REQUIRE(restored.has_path("shared_R1"));
+    REQUIRE(!restored.has_path("haplotype_H1"));
+    REQUIRE(restored.get_path_count() == 2);
+
+    auto fallback = make_output_transcriptome(true);
+    stringstream fallback_output;
+    fallback->write_graph_with_transcript_paths(&fallback_output, true, false);
+    REQUIRE(fallback->graph().get_path_count() == 3);
+    REQUIRE(fallback->graph().has_path("owned_R1"));
+    REQUIRE(fallback->graph().has_path("shared_R1"));
 }
 } }

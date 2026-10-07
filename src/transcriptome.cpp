@@ -3265,4 +3265,37 @@ void Transcriptome::write_graph(ostream * graph_ostream) const {
     vg::io::save_handle_graph(_graph.get(), *graph_ostream);
 }
 
+void Transcriptome::write_graph_with_transcript_paths(ostream * graph_ostream, const bool add_reference_transcripts, const bool add_haplotype_transcripts) {
+
+    assert(add_reference_transcripts || add_haplotype_transcripts);
+
+    const auto* packed = dynamic_cast<const bdsg::PackedGraph*>(_graph.get());
+    if (packed != nullptr && dynamic_cast<const GFAHandleGraph*>(_graph.get()) == nullptr &&
+        packed->can_serialize_with_generated_paths()) {
+        vector<const CompletedTranscriptPath*> selected_paths;
+        selected_paths.reserve(_transcript_paths.size());
+        for (const auto& transcript_path : _transcript_paths) {
+            assert(transcript_path.is_reference || transcript_path.is_haplotype);
+            if ((transcript_path.is_reference && add_reference_transcripts) ||
+                (transcript_path.is_haplotype && add_haplotype_transcripts)) {
+                selected_paths.push_back(&transcript_path);
+            }
+        }
+        if (!selected_paths.empty()) {
+            packed->serialize_with_paths(*graph_ostream, selected_paths.size(),
+                [&](size_t i) { return selected_paths[i]->get_name(); },
+                [&](size_t i) { return selected_paths[i]->resident_size(); },
+                [&](size_t i, const auto& emit) {
+                    selected_paths[i]->for_each_handle(*_graph,
+                        [&](const handle_t& handle, uint64_t) { emit(handle); });
+                });
+            return;
+        }
+    }
+
+    embed_transcript_paths(add_reference_transcripts, add_haplotype_transcripts);
+    write_graph(graph_ostream);
+}
+
+
 }

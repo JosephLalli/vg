@@ -134,8 +134,9 @@ struct TranscriptPath {
  *
  * It replaces a protobuf Mapping holding a Position and one full-match Edit.
  *
- * Offsets and lengths are 32-bit: the construction code already computed
- * them in int32_t locals, so no wider node is representable than before.
+ * Offsets retain Position's signed 64-bit representation, while lengths
+ * retain Edit's signed 32-bit representation. Valid transcript matches use
+ * non-negative values.
  */
 struct EditedMapping {
 
@@ -143,10 +144,10 @@ struct EditedMapping {
     handle_t handle;
 
     /// Offset of the first matched base on the strand of the handle.
-    uint32_t offset;
+    int64_t offset;
 
     /// Number of matched bases.
-    uint32_t length;
+    int32_t length;
 };
 
 inline bool operator==(const EditedMapping & lhs, const EditedMapping & rhs) {

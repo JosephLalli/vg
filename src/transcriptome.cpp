@@ -1237,7 +1237,7 @@ list<EditedTranscriptPath> Transcriptome::project_transcript_embedded(const Tran
 
                     // Add new mapping in forward direction. Later the whole path will
                     // be reverse complemented if transcript is on the '-' strand.
-                    exon_path.emplace_back(EditedMapping{_graph->get_handle_of_step(haplotype_path_start_step), static_cast<uint32_t>(offset), static_cast<uint32_t>(edit_length)});
+                    exon_path.emplace_back(EditedMapping{_graph->get_handle_of_step(haplotype_path_start_step), static_cast<int64_t>(offset), static_cast<int32_t>(edit_length)});
                                         
                     if (haplotype_path_start_step == haplotype_path_end_step) { break; }
 
@@ -1533,7 +1533,7 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
                                 incomplete_transcript_paths_it->first.shared_path.append(shared_source,
                                     source_rank, source_rank + 1, offset, offset + edit_length);
                             } else {
-                                incomplete_transcript_paths_it->first.path.emplace_back(EditedMapping{node_handle, static_cast<uint32_t>(offset), static_cast<uint32_t>(edit_length)});
+                                incomplete_transcript_paths_it->first.path.emplace_back(EditedMapping{node_handle, static_cast<int64_t>(offset), static_cast<int32_t>(edit_length)});
                             }
 
                             if (node_start_pos + node_length <= exon_coords.second) {
@@ -1858,7 +1858,7 @@ list<EditedTranscriptPath> Transcriptome::project_transcript_gbwt(const Transcri
 
                 // Add new mapping in forward direction. Later the whole path will
                 // be reverse complemented if transcript is on the '-' strand.
-                edited_transcript_paths.back().path.emplace_back(EditedMapping{_graph->get_handle(node_id, false), static_cast<uint32_t>(offset), static_cast<uint32_t>(edit_length)});
+                edited_transcript_paths.back().path.emplace_back(EditedMapping{_graph->get_handle(node_id, false), static_cast<int64_t>(offset), static_cast<int32_t>(edit_length)});
             }
         }
 
@@ -3136,4 +3136,3 @@ void Transcriptome::write_graph(ostream * graph_ostream) const {
 }
 
 }
-

@@ -486,34 +486,6 @@ int32_t main_rna(int32_t argc, char** argv) {
     }
 
 
-    if (add_reference_transcript_paths || add_projected_transcript_paths) {
-
-        double time_add_start = gcsa::readTimer();
-
-        if (add_reference_transcript_paths && add_projected_transcript_paths) {
-
-            if (show_progress) {
-                logger.info() << "Adding reference and projected transcripts "
-                              << "as embedded paths in the graph ..." << endl;
-            }
-
-        } else {
-
-            if (show_progress) { 
-                logger.info() << "Adding " << ((add_reference_transcript_paths) ? "reference" : "projected")
-                              << " transcripts as embedded paths in the graph ..." << endl;
-            }
-        }
-
-        transcriptome.embed_transcript_paths(add_reference_transcript_paths, add_projected_transcript_paths);
-
-        if (show_progress) {
-            logger.info() << "Transcript paths added in " << gcsa::readTimer() - time_add_start 
-                          << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
-        };
-    }
-
-
     double time_writing_start = gcsa::readTimer();
 
     bool write_pantranscriptome = (!gbwt_out_filename.empty() || !fasta_out_filename.empty() || !info_out_filename.empty());
@@ -581,7 +553,11 @@ int32_t main_rna(int32_t argc, char** argv) {
     if (show_progress) { logger.info() << "Writing splicing graph to stdout ..." << endl; }
 
     // Write splicing graph to stdout 
-    transcriptome.write_graph(&cout);
+    if (add_reference_transcript_paths || add_projected_transcript_paths) {
+        transcriptome.write_graph_with_transcript_paths(&cout, add_reference_transcript_paths, add_projected_transcript_paths);
+    } else {
+        transcriptome.write_graph(&cout);
+    }
 
     if (show_progress) {
         logger.info() << "Graph " << (write_pantranscriptome ? "and pantranscriptome " : "")
@@ -594,4 +570,3 @@ int32_t main_rna(int32_t argc, char** argv) {
 
 // Register subcommand
 static Subcommand vg_rna("rna", "construct splicing graphs and pantranscriptomes", PIPELINE, 3, main_rna);
-

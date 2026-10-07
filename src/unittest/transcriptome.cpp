@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <iostream>
+#include <sstream>
 
 #include "gbwt/dynamic_gbwt.h"
 #include "bdsg/packed_graph.hpp"
@@ -860,6 +861,86 @@ namespace vg {
                 REQUIRE(transcriptome.graph().get_sequence(transcriptome.graph().get_handle(11)) == "A");
                 REQUIRE(transcriptome.graph().get_sequence(transcriptome.graph().get_handle(12)) == "AAA");             
             }
+        }
+
+        static void append_complete_step(EditedTranscriptPath& transcript_path,
+                                         const HandleGraph& graph,
+                                         const handle_t& handle) {
+            auto* mapping = transcript_path.path.add_mapping();
+            mapping->mutable_position()->set_node_id(graph.get_id(handle));
+            mapping->mutable_position()->set_is_reverse(graph.get_is_reverse(handle));
+            auto* edit = mapping->add_edit();
+            edit->set_from_length(graph.get_length(handle));
+            edit->set_to_length(graph.get_length(handle));
+        }
+
+        static unique_ptr<Transcriptome> make_output_transcriptome(const bool add_existing_path = false,
+                                                                    const size_t steps = 2) {
+            auto graph = make_unique<bdsg::PackedGraph>();
+            const handle_t one = graph->create_handle("AAAA", 1);
+            const handle_t two = graph->create_handle("CCCC", 2);
+            graph->create_edge(one, two);
+            if (add_existing_path) {
+                graph->create_path_handle("existing");
+            }
+            auto transcriptome = make_unique<Transcriptome>(std::move(graph));
+
+            auto& paths = const_cast<vector<CompletedTranscriptPath>&>(transcriptome->transcript_paths());
+            EditedTranscriptPath first("first", "source", true, false);
+            EditedTranscriptPath second("second", "source", true, false);
+            for (size_t i = 0; i < steps; ++i) {
+                append_complete_step(first, transcriptome->graph(), i % 2 ? two : one);
+                append_complete_step(second, transcriptome->graph(), i % 2 ? one : two);
+            }
+            paths.emplace_back(first, transcriptome->graph());
+            paths.emplace_back(second, transcriptome->graph());
+
+            EditedTranscriptPath haplotype("haplotype", "source", false, true);
+            append_complete_step(haplotype, transcriptome->graph(), two);
+            paths.emplace_back(haplotype, transcriptome->graph());
+
+            return transcriptome;
+        }
+
+        TEST_CASE("Transcriptome writes selected PackedGraph paths directly", "[transcriptome]") {
+            auto embedded = make_output_transcriptome();
+            embedded->embed_transcript_paths(true, false);
+            REQUIRE(embedded->graph().get_path_count() == 2);
+            stringstream expected;
+            embedded->write_graph(&expected);
+
+            auto generated = make_output_transcriptome();
+            stringstream generated_output;
+            generated->write_graph_with_transcript_paths(&generated_output, true, false);
+            REQUIRE(generated->graph().get_path_count() == 0);
+            REQUIRE(generated_output.str() == expected.str());
+
+            bdsg::PackedGraph restored;
+            stringstream restored_input(generated_output.str());
+            restored.deserialize(restored_input);
+            REQUIRE(restored.has_path("first_R1"));
+            REQUIRE(restored.has_path("second_R1"));
+            REQUIRE(!restored.has_path("haplotype_H1"));
+            REQUIRE(restored.get_path_count() == 2);
+
+            auto selected_haplotype = make_output_transcriptome();
+            stringstream haplotype_output;
+            selected_haplotype->write_graph_with_transcript_paths(&haplotype_output, false, true);
+            bdsg::PackedGraph restored_haplotype;
+            stringstream haplotype_input(haplotype_output.str());
+            restored_haplotype.deserialize(haplotype_input);
+            REQUIRE(restored_haplotype.has_path("haplotype_H1"));
+            REQUIRE(!restored_haplotype.has_path("first_R1"));
+            REQUIRE(restored_haplotype.get_path_count() == 1);
+
+            auto fallback = make_output_transcriptome(true);
+            stringstream fallback_output;
+            fallback->write_graph_with_transcript_paths(&fallback_output, true, false);
+            REQUIRE(fallback->graph().get_path_count() == 3);
+            REQUIRE(fallback->graph().has_path("existing"));
+            REQUIRE(fallback->graph().has_path("first_R1"));
+            REQUIRE(fallback->graph().has_path("second_R1"));
+            REQUIRE(!fallback->graph().has_path("haplotype_H1"));
         }
     }
 }

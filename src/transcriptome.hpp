@@ -446,7 +446,8 @@ class Transcriptome {
 
         /// Augments the graph with transcript path exon boundaries and 
         /// splice-junctions. Updates threads in gbwt index to match the augmented graph. 
-        /// Optinally adds transcript paths to the transcriptome.
+        /// Optinally adds transcript paths to the transcriptome. Consumes the
+        /// edited transcript paths as their completed forms are built.
         void augment_graph(list<EditedTranscriptPath> & edited_transcript_paths, const bool is_introns, unique_ptr<gbwt::GBWT> & haplotype_index, const bool update_haplotypes, const bool add_reference_transcript_paths);
 
         /// Update threads in gbwt index using graph translations. 

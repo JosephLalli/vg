@@ -2,6 +2,7 @@
 #include "../source_sink_overlay.hpp"
 #include <bdsg/packed_graph.hpp>
 #include <bdsg/hash_graph.hpp>
+#include <limits>
 
 namespace vg {
 namespace unittest {
@@ -71,7 +72,11 @@ TEST_CASE("SourceSinkOverlay handles dense and sparse ID spans", "[overlay][comp
         graph.create_handle("A", 1);
         graph.create_handle("C", 1000000000000LL);
     }
-    SourceSinkOverlay overlay(&graph, 4, graph.max_node_id() + 1, graph.max_node_id() + 2);
+    SECTION("sparse IDs near the handle encoding limit") {
+        graph.create_handle("A", 1);
+        graph.create_handle("C", std::numeric_limits<handlegraph::nid_t>::max() / 2);
+    }
+    SourceSinkOverlay overlay(&graph, 4, 200, 201);
     REQUIRE(overlay.get_degree(overlay.get_source_handle(), false) == graph.get_node_count());
     REQUIRE(overlay.get_degree(overlay.get_sink_handle(), true) == graph.get_node_count());
 }

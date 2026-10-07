@@ -1,8 +1,10 @@
 # Performance evidence
 
 This page connects the [proposal drafts](https://github.com/JosephLalli/vg/issues/11)
-to their measurements. It summarizes existing receipts; it does not report a new
-benchmark or assign a combined speedup to individual patches.
+to their measurements. This page preserves the earlier narrow stage receipts.
+[Current command and implementation-stage measurements](COMMAND-PERFORMANCE.md)
+adds the 2026-10-07 controlled comparisons, including negative results. New
+measurement helpers, inputs and raw receipts remain local.
 
 ## Current small-fixture measurements
 
@@ -59,29 +61,26 @@ users' background load. [Provenance](evidence/provenance.json) records binary an
 probe hashes, environment and validation summaries. Process peak RSS and an
 algorithm's extra-workspace allowance are different quantities.
 
-## Coverage outside these measurements
+## Coverage beyond the earlier narrow probes
 
-Existing draft descriptions retain their historical, source-qualified results.
-Those results remain attached to the measured revision and input class:
+The [current measurement page](COMMAND-PERFORMANCE.md) supplies selected exact-
+source fixture comparisons for complete RNA commands, the GBWT insertion library
+and caller, combined XG construction, complete snarl-distance construction,
+GCSA resident/external construction and its optional implementation stages.
+Ranges, source revisions, input sizes, thread settings and acceptance gates are
+reported there. A completed comparison may establish a tradeoff or regression;
+it does not necessarily establish a benefit.
 
-- B1's restored insertion pipeline, the combined XG constructor, overlay probes,
-  individual library serializers and several optional GCSA stages have earlier
-  measurements. They are not fresh measurements of each current implementation.
-- GCSA's serial foundation and vg caller have fresh construction, reload, failure
-  and cleanup checks, but no representative current-source resource comparison.
-  GCSA-2/3A/3B have no isolated runtime result. Correctness fixtures do not fill
-  those performance gaps.
-- B2 forwards the existing worker setting; its current caller receipt establishes
-  output compatibility, not an independent speedup. The combined XG constructor
-  result does not establish separate speedups for X1–X4.
-- R07/R09/R10/R11 have current semantic checks. R11's repaired-source translation
-  probe checks functionality; earlier translation timings remain historical.
-  Whole-command runtime and memory for the RNA representation and output series
-  remain unmeasured on representative inputs.
-- Lifetime-only drafts retain their low priority and small diff requirement.
-  Earlier observations do not become isolated current-source savings.
-- R20 and GCSA-7 remain performance holds; X5/P05 remain withdrawn. A convenient
-  evidence summary does not change those decisions.
+The matched B2 caller and matched-shard GCSA-3B comparisons regressed on their
+inputs. LCP overlap executed without establishing a construction speedup.
+R08 has route-dependent memory costs, and GCSA-5B's complete-helper batches were
+mixed despite a faster isolated sort stage. These findings qualify the proposal
+claims; earlier broader or historical results are not substituted for them.
+
+Supported-platform CI and representative real-input evaluation remain separate
+gates. Lifetime-only drafts keep their low priority. R20 and GCSA-7 remain
+performance holds; D02 remains held on input compatibility, and X5/P05 remain
+withdrawn. No measurement reopens the excluded development or production scope.
 
 ## Reproduce or extend the evidence
 

@@ -4,9 +4,11 @@ These fixtures support the [contribution proposals](https://github.com/JosephLal
 They live on a separate review branch so that benchmark setup and receipts do not
 become production interfaces or enlarge each implementation PR.
 
-[Performance evidence](PERFORMANCE.md) summarizes the measured inputs, runtime,
-peak RSS, exact source relationships and remaining measurement gaps, with links
-to each raw receipt.
+[Earlier stage evidence](PERFORMANCE.md) preserves this review kit's existing
+receipts. [Current command and stage measurements](COMMAND-PERFORMANCE.md)
+reports the 2026-10-07 comparisons, source provenance, variation and tradeoffs.
+The new measurement/debugging helpers, generated fixtures and raw results are
+local temporary shims and are not part of this published review kit.
 
 All inputs are generated text or small source-built graphs. There is no private
 chromosome input, saved binary index, frozen object archive or production job.

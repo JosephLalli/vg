@@ -15,8 +15,9 @@ namespace vg {
 /**
  * An edited walk described by slices of shared, immutable source walks.
  * Mapping must provide handle, offset and length, as EditedMapping does.
- * Source mappings must cover whole nodes; their lengths remain valid even
- * after the graph is split. Only the first and last step of a slice are clipped.
+ * Source steps cover whole nodes with 64-bit spans that remain valid even
+ * after the graph is split. Every emitted Mapping length must fit its own type.
+ * Only the first and last step of a slice are clipped.
  * This representation does not collapse transcript identities or equal walks.
  *
  * Transcriptome uses this on its GBWT reference/no-collapse route.
@@ -24,28 +25,56 @@ namespace vg {
 template<class Mapping>
 class SharedTranscriptPath {
 public:
+    using handle_type = decltype(Mapping::handle);
+
+    struct SourceStep {
+        handle_type handle;
+        uint64_t length;
+    };
+
     class Source {
     public:
-        explicit Source(std::vector<Mapping> mappings) : mappings_(std::move(mappings)) {
+        explicit Source(std::vector<Mapping> mappings) {
+            mappings_.reserve(mappings.size());
             // Validate once per source, not once per transcript occurrence.
-            for (const Mapping& mapping : mappings_) {
-                if (mapping.offset != 0 || mapping.length == 0) {
+            for (const Mapping& mapping : mappings) {
+                if (mapping.offset != 0 || mapping.length <= 0) {
                     throw std::invalid_argument("Shared transcript source must contain whole nodes");
                 }
+                mappings_.push_back({mapping.handle, static_cast<uint64_t>(mapping.length)});
             }
+            validate();
+        }
+        explicit Source(std::vector<SourceStep> mappings) : mappings_(std::move(mappings)) {
+            validate();
         }
         uint64_t size() const { return mappings_.size(); }
-        const Mapping& operator[](uint64_t index) const { return mappings_[index]; }
+        const SourceStep& operator[](uint64_t index) const { return mappings_[index]; }
+        uint64_t capacity_bytes() const { return mappings_.capacity() * sizeof(SourceStep); }
     private:
-        const std::vector<Mapping> mappings_;
+        void validate() {
+            for (const SourceStep& mapping : mappings_) {
+                if (mapping.length == 0 ||
+                    mapping.length > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+                    throw std::invalid_argument("Shared transcript node length exceeds Position range");
+                }
+                all_lengths_fit_mapping_ = all_lengths_fit_mapping_ &&
+                    mapping.length <= static_cast<uint64_t>(std::numeric_limits<int32_t>::max());
+            }
+        }
+
+        std::vector<SourceStep> mappings_;
+        bool all_lengths_fit_mapping_ = true;
+
+        friend class SharedTranscriptPath<Mapping>;
     };
 
     struct Slice {
         std::shared_ptr<const Source> source;
         uint64_t begin;
         uint64_t end;
-        uint32_t first_offset;
-        uint32_t last_end;
+        int64_t first_offset;
+        uint64_t last_end;
     };
 
     class TranslationCache;
@@ -68,15 +97,26 @@ public:
 
     /** Append [begin, end), clipping the first offset and last exclusive end. */
     void append(const std::shared_ptr<const Source>& source, uint64_t begin, uint64_t end,
-                uint32_t first_offset, uint32_t last_end) {
+                int64_t first_offset, uint64_t last_end) {
         if (!source || begin >= end || end > source->size()) {
             throw std::invalid_argument("Invalid shared transcript slice");
         }
-        const Mapping& first = (*source)[begin];
-        const Mapping& last = (*source)[end - 1];
-        if (first_offset >= first.length || last_end == 0 || last_end > last.length ||
-            (end == begin + 1 && first_offset >= last_end)) {
+        const SourceStep& first = (*source)[begin];
+        const SourceStep& last = (*source)[end - 1];
+        if (first_offset < 0 || static_cast<uint64_t>(first_offset) >= first.length ||
+            last_end == 0 || last_end > last.length ||
+            (end == begin + 1 && static_cast<uint64_t>(first_offset) >= last_end)) {
             throw std::invalid_argument("Invalid shared transcript slice boundaries");
+        }
+        if (!source->all_lengths_fit_mapping_) {
+            for (uint64_t i = begin; i < end; ++i) {
+                const uint64_t offset = i == begin ? static_cast<uint64_t>(first_offset) : 0;
+                const uint64_t mapping_end = i + 1 == end ? last_end : (*source)[i].length;
+                if (mapping_end <= offset ||
+                    mapping_end - offset > static_cast<uint64_t>(std::numeric_limits<int32_t>::max())) {
+                    throw std::invalid_argument("Shared transcript mapping length exceeds Edit range");
+                }
+            }
         }
         if (end - begin > std::numeric_limits<uint64_t>::max() - step_count_) {
             throw std::overflow_error("Shared transcript step count overflow");
@@ -130,14 +170,17 @@ public:
 private:
     template<class Flip>
     Mapping mapping_at(const Slice& slice, uint64_t index, const Flip& flip) const {
-        Mapping mapping = (*slice.source)[index];
-        const uint32_t original_length = mapping.length;
-        mapping.offset = index == slice.begin ? slice.first_offset : 0;
-        const uint32_t end = index + 1 == slice.end ? slice.last_end : original_length;
-        mapping.length = end - mapping.offset;
+        const SourceStep& source_mapping = (*slice.source)[index];
+        const uint64_t original_length = source_mapping.length;
+        const uint64_t offset = index == slice.begin
+            ? static_cast<uint64_t>(slice.first_offset) : 0;
+        const uint64_t end = index + 1 == slice.end ? slice.last_end : original_length;
+        const uint64_t length = end - offset;
+        Mapping mapping{source_mapping.handle, static_cast<int64_t>(offset),
+                        static_cast<int32_t>(length)};
         if (reverse_) {
             mapping.handle = flip(mapping.handle);
-            mapping.offset = original_length - end;
+            mapping.offset = static_cast<int64_t>(original_length - end);
         }
         return mapping;
     }
@@ -155,7 +198,7 @@ class SharedTranscriptPath<Mapping>::TranslationCache {
 
     struct Boundary {
         uint64_t mapping_index;
-        uint32_t offset;
+        uint64_t offset;
 
         bool operator==(const Boundary& other) const {
             return mapping_index == other.mapping_index && offset == other.offset;
@@ -165,7 +208,7 @@ class SharedTranscriptPath<Mapping>::TranslationCache {
     struct BoundaryHash {
         size_t operator()(const Boundary& boundary) const noexcept {
             const size_t first = std::hash<uint64_t>{}(boundary.mapping_index);
-            const size_t second = std::hash<uint32_t>{}(boundary.offset);
+            const size_t second = std::hash<uint64_t>{}(boundary.offset);
             return first ^ (second + static_cast<size_t>(0x9e3779b9U) +
                             (first << 6) + (first >> 2));
         }
@@ -229,7 +272,7 @@ public:
             ++registration.slices;
             registration.covered_intervals.emplace_back(slice.begin, slice.end);
             add_internal_boundary(registration, slice.source, slice.begin,
-                                  slice.first_offset);
+                                  static_cast<uint64_t>(slice.first_offset));
             add_internal_boundary(registration, slice.source, slice.end - 1,
                                   slice.last_end);
         }
@@ -267,9 +310,9 @@ public:
 
     /**
      * Translate a registered path without expanding it mapping-by-mapping.
-     * mapper(original, emit) must emit positive-length, offset-zero mappings
-     * in the original orientation whose lengths partition original.length.
-     * Only source mappings covered by at least one registered slice are sent
+     * mapper(original, emit) must emit positive-length source steps in the
+     * original orientation whose lengths partition original.length. Only
+     * source steps covered by at least one registered slice are sent
      * to mapper. mapper must invoke emit synchronously and must not retain it.
      */
     template<class Mapper>
@@ -313,7 +356,7 @@ public:
             const Entry& entry = entries_.at(slice.source.get());
             const uint64_t begin = translated_boundary(entry, slice,
                                                        slice.begin,
-                                                       slice.first_offset);
+                                                       static_cast<uint64_t>(slice.first_offset));
             const uint64_t end = translated_boundary(entry, slice,
                                                      slice.end - 1,
                                                      slice.last_end);
@@ -358,8 +401,8 @@ private:
 
     static void add_internal_boundary(PendingRegistration& registration,
                                       const std::shared_ptr<const Source>& source,
-                                      uint64_t mapping_index, uint32_t offset) {
-        const uint32_t length = (*source)[mapping_index].length;
+                                      uint64_t mapping_index, uint64_t offset) {
+        const uint64_t length = (*source)[mapping_index].length;
         if (offset != 0 && offset != length) {
             registration.internal_boundaries.push_back({mapping_index, offset});
         }
@@ -381,7 +424,7 @@ private:
             --coverage_events[static_cast<size_t>(interval.second)];
         }
 
-        std::vector<Mapping> mappings;
+        std::vector<SourceStep> mappings;
         mappings.reserve(source_size);
         std::vector<uint64_t> old_to_new(source_size + 1, 0);
         BoundaryMap resolved;
@@ -398,10 +441,10 @@ private:
                 continue;
             }
 
-            const Mapping& old_mapping = original[i];
+            const SourceStep& old_mapping = original[i];
             uint64_t emitted_length = 0;
-            auto emit = [&](const Mapping& new_mapping) {
-                if (new_mapping.offset != 0 || new_mapping.length == 0) {
+            auto emit = [&](const SourceStep& new_mapping) {
+                if (new_mapping.length == 0) {
                     throw std::invalid_argument(
                         "Translated shared source must contain whole nodes");
                 }
@@ -412,7 +455,7 @@ private:
                 }
                 mappings.push_back(new_mapping);
                 emitted_length += new_mapping.length;
-                const Boundary boundary{i, static_cast<uint32_t>(emitted_length)};
+                const Boundary boundary{i, emitted_length};
                 if (entry.translated_boundaries.find(boundary) !=
                     entry.translated_boundaries.end()) {
                     resolved.emplace(boundary, mappings.size());
@@ -442,8 +485,8 @@ private:
     }
 
     static uint64_t translated_boundary(const Entry& entry, const Slice& slice,
-                                        uint64_t mapping_index, uint32_t offset) {
-        const uint32_t old_length = (*slice.source)[mapping_index].length;
+                                        uint64_t mapping_index, uint64_t offset) {
+        const uint64_t old_length = (*slice.source)[mapping_index].length;
         if (offset == 0) {
             return entry.old_to_new.at(static_cast<size_t>(mapping_index));
         }

@@ -134,8 +134,9 @@ struct TranscriptPath {
  *
  * It replaces a protobuf Mapping holding a Position and one full-match Edit.
  *
- * Offsets and lengths are 32-bit: the construction code already computed
- * them in int32_t locals, so no wider node is representable than before.
+ * Offsets retain Position's signed 64-bit representation, while lengths
+ * retain Edit's signed 32-bit representation. Valid transcript matches use
+ * non-negative values.
  */
 struct EditedMapping {
 
@@ -143,10 +144,10 @@ struct EditedMapping {
     handle_t handle;
 
     /// Offset of the first matched base on the strand of the handle.
-    uint32_t offset;
+    int64_t offset;
 
     /// Number of matched bases.
-    uint32_t length;
+    int32_t length;
 };
 
 inline bool operator==(const EditedMapping & lhs, const EditedMapping & rhs) {
@@ -242,10 +243,12 @@ struct CompletedTranscriptPath : public TranscriptPath {
     /// Expand an explicitly requested copy, preserving the legacy vector API.
     void materialize(const HandleGraph & graph) {
         if (!shared_path.empty()) {
-            path.reserve(shared_path.size());
-            for_each_handle(graph, [&](const handle_t & handle, uint64_t) {
-                path.emplace_back(handle);
-            });
+            if (path.empty()) {
+                path.reserve(shared_path.size());
+                for_each_handle(graph, [&](const handle_t & handle, uint64_t) {
+                    path.emplace_back(handle);
+                });
+            }
             shared_path = {};
         }
     }
@@ -308,7 +311,7 @@ class Transcriptome {
         /// in a GBWT index. Returns the number of haplotype transcript paths projected.   
         int32_t add_haplotype_transcripts(vector<istream *> transcript_streams, const gbwt::GBWT & haplotype_index, const bool proj_emded_paths);
 
-        /// Returns resident transcript paths; shared walks use for_each_handle.
+        /// Returns transcript paths with the legacy path vectors populated.
         const vector<CompletedTranscriptPath> & transcript_paths() const;
 
         /// Returns the reference transcript paths.
@@ -353,8 +356,8 @@ class Transcriptome {
     private:
 
         /// Transcript paths representing the transcriptome. 
-        vector<CompletedTranscriptPath> _transcript_paths;
-        mutex mutex_transcript_paths;
+        mutable vector<CompletedTranscriptPath> _transcript_paths;
+        mutable mutex mutex_transcript_paths;
 
         /// Spliced pangenome graph.
         unique_ptr<MutablePathDeletableHandleGraph> _graph;

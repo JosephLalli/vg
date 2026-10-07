@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../deps/bash-tap
 
 PATH=../bin:$PATH # for vg
 
-plan tests 195
+plan tests 198
 
 
 # Build vg graphs for two chromosomes
@@ -46,7 +46,14 @@ vg gbwt -E -o x.ref.gbwt -x x.vg
 is $? 0 "chromosome X reference GBWT with vg gbwt"
 is $(vg gbwt -c x.ref.gbwt) 1 "chromosome X reference: 1 path"
 
-rm -f x.ref.gbwt
+vg gbwt -E --num-jobs 1 -o x.serial.gbwt -x x.vg
+is $? 0 "embedded paths build with one insertion worker"
+vg gbwt -E --num-jobs 2 -o x.parallel.gbwt -x x.vg
+is $? 0 "embedded paths build with multiple insertion workers"
+cmp x.serial.gbwt x.parallel.gbwt
+is $? 0 "embedded path indexes are identical across insertion worker counts"
+
+rm -f x.ref.gbwt x.serial.gbwt x.parallel.gbwt
 
 
 # Single chromosome: alignments

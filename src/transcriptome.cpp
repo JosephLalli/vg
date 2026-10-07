@@ -2232,11 +2232,16 @@ bool Transcriptome::has_novel_exon_boundaries(const list<EditedTranscriptPath>& 
     for (const auto& path : paths) {
         bool novel = false;
         const uint64_t count = path.shared_path.empty() ? path.path.size() : path.shared_path.size();
-        path.for_each_mapping(*_graph, [&](const EditedMapping& mapping, uint64_t rank) {
+        auto check = [&](const EditedMapping& mapping, uint64_t rank) {
             if ((include_transcript_ends || rank != 0) && mapping.offset > 0) { novel = true; }
             if ((include_transcript_ends || rank + 1 != count) &&
                 mapping.offset + mapping.length != _graph->get_length(mapping.handle)) { novel = true; }
-        });
+        };
+        if (path.shared_path.empty()) {
+            path.for_each_mapping(*_graph, check);
+        } else {
+            path.shared_path.for_each_boundary([&](const handle_t& handle) { return _graph->flip(handle); }, check);
+        }
         if (novel) { return true; }
     }
     return false;
@@ -2355,7 +2360,7 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
 
         for (auto & transcript_path: edited_transcript_paths) {
 
-            transcript_path.for_each_mapping(*_graph, [&](const EditedMapping& mapping, uint64_t) {
+            auto add_boundary = [&](const EditedMapping& mapping, uint64_t) {
 
                 // Add exon boundary path.
                 if (mapping.offset > 0 || mapping.offset + mapping.length < _graph->get_length(mapping.handle)) {
@@ -2370,7 +2375,13 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
                         ++num_exon_boundary_paths;
                     }
                 }
-            });
+            };
+            if (transcript_path.shared_path.empty()) {
+                transcript_path.for_each_mapping(*_graph, add_boundary);
+            } else {
+                transcript_path.shared_path.for_each_boundary(
+                    [&](const handle_t& handle) { return _graph->flip(handle); }, add_boundary);
+            }
         }
 
 #ifdef transcriptome_debug

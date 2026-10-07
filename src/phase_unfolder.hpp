@@ -53,7 +53,8 @@ public:
      * - For each component, find all border-to-border paths and threads
      * supported by the indexes. Then unfold the component by duplicating the
      * nodes, so that the paths are disjoint, except for their shared prefixes
-     * and suffixes.
+     * and suffixes. Component workers invoke const queries on the graph and
+     * backing indexes concurrently.
      *
      * - Extend the input graph with the unfolded components.
      */
@@ -109,19 +110,37 @@ private:
     std::list<bdsg::HashGraph> complement_components(MutableHandleGraph& graph, bool show_progress);
 
     /**
-     * Generate all border-to-border paths in the component supported by the
-     * indexes. Unfold the paths by duplicating the inner nodes so that the
-     * paths become disjoint, except for their shared prefixes/suffixes.
+     * One path discovered by a component worker. The paths are replayed in
+     * component order so the main unfolder retains the serial node-id and hash
+     * table insertion order.
      */
-    size_t unfold_component(MutableHandleGraph& component, MutableHandleGraph& graph, MutableHandleGraph& unfolded);
+    struct UnfoldPath {
+        path_type path;
+        bool from_border;
+        bool to_border;
+    };
+
+    /**
+     * Discover all border-to-border paths and threads in the component
+     * supported by the indexes. Record the paths for ordered serial replay.
+     */
+    void unfold_component(MutableHandleGraph& component, const HandleGraph& graph,
+                          std::vector<UnfoldPath>& paths);
+
+    /**
+     * Replay one component's discovered paths and build its unfolded graph.
+     * Must be called in component order.
+     */
+    size_t apply_component(const std::vector<UnfoldPath>& paths, MutableHandleGraph& unfolded);
 
     /**
      * Generate all paths supported by the XG index passing through the given
      * node until the border or until the path ends. Insert the generated
-     * paths into the set in the canonical orientation, and use them as
-     * reference paths for extending threads.
+     * paths for ordered serial insertion, and use them as reference paths for
+     * extending threads.
      */
-    void generate_paths(MutableHandleGraph& component, vg::id_t from);
+    void generate_paths(MutableHandleGraph& component, vg::id_t from,
+                        std::vector<UnfoldPath>& paths);
 
    /**
     * Generate all paths supported by the GBWT index from the given node until
@@ -130,7 +149,8 @@ private:
     * passing through it. Otherwise consider only the threads starting from
     * it, and do not output threads reaching a border.
     */
-    void generate_threads(MutableHandleGraph& component, vg::id_t from);
+    void generate_threads(MutableHandleGraph& component, vg::id_t from,
+                          std::vector<UnfoldPath>& paths);
 
     /**
      * Create or extend the state with the given node orientation, and insert
@@ -143,13 +163,13 @@ private:
 
     /**
      * Try to extend the path at both ends until the border by using the
-     * reference paths. Insert the extended path into the set in the canonical
-     * orientation.
+     * reference paths. Record the extended path for serial insertion.
      */
-    void extend_path(const path_type& path);
+    void extend_path(const path_type& path, std::vector<UnfoldPath>& paths);
 
-    /// Insert the path into the set in the canonical orientation.
-    void insert_path(const path_type& path, bool from_border, bool to_border);
+    /// Record the path when path_log is set; otherwise insert it in the canonical orientation.
+    void insert_path(const path_type& path, bool from_border, bool to_border,
+                     std::vector<UnfoldPath>* path_log);
 
     /// Get the id for the duplicate of 'node' after 'from'.
     gbwt::node_type get_prefix(gbwt::node_type from, gbwt::node_type node);

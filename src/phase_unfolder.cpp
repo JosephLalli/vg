@@ -3,9 +3,12 @@
 #include "algorithms/disjoint_components.hpp"
 
 #include <cassert>
+#include <exception>
 #include <iostream>
 #include <map>
 #include <set>
+
+#include <omp.h>
 
 namespace vg {
 
@@ -17,11 +20,47 @@ PhaseUnfolder::PhaseUnfolder(const PathHandleGraph& path_graph, const gbwt::GBWT
 void PhaseUnfolder::unfold(MutableHandleGraph& graph, bool show_progress) {
     
     std::list<bdsg::HashGraph> components = this->complement_components(graph, show_progress);
-    
+    std::vector<bdsg::HashGraph*> component_order;
+    component_order.reserve(components.size());
+    for (bdsg::HashGraph& component : components) {
+        component_order.push_back(&component);
+    }
+
     size_t haplotype_paths = 0;
     bdsg::HashGraph unfolded;
-    for (MutableHandleGraph& component : components) {
-        haplotype_paths += this->unfold_component(component, graph, unfolded);
+
+    // Each worker reads the backing path graph, GBWT index, pruned graph, and
+    // its own component while recording paths in task-local storage. Replaying
+    // the paths serially in component order preserves the serial node ids and
+    // trie insertion order regardless of worker completion order.
+    const vg::id_t worker_next_node = this->mapping.end();
+    const size_t batch_size = std::max<size_t>(1, 8 * static_cast<size_t>(omp_get_max_threads()));
+    for (size_t start = 0; start < component_order.size(); start += batch_size) {
+        const size_t stop = std::min(start + batch_size, component_order.size());
+        const size_t count = stop - start;
+        // This bounds the number of resident component path logs, not their
+        // bytes; the size of an individual log depends on that component.
+        std::vector<std::vector<UnfoldPath>> paths(count);
+        std::vector<std::exception_ptr> errors(count);
+
+        #pragma omp parallel for schedule(dynamic, 1)
+        for (size_t i = 0; i < count; i++) {
+            try {
+                PhaseUnfolder worker(this->path_graph, this->gbwt_index, worker_next_node);
+                worker.unfold_component(*component_order[start + i], graph, paths[i]);
+            } catch (...) {
+                errors[i] = std::current_exception();
+            }
+        }
+
+        for (const std::exception_ptr& error : errors) {
+            if (error) {
+                std::rethrow_exception(error);
+            }
+        }
+        for (size_t i = 0; i < count; i++) {
+            haplotype_paths += this->apply_component(paths[i], unfolded);
+        }
     }
     if (show_progress) {
         std::cerr << "Unfolded graph: "
@@ -376,7 +415,8 @@ std::list<bdsg::HashGraph> PhaseUnfolder::complement_components(MutableHandleGra
     return components;
 }
 
-size_t PhaseUnfolder::unfold_component(MutableHandleGraph& component, MutableHandleGraph& graph, MutableHandleGraph& unfolded) {
+void PhaseUnfolder::unfold_component(MutableHandleGraph& component, const HandleGraph& graph,
+                                     std::vector<UnfoldPath>& paths) {
     // Find the border nodes shared between the component and the graph.
     component.for_each_handle([&](const handle_t& handle) {
         vg::id_t id = component.get_id(handle);
@@ -387,14 +427,24 @@ size_t PhaseUnfolder::unfold_component(MutableHandleGraph& component, MutableHan
 
     // Generate the paths starting from each border node.
     for (vg::id_t start_node : this->border) {
-        this->generate_paths(component, start_node);
+        this->generate_paths(component, start_node, paths);
     }
 
     // Generate the threads for each node.
     component.for_each_handle([&](const handle_t& handle) {
-        this->generate_threads(component, component.get_id(handle));
+        this->generate_threads(component, component.get_id(handle), paths);
     });
-    
+
+    this->border.clear();
+    this->reference_paths.clear();
+}
+
+size_t PhaseUnfolder::apply_component(const std::vector<UnfoldPath>& paths,
+                                      MutableHandleGraph& unfolded) {
+    for (const UnfoldPath& path : paths) {
+        this->insert_path(path.path, path.from_border, path.to_border, nullptr);
+    }
+
     auto insert_node = [&](gbwt::node_type node) {
         // create a new node
         if (!unfolded.has_node(gbwt::Node::id(node))) {
@@ -429,15 +479,14 @@ size_t PhaseUnfolder::unfold_component(MutableHandleGraph& component, MutableHan
     }
 
     size_t haplotype_paths = this->crossing_edges.size();
-    this->border.clear();
-    this->reference_paths.clear();
     this->prefixes.clear();
     this->suffixes.clear();
     this->crossing_edges.clear();
     return haplotype_paths;
 }
 
-void PhaseUnfolder::generate_paths(MutableHandleGraph& component, vg::id_t from) {
+void PhaseUnfolder::generate_paths(MutableHandleGraph& component, vg::id_t from,
+                                   std::vector<UnfoldPath>& paths) {
 
     handle_t from_handle = this->path_graph.get_handle(from);
     this->path_graph.for_each_step_on_handle(from_handle, [&](const step_handle_t& _step) {
@@ -471,7 +520,7 @@ void PhaseUnfolder::generate_paths(MutableHandleGraph& component, vg::id_t from)
             
             bool to_border = (this->border.find(gbwt::Node::id(buffer.back())) != this->border.end());
             this->reference_paths.push_back(buffer);
-            this->insert_path(buffer, true, to_border);
+            this->insert_path(buffer, true, to_border, &paths);
         }
 
         // Backward.
@@ -504,13 +553,14 @@ void PhaseUnfolder::generate_paths(MutableHandleGraph& component, vg::id_t from)
             
             bool to_border = (this->border.find(gbwt::Node::id(buffer.back())) != this->border.end());
             this->reference_paths.push_back(buffer);
-            this->insert_path(buffer, true, to_border);
+            this->insert_path(buffer, true, to_border, &paths);
         }
 
     });
 }
 
-void PhaseUnfolder::generate_threads(MutableHandleGraph& component, vg::id_t from) {
+void PhaseUnfolder::generate_threads(MutableHandleGraph& component, vg::id_t from,
+                                     std::vector<UnfoldPath>& paths) {
 
     bool is_internal = (this->border.find(from) == this->border.end());
     this->create_state(from, false, is_internal);
@@ -523,7 +573,7 @@ void PhaseUnfolder::generate_threads(MutableHandleGraph& component, vg::id_t fro
 
         if (state.second.size() >= 2 && this->border.find(node) != this->border.end()) {
             if (!is_internal) {
-                this->extend_path(state.second);
+                this->extend_path(state.second, paths);
             }
             continue;   // The path reached a border.
         }
@@ -537,7 +587,7 @@ void PhaseUnfolder::generate_threads(MutableHandleGraph& component, vg::id_t fro
                 was_extended |= this->extend_state(state, component.get_id(handle), !component.get_is_reverse(handle));
             });
         if (!was_extended) {
-            this->extend_path(state.second);    // Maximal path.
+            this->extend_path(state.second, paths);    // Maximal path.
         }
     }
 }
@@ -573,14 +623,14 @@ PhaseUnfolder::path_type canonical_orientation(const PhaseUnfolder::path_type& p
     return path;
 }
 
-void PhaseUnfolder::extend_path(const path_type& path) {
+void PhaseUnfolder::extend_path(const path_type& path, std::vector<UnfoldPath>& paths) {
     if (path.size() < 2) {
         return;
     }
     bool from_border = (this->border.find(gbwt::Node::id(path.front())) != this->border.end());
     bool to_border = (this->border.find(gbwt::Node::id(path.back())) != this->border.end());
     if (from_border && to_border) {
-        this->insert_path(path, from_border, to_border);
+        this->insert_path(path, from_border, to_border, &paths);
         return;
     }
 
@@ -630,12 +680,17 @@ void PhaseUnfolder::extend_path(const path_type& path) {
         }
     }
 
-    this->insert_path(to_extend, from_border, to_border);
+    this->insert_path(to_extend, from_border, to_border, &paths);
 }
 
-void PhaseUnfolder::insert_path(const path_type& path, bool from_border, bool to_border) {
+void PhaseUnfolder::insert_path(const path_type& path, bool from_border, bool to_border,
+                                std::vector<UnfoldPath>* path_log) {
 
     if (path.size() < 2) {
+        return;
+    }
+    if (path_log != nullptr) {
+        path_log->push_back({ path, from_border, to_border });
         return;
     }
     path_type to_insert = canonical_orientation(path, from_border, to_border);

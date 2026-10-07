@@ -1431,6 +1431,30 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
         auto haplotype_name_index_it = haplotype_name_index.find(transcripts.at(transcript_idx).chrom);
         assert(haplotype_name_index_it != haplotype_name_index.end());
 
+        // Restrict the shared source to nodes overlapping annotated exons. A
+        // small set of transcripts must not retain whole chromosome walks.
+        // This union selects storage only; the original scan below still
+        // decides transcript validity, fragment breaks and completion order.
+        vector<pair<int32_t, int32_t>> exon_intervals;
+        if (share_source) {
+            for (size_t i = transcript_set.first; i < transcript_set.first + transcript_set.second; ++i) {
+                for (const auto & exon : transcripts[i].exons) {
+                    exon_intervals.emplace_back(exon.coordinates);
+                }
+            }
+            sort(exon_intervals.begin(), exon_intervals.end());
+            size_t kept = 0;
+            for (const auto & interval : exon_intervals) {
+                if (kept != 0 && static_cast<int64_t>(interval.first) <=
+                    static_cast<int64_t>(exon_intervals[kept - 1].second) + 1) {
+                    exon_intervals[kept - 1].second = max(exon_intervals[kept - 1].second, interval.second);
+                } else {
+                    exon_intervals[kept++] = interval;
+                }
+            }
+            exon_intervals.resize(kept);
+        }
+
         for (auto & haplotype_idx: haplotype_name_index_it->second) {
 
             auto incomplete_transcript_paths_it = incomplete_transcript_paths.begin();
@@ -1453,25 +1477,45 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
             const gbwt::vector_type & gbwt_haplotype = haplotype_index.extract(haplotype_idx.second);
 
             shared_ptr<const SharedSource> shared_source;
+            vector<uint64_t> source_positions;
             if (share_source) {
-                vector<SharedPath::SourceStep> mappings;
-                mappings.reserve(gbwt_haplotype.size());
-                for (auto node : gbwt_haplotype) {
-                    auto handle = gbwt_to_handle(*_graph, node);
-                    auto length = _graph->get_length(handle);
-                    if (length > static_cast<uint64_t>(numeric_limits<int64_t>::max())) {
-                        throw overflow_error("Shared transcript node length exceeds Position range");
+                vector<SharedPath::SourceStep> source_mappings;
+                size_t interval_idx = 0;
+                uint64_t source_pos = haplotype_idx.first;
+                for (size_t i = 0; i < gbwt_haplotype.size(); ++i) {
+                    while (interval_idx < exon_intervals.size() &&
+                           static_cast<int64_t>(exon_intervals[interval_idx].second) < static_cast<int64_t>(source_pos)) {
+                        ++interval_idx;
                     }
-                    mappings.push_back({handle, static_cast<uint64_t>(length)});
+                    if (interval_idx == exon_intervals.size()) { break; }
+                    const auto handle = gbwt_to_handle(*_graph, gbwt_haplotype[i]);
+                    const auto length = _graph->get_length(handle);
+                    if (length > static_cast<uint64_t>(numeric_limits<int64_t>::max()) - source_pos) {
+                        throw overflow_error("Shared transcript source position exceeds Position range");
+                    }
+                    const uint64_t node_end = source_pos + length;
+                    if (static_cast<int64_t>(node_end) > exon_intervals[interval_idx].first) {
+                        source_mappings.push_back({handle, static_cast<uint64_t>(length)});
+                        source_positions.push_back(i);
+                    }
+                    source_pos = node_end;
                 }
-                shared_source = make_shared<SharedSource>(std::move(mappings));
+                shared_source = make_shared<SharedSource>(std::move(source_mappings));
             }
-            size_t source_rank = 0;
+
+            size_t gbwt_position = 0, source_rank = 0;
 
             for (auto & gbwt_node: gbwt_haplotype) {
 
-                auto node_handle = gbwt_to_handle(*_graph, gbwt_node);
-                auto node_length = _graph->get_length(node_handle);
+                const bool in_shared_source = share_source && source_rank < source_positions.size() &&
+                    source_positions[source_rank] == gbwt_position;
+                const size_t current_source_rank = source_rank;
+                auto node_handle = in_shared_source ? (*shared_source)[source_rank].handle
+                    : gbwt_to_handle(*_graph, gbwt_node);
+                auto node_length = in_shared_source ? (*shared_source)[source_rank].length
+                    : _graph->get_length(node_handle);
+                if (in_shared_source) { ++source_rank; }
+                ++gbwt_position;
 
                 while (transcript_idx < transcript_set.first + transcript_set.second) {
 
@@ -1540,9 +1584,13 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
                             // Add new mapping in forward direction. Later the whole path will
                             // be reverse complemented if transcript is on the '-' strand.
                             if (share_source) {
-                                incomplete_transcript_paths_it->first.shared_path.append(shared_source,
-                                    source_rank, source_rank + 1, offset,
-                                    static_cast<uint64_t>(offset) + static_cast<uint64_t>(edit_length));
+                                if (!in_shared_source) {
+                                    throw logic_error("Transcript mapping is absent from shared exon source");
+                                }
+                                incomplete_transcript_paths_it->first.shared_path.append(
+                                    shared_source, current_source_rank, current_source_rank + 1,
+                                    offset, static_cast<uint64_t>(offset) +
+                                    static_cast<uint64_t>(edit_length));
                             } else {
                                 incomplete_transcript_paths_it->first.path.emplace_back(EditedMapping{node_handle, static_cast<int64_t>(offset), static_cast<int32_t>(edit_length)});
                             }
@@ -1570,7 +1618,8 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
                             }
                         } 
 
-                        assert(!incomplete_transcript_paths_it->first.path.empty() || !incomplete_transcript_paths_it->first.shared_path.empty());
+                        assert(!incomplete_transcript_paths_it->first.path.empty() ||
+                               !incomplete_transcript_paths_it->first.shared_path.empty());
                         thread_edited_transcript_paths.emplace_back(std::move(incomplete_transcript_paths_it->first));
 
                         incomplete_transcript_paths_it = incomplete_transcript_paths.erase(incomplete_transcript_paths_it);
@@ -1587,7 +1636,6 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
                 }
 
                 node_start_pos += node_length;
-                ++source_rank;
             }
 
             if (transcript_idx == transcript_set.first + transcript_set.second && incomplete_transcript_paths.empty()) {
@@ -1604,7 +1652,6 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
         assert(thread_edited_transcript_paths.size() == transcript_set.second - excluded_transcripts_local);
 
         edited_transcript_paths_mutex->lock();
-
         remove_redundant_transcript_paths<EditedTranscriptPath>(&thread_edited_transcript_paths, edited_transcript_paths_index);
         edited_transcript_paths->splice(edited_transcript_paths->end(), thread_edited_transcript_paths);
         *excluded_transcripts += excluded_transcripts_local;

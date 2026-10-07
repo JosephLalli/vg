@@ -210,24 +210,6 @@ string TranscriptPath::get_name() const {
     }
 }
 
-static SharedTranscriptPath<EditedMapping> share_completed_path(const vector<handle_t>& handles, const HandleGraph& graph) {
-    using SharedPath = SharedTranscriptPath<EditedMapping>;
-    vector<SharedPath::SourceStep> mappings;
-    mappings.reserve(handles.size());
-    for (const auto& handle : handles) {
-        const auto length = graph.get_length(handle);
-        if (length > static_cast<uint64_t>(numeric_limits<int64_t>::max())) {
-            throw overflow_error("Shared transcript node length exceeds Position range");
-        }
-        mappings.push_back({handle, static_cast<uint64_t>(length)});
-    }
-    auto source = make_shared<SharedPath::Source>(std::move(mappings));
-    SharedPath result;
-    if (!source->size()) { return result; }
-    result.append(source, 0, source->size(), 0, (*source)[source->size() - 1].length);
-    return result;
-}
-
 handle_t EditedTranscriptPath::get_first_node_handle(const HandleGraph & graph) const {
 
     if (!shared_path.empty()) {
@@ -2428,6 +2410,11 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
 #endif
 
     list<CompletedTranscriptPath> updated_transcript_paths;
+    using SharedPath = SharedTranscriptPath<EditedMapping>;
+    SharedPath::TranslationCache shared_translation;
+    for (const auto& path : edited_transcript_paths) {
+        shared_translation.register_path(path.shared_path);
+    }
 
     // Update paths to match new augmented graph and add them
     // as reference transcript paths, releasing each consumed input path.
@@ -2438,6 +2425,29 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
         const EditedTranscriptPath & transcript_path = *edited_transcript_paths_it;
 
         updated_transcript_paths.emplace_back(transcript_path);
+
+        if (!transcript_path.shared_path.empty()) {
+            updated_transcript_paths.back().shared_path = shared_translation.translate(
+                transcript_path.shared_path, [&](const SharedPath::SourceStep & mapping,
+                                                  const auto & emit) {
+                    auto found = translation_index.find(mapping.handle);
+                    if (found == translation_index.end()) {
+                        emit(mapping);
+                        return;
+                    }
+                    auto emit_handle = [&](const handle_t & handle) {
+                        const auto length = _graph->get_length(handle);
+                        if (length > static_cast<uint64_t>(numeric_limits<int64_t>::max())) {
+                            throw overflow_error("Shared transcript node length exceeds Position range");
+                        }
+                        emit(SharedPath::SourceStep{handle, static_cast<uint64_t>(length)});
+                    };
+                    if (found->second.front().first > 0) { emit_handle(mapping.handle); }
+                    for (const auto & node : found->second) { emit_handle(node.second); }
+                });
+            edited_transcript_paths_it = edited_transcript_paths.erase(edited_transcript_paths_it);
+            continue;
+        }
 
         transcript_path.for_each_mapping(*_graph, [&](const EditedMapping& mapping, uint64_t) {
 
@@ -2471,15 +2481,10 @@ void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript
                 updated_transcript_paths.back().path.emplace_back(mapping_handle);
             }
         });
-        if (!transcript_path.shared_path.empty()) {
-            auto& completed = updated_transcript_paths.back();
-            completed.shared_path = share_completed_path(completed.path, *_graph);
-            vector<handle_t>().swap(completed.path);
-        }
-
         edited_transcript_paths_it = edited_transcript_paths.erase(edited_transcript_paths_it);
     }
 
+    assert(shared_translation.empty());
     add_splice_junction_edges(updated_transcript_paths);
 
     if (add_reference_transcript_paths) {
@@ -2577,6 +2582,53 @@ void Transcriptome::update_haplotype_index(unique_ptr<gbwt::GBWT> & haplotype_in
 
 void Transcriptome::update_transcript_paths(const spp::sparse_hash_map<handle_t, vector<pair<int32_t, handle_t> > > & update_index) {
 
+    // Translate each immutable source once before the independent vector paths.
+    // The cache omits source entries outside all registered slices. Those
+    // entries may name nodes deleted before compaction and must not be queried.
+    using SharedPath = SharedTranscriptPath<EditedMapping>;
+    SharedPath::TranslationCache shared_translation;
+    for (const auto & transcript_path : _transcript_paths) {
+        shared_translation.register_path(transcript_path.shared_path);
+    }
+    for (auto & transcript_path : _transcript_paths) {
+        if (transcript_path.shared_path.empty()) { continue; }
+        transcript_path.shared_path = shared_translation.translate(
+            transcript_path.shared_path, [&](const SharedPath::SourceStep & mapping,
+                                              const auto & emit) {
+                auto emit_handle = [&](const handle_t & handle) {
+                    const auto length = _graph->get_length(handle);
+                    if (length > static_cast<uint64_t>(numeric_limits<int64_t>::max())) {
+                        throw overflow_error("Shared transcript node length exceeds Position range");
+                    }
+                    emit(SharedPath::SourceStep{handle, static_cast<uint64_t>(length)});
+                };
+                auto found = update_index.find(mapping.handle);
+                if (found != update_index.end()) {
+                    if (found->second.front().first > 0) { emit_handle(mapping.handle); }
+                    for (const auto & node : found->second) { emit_handle(node.second); }
+                } else {
+                    found = update_index.find(_graph->flip(mapping.handle));
+                    if (found == update_index.end()) {
+                        emit(mapping);
+                    } else {
+                        if (found->second.front().first > 0) { emit_handle(mapping.handle); }
+                        for (auto node = found->second.rbegin(); node != found->second.rend(); ++node) {
+                            emit_handle(_graph->flip(node->second));
+                        }
+                    }
+                }
+            });
+        if (!transcript_path.path.empty()) {
+            transcript_path.path.clear();
+            transcript_path.path.reserve(transcript_path.shared_path.size());
+            transcript_path.for_each_handle(*_graph, [&](const handle_t & handle, uint64_t) {
+                transcript_path.path.emplace_back(handle);
+            });
+        }
+    }
+
+    assert(shared_translation.empty());
+
     #pragma omp parallel num_threads(num_threads)
     {
         // Update transcript paths 
@@ -2584,7 +2636,7 @@ void Transcriptome::update_transcript_paths(const spp::sparse_hash_map<handle_t,
         for (size_t i = 0; i < _transcript_paths.size(); ++i) {
 
             vector<handle_t> new_transcript_path;
-            const bool shared = !_transcript_paths[i].shared_path.empty();
+            if (!_transcript_paths[i].shared_path.empty()) { continue; }
             new_transcript_path.reserve(_transcript_paths[i].resident_size());
 
             _transcript_paths[i].for_each_handle(*_graph, [&](const handle_t& handle, uint64_t) {
@@ -2631,14 +2683,7 @@ void Transcriptome::update_transcript_paths(const spp::sparse_hash_map<handle_t,
                 }
             });
 
-            if (shared) {
-                _transcript_paths[i].shared_path = share_completed_path(new_transcript_path, *_graph);
-                if (!_transcript_paths[i].path.empty()) {
-                    _transcript_paths[i].path = std::move(new_transcript_path);
-                }
-            } else {
-                _transcript_paths.at(i).path = std::move(new_transcript_path);
-            }
+            _transcript_paths.at(i).path = std::move(new_transcript_path);
         }
     }
 }

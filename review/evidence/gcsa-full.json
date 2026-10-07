@@ -1,0 +1,142 @@
+{
+  "mode": "gcsa",
+  "arms": {
+    "before": "/review/bin/vg-gcsa9-before",
+    "after": "/review/bin/vg-gcsa9-after"
+  },
+  "rows": [
+    {
+      "label": "prepare-graph",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "convert",
+        "-g",
+        "-p",
+        "/review/verification/inputs/rna.gfa"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "gcsa-before-resident",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "index",
+        "-t",
+        "1",
+        "-g",
+        "/review/verification/gcsa-full/gcsa-before-resident.gcsa",
+        "-k",
+        "3",
+        "-X",
+        "2",
+        "-V",
+        "-b",
+        "/review/verification/gcsa-full/scratch",
+        "/review/verification/gcsa-full/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.61,
+      "peak_rss_kib": 50244
+    },
+    {
+      "label": "gcsa-before-resident",
+      "gcsa_sha256": "02748cc183cd73ec9127dac3fa21c3a6cafc2e62d10f72b0a845adbe11369413",
+      "lcp_sha256": "fcc7ad0605b79eee5ce3d597e269b49af427df77420a271ee58ccf92702e8cd4",
+      "exact_bytes_equal": true,
+      "scratch_empty": true
+    },
+    {
+      "label": "gcsa-before-external",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "index",
+        "-t",
+        "1",
+        "-g",
+        "/review/verification/gcsa-full/gcsa-before-external.gcsa",
+        "-k",
+        "3",
+        "-X",
+        "2",
+        "-V",
+        "-b",
+        "/review/verification/gcsa-full/scratch",
+        "--gcsa-memory",
+        "16M",
+        "/review/verification/gcsa-full/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.14,
+      "peak_rss_kib": 54908
+    },
+    {
+      "label": "gcsa-before-external",
+      "gcsa_sha256": "02748cc183cd73ec9127dac3fa21c3a6cafc2e62d10f72b0a845adbe11369413",
+      "lcp_sha256": "fcc7ad0605b79eee5ce3d597e269b49af427df77420a271ee58ccf92702e8cd4",
+      "exact_bytes_equal": true,
+      "scratch_empty": true
+    },
+    {
+      "label": "gcsa-after-resident",
+      "command": [
+        "/review/bin/vg-gcsa9-after",
+        "index",
+        "-t",
+        "1",
+        "-g",
+        "/review/verification/gcsa-full/gcsa-after-resident.gcsa",
+        "-k",
+        "3",
+        "-X",
+        "2",
+        "-V",
+        "-b",
+        "/review/verification/gcsa-full/scratch",
+        "/review/verification/gcsa-full/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.63,
+      "peak_rss_kib": 50244
+    },
+    {
+      "label": "gcsa-after-resident",
+      "gcsa_sha256": "02748cc183cd73ec9127dac3fa21c3a6cafc2e62d10f72b0a845adbe11369413",
+      "lcp_sha256": "fcc7ad0605b79eee5ce3d597e269b49af427df77420a271ee58ccf92702e8cd4",
+      "exact_bytes_equal": true,
+      "scratch_empty": true
+    },
+    {
+      "label": "gcsa-after-external",
+      "command": [
+        "/review/bin/vg-gcsa9-after",
+        "index",
+        "-t",
+        "1",
+        "-g",
+        "/review/verification/gcsa-full/gcsa-after-external.gcsa",
+        "-k",
+        "3",
+        "-X",
+        "2",
+        "-V",
+        "-b",
+        "/review/verification/gcsa-full/scratch",
+        "--gcsa-memory",
+        "16M",
+        "/review/verification/gcsa-full/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.14,
+      "peak_rss_kib": 54888
+    },
+    {
+      "label": "gcsa-after-external",
+      "gcsa_sha256": "02748cc183cd73ec9127dac3fa21c3a6cafc2e62d10f72b0a845adbe11369413",
+      "lcp_sha256": "fcc7ad0605b79eee5ce3d597e269b49af427df77420a271ee58ccf92702e8cd4",
+      "exact_bytes_equal": true,
+      "scratch_empty": true
+    }
+  ]
+}

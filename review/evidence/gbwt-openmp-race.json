@@ -1,0 +1,30 @@
+{
+  "source": "6cabe5fc2cef04d922d68b561d190b0c7ee02bd8",
+  "compiler": "Clang14",
+  "runtime": "LLVM OpenMP14 and source-rebuilt LLVM14 Archer",
+  "source_url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-14.0.0/openmp/tools/archer/ompt-tsan.cpp",
+  "test": "GBWTBuilderTest.InsertionThreads",
+  "workers": [
+    0,
+    1,
+    2,
+    4,
+    24
+  ],
+  "exit": 0,
+  "race_reports": 0,
+  "controls": [
+    {
+      "arm": "barrier",
+      "exit": 0,
+      "openmp_tool_active": true
+    },
+    {
+      "arm": "race",
+      "exit": 66,
+      "openmp_tool_active": true
+    }
+  ],
+  "global_aslr_changed": false,
+  "production_source_changed": false
+}

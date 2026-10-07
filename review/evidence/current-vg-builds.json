@@ -1,0 +1,257 @@
+[
+  {
+    "id": "R03",
+    "source_head": "f2055c87dfc042345fea20da00bc17802e0b6d4d",
+    "source_tree": "78da120d56f33de53a06bbaf00ccfd1cbd74080d",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "1e907e46b359f3de30fee617b2baf92334c175e278d7ae906973655d5cb8925d",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "a2e873b80b10b38b90f1f82bee3044116b6276fc",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T06:42:36.208449+00:00"
+  },
+  {
+    "id": "R08",
+    "source_head": "2d500831c2e6003daf8d07e6619c6abae2223c1e",
+    "source_tree": "d4805488dea071d9a680f56ae3e647b55b194468",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "e39371ea9d3692e4918fbe3733c076e7de7ebe4f8f8694fc21d534d870d2cbcd",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "a2e873b80b10b38b90f1f82bee3044116b6276fc",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T06:43:55.547541+00:00"
+  },
+  {
+    "id": "R09",
+    "source_head": "d30edc55f5486b10ecacf42e4e1c8346445f9057",
+    "source_tree": "1311cf9f6becd211507cbd48feaf58e1257e49e8",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "d74e77160f8e5f574e28c9ffe1c570e52a831f9ef6540dba92ba683a30a36ec7",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "a2e873b80b10b38b90f1f82bee3044116b6276fc",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T06:45:01.129901+00:00"
+  },
+  {
+    "id": "R10",
+    "source_head": "677e5487ee7c04f8b4bac918bdb96b8aa04683ca",
+    "source_tree": "92f3331b74de0ba78ec207d7e13cc759a1f67e77",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "0128b5727aa55f9a3c0e0529ce95c76d6b178c4b2e82800828f8f90a188b4533",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "a2e873b80b10b38b90f1f82bee3044116b6276fc",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T06:47:39.563258+00:00"
+  },
+  {
+    "id": "R11",
+    "source_head": "df416859271c83c908da66870e18d749e253b719",
+    "source_tree": "3c68b52bf3d6af1d9d6a68ae7745bd4cfa8f3140",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "a05daf125bb9ff72abf89b1e1e20cad674e862ea807242c36ff374961328a1a3",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "a2e873b80b10b38b90f1f82bee3044116b6276fc",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T06:49:00.349883+00:00"
+  },
+  {
+    "id": "combined",
+    "source_head": "cfa1159c626e882697612b22697fcabd16c7bb00",
+    "source_tree": "087f8b2e734b4d55466feb9f7ad7dec581b3904d",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "ed367f748ccb0877e0fed31d5d2b9cd9edaf62151def11ec711e8f5073b32dfd",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "a2e873b80b10b38b90f1f82bee3044116b6276fc",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T06:50:24.764324+00:00"
+  },
+  {
+    "id": "R07",
+    "source_head": "842c5eb9f6d7e6570a5ff422a1cf2db97c829f75",
+    "source_tree": "b6ce2421f94f36384dabfbd070ac93c46f032bce",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "61e9e4cefb76a949a1ca950be95674db430e3ae0edd3f390f3cb777b916006c9",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "a2e873b80b10b38b90f1f82bee3044116b6276fc",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T07:13:04.878158+00:00"
+  },
+  {
+    "id": "D01-vg",
+    "source_head": "3f520622bf753933e380ea33bdec33848ff8b78a",
+    "source_tree": "f9485a25247847533e005522e5bd55e22198c621",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "88764a570faf3b762b93fb70c79504be4aee08e7b9e83399eb258e0576d53c0c",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "289bf176ecf3f52859422ab85f9e2d045741d8bb",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T07:48:20.247131+00:00"
+  },
+  {
+    "id": "GCSA-9",
+    "source_head": "533290bc2a1c524b1b899b5a2c78f40f59eb44c8",
+    "source_tree": "13d1bde0ed5f35c74d65e76b9a65e3bf0d4cc517",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "9d352aa8737c07948dddaee3257122c238cee29d6aacc4e3e68cc22b7c5fef70",
+    "dependency_pins": {
+      "gcsa2": "3479b0811262f4b606abae7ebd168510f5ee793d",
+      "libbdsg": "a2e873b80b10b38b90f1f82bee3044116b6276fc",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T07:53:17.060082+00:00"
+  },
+  {
+    "id": "D01-baseline",
+    "source_head": "bea9cacb3370f1e10194b0342720ee8bc7163430",
+    "source_tree": "3e7779d3a9e03d24ffc5e6766209b4a3a69f33be",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "f8c8be8f646f042d6689da66e0580c14c50ca4595ca69bffc5e1d3569df4ca05",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "b6d327da7e3447a38f99b51c54548934a7e30981",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T08:00:27.072823+00:00"
+  },
+  {
+    "id": "B2",
+    "source_head": "677933f730a0a0665a17dc1078b4e2896a2fd0fe",
+    "source_tree": "16fa6aeb937f3625874d9bbddb46204b3e769f46",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "03b33ffa94a2050d372d8851983a1bb200f2abb122eb006c033f68625e653815",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "a2e873b80b10b38b90f1f82bee3044116b6276fc",
+      "gbwt": "6cabe5fc2cef04d922d68b561d190b0c7ee02bd8",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T08:05:55.918286+00:00"
+  },
+  {
+    "id": "XG-vg",
+    "source_head": "bb60d269871da0c5041d0e87b797087422ed462c",
+    "source_tree": "fb6fe43c0c1b748ab82fbd085fa2c05c21674bfd",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "7b19d2cc68f2e7e8970bec4159718dc7e8b7a74fec26b9ca531b7afefba08e86",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "a2e873b80b10b38b90f1f82bee3044116b6276fc",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "152446f7835d9ca37ec6144a51fd8494d9f3f3fe",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T08:11:23.578273+00:00"
+  },
+  {
+    "id": "P01-P03",
+    "source_head": "a36417eef87bd76dc11ea0fcfac9bf5f8b2a3d19",
+    "source_tree": "c14c680b0e04443369f4114255bbbb988d7908eb",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "8d9ce6206dcf8078a5ddb405dc11f3c83349227fb23e7a005d7a1abaf1e31b24",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "22b07024fbbe197897402cc789e165bf5e191405",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T08:16:33.586718+00:00"
+  },
+  {
+    "id": "R16",
+    "source_head": "56c32ac6a054be485b97a1a3102a746e8dd69af5",
+    "source_tree": "881bb7ae74d877f80b3b8d003b8537a4457d45c8",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "dfc8ee5a821edb53ad15a897479bfcede39db9285354cf2807a6233d1b10edc6",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "3d45611e917cf341fee1416f031bb9196637cc88",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T08:23:35.541082+00:00"
+  },
+  {
+    "id": "R17",
+    "source_head": "b8142e6526ae454d74ae76f5e9ea7b996931351c",
+    "source_tree": "24e63ece4c9597ef7acb7622f943aaf95eaa5568",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "7efc08695e8a176552c09e1c12e36c16c354fb74677063d51b82c3207ed53ba1",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "531c1ffbfd1998eb18aedf0ac9c5091c77027c98",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T08:28:57.563660+00:00"
+  }
+]

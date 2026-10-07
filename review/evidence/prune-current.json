@@ -1,0 +1,512 @@
+{
+  "mode": "prune",
+  "scope": "whole prune command including graph load and output, excluding fixture/index preparation",
+  "order": "ABBA x3",
+  "summary": {
+    "baseline": {
+      "median_wall_seconds": 3.25,
+      "median_peak_rss_kib": 53942.0
+    },
+    "candidate": {
+      "median_wall_seconds": 1.065,
+      "median_peak_rss_kib": 56030.0
+    }
+  },
+  "rows": [
+    {
+      "label": "prepare-graph",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-g",
+        "-p",
+        "/review/verification/prune-timing-inputs/prune.gfa"
+      ],
+      "wall_seconds": 0.18,
+      "peak_rss_kib": 34816
+    },
+    {
+      "label": "prepare-gbwt",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "gbwt",
+        "-G",
+        "--max-node",
+        "0",
+        "-o",
+        "/review/verification/prune-current/input.gbwt",
+        "/review/verification/prune-timing-inputs/prune-haplotypes.gfa"
+      ],
+      "wall_seconds": 0.08,
+      "peak_rss_kib": 45056
+    },
+    {
+      "label": "0-baseline",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/0-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 3.24,
+      "peak_rss_kib": 54224,
+      "arm": "baseline",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "0-baseline-manifest",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/0-baseline.pg"
+      ],
+      "wall_seconds": 0.03,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "1-candidate",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/1-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 1.07,
+      "peak_rss_kib": 54336,
+      "arm": "candidate",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "1-candidate-manifest",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/1-candidate.pg"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "2-candidate",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/2-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 1.06,
+      "peak_rss_kib": 50552,
+      "arm": "candidate",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "2-candidate-manifest",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/2-candidate.pg"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "3-baseline",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/3-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 3.26,
+      "peak_rss_kib": 54432,
+      "arm": "baseline",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "3-baseline-manifest",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/3-baseline.pg"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "4-baseline",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/4-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 3.24,
+      "peak_rss_kib": 55788,
+      "arm": "baseline",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "4-baseline-manifest",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/4-baseline.pg"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 30720
+    },
+    {
+      "label": "5-candidate",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/5-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 1.07,
+      "peak_rss_kib": 56764,
+      "arm": "candidate",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "5-candidate-manifest",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/5-candidate.pg"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "6-candidate",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/6-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 1.06,
+      "peak_rss_kib": 56840,
+      "arm": "candidate",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "6-candidate-manifest",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/6-candidate.pg"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 30720
+    },
+    {
+      "label": "7-baseline",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/7-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 3.25,
+      "peak_rss_kib": 52272,
+      "arm": "baseline",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "7-baseline-manifest",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/7-baseline.pg"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 30720
+    },
+    {
+      "label": "8-baseline",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/8-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 3.33,
+      "peak_rss_kib": 51952,
+      "arm": "baseline",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "8-baseline-manifest",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/8-baseline.pg"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 30720
+    },
+    {
+      "label": "9-candidate",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/9-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 1.1,
+      "peak_rss_kib": 55296,
+      "arm": "candidate",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "9-candidate-manifest",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/9-candidate.pg"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 30720
+    },
+    {
+      "label": "10-candidate",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/10-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 1.06,
+      "peak_rss_kib": 56792,
+      "arm": "candidate",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "10-candidate-manifest",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/10-candidate.pg"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "11-baseline",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/prune-current/input.gbwt",
+        "-m",
+        "/review/verification/prune-current/11-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/prune-current/input.pg"
+      ],
+      "wall_seconds": 3.25,
+      "peak_rss_kib": 53660,
+      "arm": "baseline",
+      "mapping_sha256": "df04f646eb695b731d3074c7a1b1f493e80ae551bcbcb172ec4292a3aee46e76",
+      "graph_manifest_equal": true
+    },
+    {
+      "label": "11-baseline-manifest",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/prune-current/11-baseline.pg"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 28672
+    }
+  ]
+}

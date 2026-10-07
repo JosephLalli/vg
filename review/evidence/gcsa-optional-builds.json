@@ -1,0 +1,119 @@
+[
+  {
+    "id": "GCSA-2",
+    "head": "ec6b6ae069f7cf64ff9215b7d55ff18cdc748ae4",
+    "base": "b57bcad2310da50f79e695561a9757da637759ff",
+    "complete_owner_build": true,
+    "native_tests": true,
+    "threads": [
+      1,
+      2,
+      4
+    ],
+    "paired_bytes_reload_failures_scratch": true
+  },
+  {
+    "id": "GCSA-5A",
+    "head": "22268ed4a6d589dfacbfee9c1cbfcd3453f8df6d",
+    "base": "b57bcad2310da50f79e695561a9757da637759ff",
+    "complete_owner_build": true,
+    "native_tests": true,
+    "threads": [
+      1,
+      2,
+      4
+    ],
+    "paired_bytes_reload_failures_scratch": true
+  },
+  {
+    "id": "GCSA-5B",
+    "head": "cdfcd6cac69c5e64a5d2b73886e6fbd69d5670c3",
+    "base": "22268ed4a6d589dfacbfee9c1cbfcd3453f8df6d",
+    "complete_owner_build": true,
+    "native_tests": true,
+    "threads": [
+      1,
+      2,
+      4
+    ],
+    "paired_bytes_reload_failures_scratch": true
+  },
+  {
+    "id": "GCSA-8",
+    "head": "c462c0f6d4b15ac6c02525f046cbd4199d27ccc0",
+    "base": "b57bcad2310da50f79e695561a9757da637759ff",
+    "complete_owner_build": true,
+    "native_tests": true,
+    "threads": [
+      1,
+      2,
+      4
+    ],
+    "paired_bytes_reload_failures_scratch": true
+  },
+  {
+    "id": "GCSA-3A",
+    "head": "4b3f3f13ac3f5fa48b5a0686fa4698101ad3c331",
+    "base": "b57bcad2310da50f79e695561a9757da637759ff",
+    "complete_owner_build": true,
+    "native_tests": true,
+    "threads": [
+      1,
+      2,
+      4
+    ],
+    "paired_bytes_reload_failures_scratch": true
+  },
+  {
+    "id": "GCSA-3B",
+    "head": "5d8060784f73f6dbdc24af3757f678dc420b7390",
+    "base": "4b3f3f13ac3f5fa48b5a0686fa4698101ad3c331",
+    "complete_owner_build": true,
+    "native_tests": true,
+    "threads": [
+      1,
+      2,
+      4
+    ],
+    "paired_bytes_reload_failures_scratch": true
+  },
+  {
+    "id": "GCSA-6",
+    "head": "17b5d5aa13bd55a61c218171903b83ad1eae7636",
+    "base": "5d8060784f73f6dbdc24af3757f678dc420b7390",
+    "complete_owner_build": true,
+    "native_tests": true,
+    "threads": [
+      1,
+      2,
+      4
+    ],
+    "paired_bytes_reload_failures_scratch": true
+  },
+  {
+    "id": "GCSA-4",
+    "head": "9fd741c5068e24256668a0b034b0aa7392255d12",
+    "base": "b57bcad2310da50f79e695561a9757da637759ff",
+    "complete_owner_build": true,
+    "native_tests": true,
+    "threads": [
+      1,
+      2,
+      4
+    ],
+    "paired_bytes_reload_failures_scratch": true
+  },
+  {
+    "id": "GCSA-LCP",
+    "head": "1b476839c5baa9a63ba5a6c7cbe6c77093efa552",
+    "base": "17b5d5aa13bd55a61c218171903b83ad1eae7636",
+    "complete_owner_build": true,
+    "native_tests": true,
+    "threads": [
+      1,
+      2,
+      4
+    ],
+    "paired_bytes_reload_failures_scratch": true
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "R03",
+    "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/remediation-20261007/rna/vg-R03",
+    "head": "f2055c87dfc042345fea20da00bc17802e0b6d4d",
+    "tree": "78da120d56f33de53a06bbaf00ccfd1cbd74080d",
+    "status": ""
+  },
+  {
+    "id": "R08-final",
+    "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/remediation-20261007/rna/vg-R08-final",
+    "head": "2d500831c2e6003daf8d07e6619c6abae2223c1e",
+    "tree": "d4805488dea071d9a680f56ae3e647b55b194468",
+    "status": ""
+  },
+  {
+    "id": "R09",
+    "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/remediation-20261007/rna/vg-R09",
+    "head": "d30edc55f5486b10ecacf42e4e1c8346445f9057",
+    "tree": "1311cf9f6becd211507cbd48feaf58e1257e49e8",
+    "status": ""
+  },
+  {
+    "id": "R10",
+    "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/remediation-20261007/rna/vg-R10",
+    "head": "677e5487ee7c04f8b4bac918bdb96b8aa04683ca",
+    "tree": "92f3331b74de0ba78ec207d7e13cc759a1f67e77",
+    "status": ""
+  },
+  {
+    "id": "R11",
+    "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/remediation-20261007/rna/vg-R11",
+    "head": "df416859271c83c908da66870e18d749e253b719",
+    "tree": "3c68b52bf3d6af1d9d6a68ae7745bd4cfa8f3140",
+    "status": ""
+  },
+  {
+    "id": "combined",
+    "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/remediation-20261007/rna/vg-combined",
+    "head": "cfa1159c626e882697612b22697fcabd16c7bb00",
+    "tree": "087f8b2e734b4d55466feb9f7ad7dec581b3904d",
+    "status": ""
+  }
+]

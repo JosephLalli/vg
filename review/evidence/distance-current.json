@@ -1,0 +1,407 @@
+{
+  "mode": "distance",
+  "scope": "isolated staging with unchanged vg map reservation; query equivalence checked separately",
+  "order": "ABBA x3",
+  "summary": {
+    "dense-map": {
+      "median_stage_seconds": 0.2715395,
+      "median_peak_rss_kib": 149026.0
+    },
+    "dense-dense": {
+      "median_stage_seconds": 0.0226126,
+      "median_peak_rss_kib": 12288.0
+    },
+    "sparse-map": {
+      "median_stage_seconds": 0.00654833,
+      "median_peak_rss_kib": 12288.0
+    },
+    "sparse-dense": {
+      "median_stage_seconds": 0.005400775,
+      "median_peak_rss_kib": 12288.0
+    }
+  },
+  "rows": [
+    {
+      "label": "baseline-queries",
+      "command": [
+        "/review/verification/distance-D01-baseline",
+        "/review/verification/distance-current/baseline.dist"
+      ],
+      "wall_seconds": 2.06,
+      "peak_rss_kib": 8192,
+      "queries": 1328,
+      "query_sha256": "7d1f93c50c40aa5858d1928c01e9b4aa892be38ea13620bc28472eae57c31b06"
+    },
+    {
+      "label": "candidate-queries",
+      "command": [
+        "/review/verification/distance-D01-vg",
+        "/review/verification/distance-current/candidate.dist"
+      ],
+      "wall_seconds": 0.1,
+      "peak_rss_kib": 8192,
+      "queries": 1328,
+      "query_sha256": "7d1f93c50c40aa5858d1928c01e9b4aa892be38ea13620bc28472eae57c31b06"
+    },
+    {
+      "label": "dense-0-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "dense"
+      ],
+      "wall_seconds": 0.38,
+      "peak_rss_kib": 149028,
+      "arm": "map",
+      "density": "dense",
+      "stage_seconds": 0.272694,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "dense-1-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "dense"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "dense",
+      "stage_seconds": 0.0226003,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "dense-2-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "dense"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "dense",
+      "stage_seconds": 0.0224975,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "dense-3-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "dense"
+      ],
+      "wall_seconds": 0.38,
+      "peak_rss_kib": 149036,
+      "arm": "map",
+      "density": "dense",
+      "stage_seconds": 0.264018,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "dense-4-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "dense"
+      ],
+      "wall_seconds": 0.39,
+      "peak_rss_kib": 149028,
+      "arm": "map",
+      "density": "dense",
+      "stage_seconds": 0.273087,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "dense-5-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "dense"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "dense",
+      "stage_seconds": 0.0226997,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "dense-6-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "dense"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "dense",
+      "stage_seconds": 0.0230954,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "dense-7-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "dense"
+      ],
+      "wall_seconds": 0.38,
+      "peak_rss_kib": 149020,
+      "arm": "map",
+      "density": "dense",
+      "stage_seconds": 0.270247,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "dense-8-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "dense"
+      ],
+      "wall_seconds": 0.41,
+      "peak_rss_kib": 149024,
+      "arm": "map",
+      "density": "dense",
+      "stage_seconds": 0.289762,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "dense-9-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "dense"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "dense",
+      "stage_seconds": 0.0226249,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "dense-10-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "dense"
+      ],
+      "wall_seconds": 0.02,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "dense",
+      "stage_seconds": 0.0223814,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "dense-11-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "dense"
+      ],
+      "wall_seconds": 0.38,
+      "peak_rss_kib": 149020,
+      "arm": "map",
+      "density": "dense",
+      "stage_seconds": 0.270385,
+      "records": 1998000,
+      "input_digest": "4662666000"
+    },
+    {
+      "label": "sparse-0-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "sparse"
+      ],
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 12288,
+      "arm": "map",
+      "density": "sparse",
+      "stage_seconds": 0.00692075,
+      "records": 15584,
+      "input_digest": "36441280"
+    },
+    {
+      "label": "sparse-1-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "sparse"
+      ],
+      "wall_seconds": 0.0,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "sparse",
+      "stage_seconds": 0.005724,
+      "records": 15584,
+      "input_digest": "36441280"
+    },
+    {
+      "label": "sparse-2-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "sparse"
+      ],
+      "wall_seconds": 0.0,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "sparse",
+      "stage_seconds": 0.00541623,
+      "records": 15584,
+      "input_digest": "36441280"
+    },
+    {
+      "label": "sparse-3-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "sparse"
+      ],
+      "wall_seconds": 0.0,
+      "peak_rss_kib": 12288,
+      "arm": "map",
+      "density": "sparse",
+      "stage_seconds": 0.00612513,
+      "records": 15584,
+      "input_digest": "36441280"
+    },
+    {
+      "label": "sparse-4-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "sparse"
+      ],
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 12288,
+      "arm": "map",
+      "density": "sparse",
+      "stage_seconds": 0.00672249,
+      "records": 15584,
+      "input_digest": "36441280"
+    },
+    {
+      "label": "sparse-5-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "sparse"
+      ],
+      "wall_seconds": 0.0,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "sparse",
+      "stage_seconds": 0.00520773,
+      "records": 15584,
+      "input_digest": "36441280"
+    },
+    {
+      "label": "sparse-6-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "sparse"
+      ],
+      "wall_seconds": 0.0,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "sparse",
+      "stage_seconds": 0.00535566,
+      "records": 15584,
+      "input_digest": "36441280"
+    },
+    {
+      "label": "sparse-7-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "sparse"
+      ],
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 12288,
+      "arm": "map",
+      "density": "sparse",
+      "stage_seconds": 0.00753618,
+      "records": 15584,
+      "input_digest": "36441280"
+    },
+    {
+      "label": "sparse-8-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "sparse"
+      ],
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 12288,
+      "arm": "map",
+      "density": "sparse",
+      "stage_seconds": 0.00637417,
+      "records": 15584,
+      "input_digest": "36441280"
+    },
+    {
+      "label": "sparse-9-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "sparse"
+      ],
+      "wall_seconds": 0.0,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "sparse",
+      "stage_seconds": 0.00551183,
+      "records": 15584,
+      "input_digest": "36441280"
+    },
+    {
+      "label": "sparse-10-dense",
+      "command": [
+        "/review/verification/distance-staging",
+        "dense",
+        "sparse"
+      ],
+      "wall_seconds": 0.0,
+      "peak_rss_kib": 12288,
+      "arm": "dense",
+      "density": "sparse",
+      "stage_seconds": 0.00538532,
+      "records": 15584,
+      "input_digest": "36441280"
+    },
+    {
+      "label": "sparse-11-map",
+      "command": [
+        "/review/verification/distance-staging",
+        "map",
+        "sparse"
+      ],
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 12288,
+      "arm": "map",
+      "density": "sparse",
+      "stage_seconds": 0.0063285,
+      "records": 15584,
+      "input_digest": "36441280"
+    }
+  ]
+}

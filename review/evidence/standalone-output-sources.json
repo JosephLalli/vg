@@ -1,0 +1,96 @@
+{
+  "created_utc": "2026-10-07T07:53:18Z",
+  "stock_vg_base": {
+    "commit": "c91cc1d91fe1894274c6905c6bd089be12911329",
+    "tree": "5e7f608f18c2e4548c9776ccbdf09404a11bf2e0"
+  },
+  "source_candidates": {
+    "R16": {
+      "comparison_base": "cfa1159c626e882697612b22697fcabd16c7bb00",
+      "comparison_base_tree": "087f8b2e734b4d55466feb9f7ad7dec581b3904d",
+      "head": "f34715737a2fb64367fb801bf08d6832c04830ee",
+      "tree": "232241cb82c390cf6d9d3d47d5448dca8fdf6cfd"
+    },
+    "R17": {
+      "comparison_base": "f34715737a2fb64367fb801bf08d6832c04830ee",
+      "head": "8d921ec0a0c8e8ab111aa12ec007f5676202e01d",
+      "tree": "b7d8d616434019f0fa4ad0313dce310c46d1e3ae"
+    }
+  },
+  "standalone_candidates": {
+    "R16": {
+      "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/remediation-20261007/consumers/vg-R16-standalone",
+      "branch": "codex/review-r16-standalone-20261007",
+      "base": "c91cc1d91fe1894274c6905c6bd089be12911329",
+      "head": "56c32ac6a054be485b97a1a3102a746e8dd69af5",
+      "tree": "881bb7ae74d877f80b3b8d003b8537a4457d45c8",
+      "libbdsg": "3d45611e917cf341fee1416f031bb9196637cc88",
+      "diff": {
+        "files": 5,
+        "insertions": 126,
+        "deletions": 31,
+        "paths": [
+          "deps/libbdsg",
+          "src/subcommand/rna_main.cpp",
+          "src/transcriptome.cpp",
+          "src/transcriptome.hpp",
+          "src/unittest/transcriptome.cpp"
+        ]
+      },
+      "extraction": [
+        "Retains the reviewed final-output selection and ordinary fallback.",
+        "Uses CompletedTranscriptPath.path.size() and direct oriented handle iteration.",
+        "Moves focused coverage into the stock src/unittest/transcriptome.cpp.",
+        "Introduces no R03 or R08-R11 representation dependency."
+      ]
+    },
+    "R17": {
+      "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/remediation-20261007/consumers/vg-R17-standalone",
+      "branch": "codex/review-r17-standalone-20261007",
+      "base": "56c32ac6a054be485b97a1a3102a746e8dd69af5",
+      "head": "b8142e6526ae454d74ae76f5e9ea7b996931351c",
+      "tree": "24e63ece4c9597ef7acb7622f943aaf95eaa5568",
+      "libbdsg": "531c1ffbfd1998eb18aedf0ac9c5091c77027c98",
+      "diff_from_R16": {
+        "files": 3,
+        "insertions": 17,
+        "deletions": 2,
+        "paths": [
+          "deps/libbdsg",
+          "src/transcriptome.cpp",
+          "src/unittest/transcriptome.cpp"
+        ],
+        "production_change": "One serializer call gains the existing worker count and 3 GiB extra-workspace budget."
+      }
+    }
+  },
+  "benchmark": {
+    "source": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/remediation-20261007/build/verification/standalone_serialization_benchmark.cpp",
+    "sha256": "890318f9df772221d18700449bff37d167e19eadb57be8519057fe19514003f6",
+    "fixture": {
+      "nodes": 512,
+      "transcripts": 100,
+      "steps_per_transcript": 20000,
+      "orientations": "alternating 512-step forward and reverse blocks",
+      "path_representation": "stock CompletedTranscriptPath vectors built through the protobuf EditedTranscriptPath constructor",
+      "names": "unique transcript_0 through transcript_99",
+      "workers": 4
+    },
+    "timed_region": "output file open, write_graph_with_transcript_paths, and close",
+    "stdout_contract": "one elapsed-seconds value",
+    "status": "source only; compilation and execution reserved for root container validation"
+  },
+  "source_checks": {
+    "git_diff_check_R16": "pass",
+    "git_diff_check_R17_increment": "pass",
+    "shared_representation_symbols_in_R16_diff": "none",
+    "shared_representation_files_in_R16_tree": "none",
+    "builds_or_tests_run": false
+  },
+  "pending_validation": [
+    "Fresh full builds against each recorded libbdsg pin",
+    "Focused [transcriptome] tests and vg rna CLI side-output checks",
+    "Standalone benchmark ABBA with output byte or SHA-256 comparison",
+    "Supported-platform CI"
+  ]
+}

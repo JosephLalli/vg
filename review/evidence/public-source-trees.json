@@ -1,0 +1,258 @@
+[
+  {
+    "id": "L01",
+    "repository": "libbdsg",
+    "head": "22b07024fbbe197897402cc789e165bf5e191405",
+    "base": "b6d327da7e3447a38f99b51c54548934a7e30981",
+    "reviewed_candidate": "0abb8e6a903c12a7ad13ee253c884bbea4a349ef",
+    "reviewed_tree": "547aab75c67028a4ed29641e69e96b5902eb8140"
+  },
+  {
+    "id": "L07",
+    "repository": "libbdsg",
+    "head": "3d45611e917cf341fee1416f031bb9196637cc88",
+    "base": "b6d327da7e3447a38f99b51c54548934a7e30981",
+    "reviewed_candidate": "b401d38c0723dffe73fd82d34fca88005d6795df",
+    "reviewed_tree": "ba9a109bde8e684af79de649d1e22a92dd57aa36"
+  },
+  {
+    "id": "L10",
+    "repository": "libbdsg",
+    "head": "1f674ad502f818d5e34e29bdf9f4f37a9a63ce6c",
+    "base": "3d45611e917cf341fee1416f031bb9196637cc88",
+    "reviewed_candidate": "d73da7629ec29f78ac601673ef0ad374dd77ff03",
+    "reviewed_tree": "f2ece2cca572af709e6dd29444ab229f1fd688e1"
+  },
+  {
+    "id": "L12",
+    "repository": "libbdsg",
+    "head": "531c1ffbfd1998eb18aedf0ac9c5091c77027c98",
+    "base": "1f674ad502f818d5e34e29bdf9f4f37a9a63ce6c",
+    "reviewed_candidate": "ad238c7c1594241f13824924bd49d32a74aeac11",
+    "reviewed_tree": "e00edcf0d923b3b188cc2af45a14bf5afa0eafb0"
+  },
+  {
+    "id": "L11",
+    "repository": "libbdsg",
+    "head": "af3c5760a098b6f75594f2c180a3bef9a47c6e75",
+    "base": "1f674ad502f818d5e34e29bdf9f4f37a9a63ce6c",
+    "reviewed_candidate": "a55b8226413cf0a984e4296a0433bd087f835e63",
+    "reviewed_tree": "ce804aadf2e8235db0d8548f2c42e96151750dd3"
+  },
+  {
+    "id": "D01",
+    "repository": "libbdsg",
+    "head": "289bf176ecf3f52859422ab85f9e2d045741d8bb",
+    "base": "b6d327da7e3447a38f99b51c54548934a7e30981",
+    "reviewed_candidate": "bb0189c0fbf847b4d67ff2072534c8fb92550663",
+    "reviewed_tree": "e3293884db847ff8d5d0b800030400c364acbf49"
+  },
+  {
+    "id": "GCSA-1",
+    "repository": "gcsa2",
+    "head": "b57bcad2310da50f79e695561a9757da637759ff",
+    "base": "e90ba1a62b099c2476788dd752d59743d6a4df18",
+    "reviewed_candidate": "b57bcad2310da50f79e695561a9757da637759ff",
+    "reviewed_tree": "423ea95a0f8707661a95539ac4263aa6a93732e9"
+  },
+  {
+    "id": "GCSA-2",
+    "repository": "gcsa2",
+    "head": "4abc853908e6402192e0086f0f5832086e7a6f85",
+    "base": "b57bcad2310da50f79e695561a9757da637759ff",
+    "reviewed_candidate": "ec6b6ae069f7cf64ff9215b7d55ff18cdc748ae4",
+    "reviewed_tree": "88318c7eacd8d84c90edd1c75abe6cf242e079a2"
+  },
+  {
+    "id": "GCSA-5A",
+    "repository": "gcsa2",
+    "head": "3349b599674c29bf7a729ea46626188ca473faaf",
+    "base": "b57bcad2310da50f79e695561a9757da637759ff",
+    "reviewed_candidate": "22268ed4a6d589dfacbfee9c1cbfcd3453f8df6d",
+    "reviewed_tree": "5273090c87ed5af75471dcdebf6f1b7aa78fcc86"
+  },
+  {
+    "id": "GCSA-5B",
+    "repository": "gcsa2",
+    "head": "606a6dddbf588584e4e66aaefb124c470d68f54f",
+    "base": "3349b599674c29bf7a729ea46626188ca473faaf",
+    "reviewed_candidate": "cdfcd6cac69c5e64a5d2b73886e6fbd69d5670c3",
+    "reviewed_tree": "351a95b21cb6ea01afed605682fb9d9f2b245078"
+  },
+  {
+    "id": "GCSA-8",
+    "repository": "gcsa2",
+    "head": "67872e6b655ceb2bfd2971c4b0d440365d352db3",
+    "base": "b57bcad2310da50f79e695561a9757da637759ff",
+    "reviewed_candidate": "c462c0f6d4b15ac6c02525f046cbd4199d27ccc0",
+    "reviewed_tree": "c7a7c41f2282c37d6e4617bfd8496aac11640224"
+  },
+  {
+    "id": "GCSA-3A",
+    "repository": "gcsa2",
+    "head": "ffe79719c407cacd8f8223dfb3e2f2b1926b3ddd",
+    "base": "b57bcad2310da50f79e695561a9757da637759ff",
+    "reviewed_candidate": "4b3f3f13ac3f5fa48b5a0686fa4698101ad3c331",
+    "reviewed_tree": "551e63cb6abf3641715df7696f1ec2e675a4776b"
+  },
+  {
+    "id": "GCSA-3B",
+    "repository": "gcsa2",
+    "head": "382f9fadc8e15f71f8f3a57b169e1064ff6b636f",
+    "base": "ffe79719c407cacd8f8223dfb3e2f2b1926b3ddd",
+    "reviewed_candidate": "5d8060784f73f6dbdc24af3757f678dc420b7390",
+    "reviewed_tree": "5cc0c791ad7c6269e17f4f1666f4c2d8bbd1ce57"
+  },
+  {
+    "id": "GCSA-6",
+    "repository": "gcsa2",
+    "head": "bf6b6e3f3e7a50947c34831ff55d035104aa0169",
+    "base": "382f9fadc8e15f71f8f3a57b169e1064ff6b636f",
+    "reviewed_candidate": "17b5d5aa13bd55a61c218171903b83ad1eae7636",
+    "reviewed_tree": "64ab27c499b0d5efbff2f0a27b91e728b732c4a7"
+  },
+  {
+    "id": "R03",
+    "repository": "vg",
+    "head": "f2055c87dfc042345fea20da00bc17802e0b6d4d",
+    "base": "c91cc1d91fe1894274c6905c6bd089be12911329",
+    "reviewed_candidate": "f2055c87dfc042345fea20da00bc17802e0b6d4d",
+    "reviewed_tree": "78da120d56f33de53a06bbaf00ccfd1cbd74080d"
+  },
+  {
+    "id": "R07",
+    "repository": "vg",
+    "head": "5c4caf374a73a05f5d632bc002f05715ac694d61",
+    "base": "f2055c87dfc042345fea20da00bc17802e0b6d4d",
+    "reviewed_candidate": "842c5eb9f6d7e6570a5ff422a1cf2db97c829f75",
+    "reviewed_tree": "b6ce2421f94f36384dabfbd070ac93c46f032bce"
+  },
+  {
+    "id": "R08",
+    "repository": "vg",
+    "head": "2f7df3ee7f9d18e3dd1bc585187eed564c1b461c",
+    "base": "c4b7dd0fd5e5b83604bd2847ce3008ddba40ff89",
+    "reviewed_candidate": "2d500831c2e6003daf8d07e6619c6abae2223c1e",
+    "reviewed_tree": "d4805488dea071d9a680f56ae3e647b55b194468"
+  },
+  {
+    "id": "R09",
+    "repository": "vg",
+    "head": "7ed9baeedd2ace4a0fbd15374dbccac06d1221dd",
+    "base": "2f7df3ee7f9d18e3dd1bc585187eed564c1b461c",
+    "reviewed_candidate": "d30edc55f5486b10ecacf42e4e1c8346445f9057",
+    "reviewed_tree": "1311cf9f6becd211507cbd48feaf58e1257e49e8"
+  },
+  {
+    "id": "R10",
+    "repository": "vg",
+    "head": "9c79cab8637e2462f8bfa1b9afbe98f2765e7e28",
+    "base": "2f7df3ee7f9d18e3dd1bc585187eed564c1b461c",
+    "reviewed_candidate": "677e5487ee7c04f8b4bac918bdb96b8aa04683ca",
+    "reviewed_tree": "92f3331b74de0ba78ec207d7e13cc759a1f67e77"
+  },
+  {
+    "id": "R11",
+    "repository": "vg",
+    "head": "0f4bbd5f9b460ba648e1d00b8607404f1c2a52ce",
+    "base": "2f7df3ee7f9d18e3dd1bc585187eed564c1b461c",
+    "reviewed_candidate": "df416859271c83c908da66870e18d749e253b719",
+    "reviewed_tree": "3c68b52bf3d6af1d9d6a68ae7745bd4cfa8f3140"
+  },
+  {
+    "id": "OV01",
+    "repository": "vg",
+    "head": "c07da724e8574015fbaa2333347fe9af94cfeb06",
+    "base": "c91cc1d91fe1894274c6905c6bd089be12911329",
+    "reviewed_candidate": "79728ed5f2f98ef4fd0f9a96d0f3aba2e4e96b6d",
+    "reviewed_tree": "b0747b48cb3aee036e14713027d31a44da98dbad"
+  },
+  {
+    "id": "OV02",
+    "repository": "vg",
+    "head": "71edfef4890f0fe0a67ae998560e837f81b60d7e",
+    "base": "c07da724e8574015fbaa2333347fe9af94cfeb06",
+    "reviewed_candidate": "51807b60ea8e0dac39176bd1dbf216946fb29e43",
+    "reviewed_tree": "7421be550a316cb19b888819d9c2341c4c603922"
+  },
+  {
+    "id": "R20",
+    "repository": "vg",
+    "head": "7dfd6ddd7a10704e40e51f86a3a4229c410d7c5b",
+    "base": "c91cc1d91fe1894274c6905c6bd089be12911329",
+    "reviewed_candidate": "24f7706e3211b16a890921563252faed1c1f1fa3",
+    "reviewed_tree": "cc07bd0b278d5764dbb71ae9ee194b48110e7897"
+  },
+  {
+    "id": "P01-P03",
+    "repository": "vg",
+    "head": "a36417eef87bd76dc11ea0fcfac9bf5f8b2a3d19",
+    "base": "c91cc1d91fe1894274c6905c6bd089be12911329",
+    "reviewed_candidate": "a36417eef87bd76dc11ea0fcfac9bf5f8b2a3d19",
+    "reviewed_tree": "c14c680b0e04443369f4114255bbbb988d7908eb"
+  },
+  {
+    "id": "GCSA-4",
+    "repository": "gcsa2",
+    "head": "8bbab6b3a029d6eff196e12a3e5830e6ec82edb1",
+    "base": "b57bcad2310da50f79e695561a9757da637759ff",
+    "reviewed_candidate": "9fd741c5068e24256668a0b034b0aa7392255d12",
+    "reviewed_tree": "70fed2455d90d237b99fb7a389f7650f074316a2"
+  },
+  {
+    "id": "GCSA-LCP",
+    "repository": "gcsa2",
+    "head": "c617ad1839e423c6d696504fe0dcf24d5ffe8446",
+    "base": "bf6b6e3f3e7a50947c34831ff55d035104aa0169",
+    "reviewed_candidate": "1b476839c5baa9a63ba5a6c7cbe6c77093efa552",
+    "reviewed_tree": "3a0217b962d8cb2f92b7acce6693c9781f105eb9"
+  },
+  {
+    "id": "GCSA-9",
+    "repository": "vg",
+    "head": "533290bc2a1c524b1b899b5a2c78f40f59eb44c8",
+    "base": "c91cc1d91fe1894274c6905c6bd089be12911329",
+    "reviewed_candidate": "533290bc2a1c524b1b899b5a2c78f40f59eb44c8",
+    "reviewed_tree": "13d1bde0ed5f35c74d65e76b9a65e3bf0d4cc517"
+  },
+  {
+    "id": "R16",
+    "repository": "vg",
+    "head": "d617a2b3f1ddb03c17200e6b6e63edb0c8e07f53",
+    "base": "c91cc1d91fe1894274c6905c6bd089be12911329",
+    "reviewed_candidate": "56c32ac6a054be485b97a1a3102a746e8dd69af5",
+    "reviewed_tree": "881bb7ae74d877f80b3b8d003b8537a4457d45c8"
+  },
+  {
+    "id": "R17",
+    "repository": "vg",
+    "head": "9d7ca417c8edf8211ddf0ebb4862c1ba9aadf89b",
+    "base": "d617a2b3f1ddb03c17200e6b6e63edb0c8e07f53",
+    "reviewed_candidate": "b8142e6526ae454d74ae76f5e9ea7b996931351c",
+    "reviewed_tree": "24e63ece4c9597ef7acb7622f943aaf95eaa5568"
+  },
+  {
+    "id": "D01-vg",
+    "repository": "vg",
+    "head": "dab5ac78c2c1d59ae2fa221d2fa5fec9738e35ba",
+    "base": "c91cc1d91fe1894274c6905c6bd089be12911329",
+    "reviewed_candidate": "3f520622bf753933e380ea33bdec33848ff8b78a",
+    "reviewed_tree": "f9485a25247847533e005522e5bd55e22198c621"
+  },
+  {
+    "id": "B2",
+    "repository": "vg",
+    "head": "4768cc1d3fbf7edf2fa157156ae0641ce34270dc",
+    "base": "c91cc1d91fe1894274c6905c6bd089be12911329",
+    "reviewed_candidate": "677933f730a0a0665a17dc1078b4e2896a2fd0fe",
+    "reviewed_tree": "16fa6aeb937f3625874d9bbddb46204b3e769f46"
+  },
+  {
+    "id": "XG-vg",
+    "repository": "vg",
+    "head": "9491833ff5f44cbf25da03657155354860c76496",
+    "base": "c91cc1d91fe1894274c6905c6bd089be12911329",
+    "reviewed_candidate": "bb60d269871da0c5041d0e87b797087422ed462c",
+    "reviewed_tree": "fb6fe43c0c1b748ab82fbd085fa2c05c21674bfd"
+  }
+]

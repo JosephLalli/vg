@@ -1,0 +1,506 @@
+{
+  "mode": "prune",
+  "arms": {
+    "baseline": "/review/bin/vg-D01-baseline",
+    "candidate": "/review/bin/vg-P01-P03"
+  },
+  "rows": [
+    {
+      "label": "prepare-graph",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-g",
+        "-p",
+        "/review/verification/inputs/prune.gfa"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prepare-gbwt",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "gbwt",
+        "-G",
+        "--max-node",
+        "0",
+        "-o",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "/review/verification/inputs/prune-haplotypes.gfa"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prune-1-baseline",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "1",
+        "-u",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-1-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "-v",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.03,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-1-baseline-graph",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-1-baseline.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prune-1-baseline-append",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "1",
+        "-u",
+        "-a",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-1-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.03,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-1-baseline-append-graph",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-1-baseline-appended.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 26624
+    },
+    {
+      "label": "prune-1-candidate",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "1",
+        "-u",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-1-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "-v",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.04,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-1-candidate-graph",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-1-candidate.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prune-1-candidate-append",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "1",
+        "-u",
+        "-a",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-1-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.03,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-1-candidate-append-graph",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-1-candidate-appended.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prune-2-baseline",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "2",
+        "-u",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-2-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "-v",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.03,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-2-baseline-graph",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-2-baseline.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prune-2-baseline-append",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "2",
+        "-u",
+        "-a",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-2-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.03,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-2-baseline-append-graph",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-2-baseline-appended.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prune-2-candidate",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "2",
+        "-u",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-2-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "-v",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.03,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-2-candidate-graph",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-2-candidate.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prune-2-candidate-append",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "2",
+        "-u",
+        "-a",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-2-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.03,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-2-candidate-append-graph",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-2-candidate-appended.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prune-4-baseline",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-4-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "-v",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.04,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-4-baseline-graph",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-4-baseline.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prune-4-baseline-append",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-a",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-4-baseline.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.03,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-4-baseline-append-graph",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-4-baseline-appended.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prune-4-candidate",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-4-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "-v",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.03,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-4-candidate-graph",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-4-candidate.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 26624
+    },
+    {
+      "label": "prune-4-candidate-append",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "prune",
+        "-t",
+        "4",
+        "-u",
+        "-a",
+        "-g",
+        "/review/verification/P01-P03-prune/input.gbwt",
+        "-m",
+        "/review/verification/P01-P03-prune/prune-4-candidate.map",
+        "-k",
+        "3",
+        "-e",
+        "1",
+        "-s",
+        "0",
+        "-M",
+        "1",
+        "/review/verification/P01-P03-prune/prune.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.03,
+      "peak_rss_kib": 36864
+    },
+    {
+      "label": "prune-4-candidate-append-graph",
+      "command": [
+        "/review/bin/vg-P01-P03",
+        "convert",
+        "-f",
+        "/review/verification/P01-P03-prune/prune-4-candidate-appended.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    }
+  ]
+}

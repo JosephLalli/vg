@@ -1,0 +1,42 @@
+[
+  {
+    "command": [
+      "./build-local.sh",
+      "-C",
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-baseline/tests",
+      "-f",
+      "Makefile",
+      "SDSL_DIR=/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-lite",
+      "INC_DIR=/mnt/ssd/lalli/.codex/tmp/gbwt-B1-simplification-20261005/support/current/include",
+      "LIB_DIR=/mnt/ssd/lalli/.codex/tmp/gbwt-B1-simplification-20261005/support/current/lib",
+      "MY_CXX=g++-15",
+      "MY_CXX_FLAGS=-std=c++17 -g0",
+      "MY_CXX_OPT_FLAGS=-O2",
+      "CPPFLAGS=-I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-baseline/include -I/mnt/ssd/lalli/.codex/tmp/gbwt-B1-simplification-20261005/support/current/include",
+      "test_variants"
+    ],
+    "exit": 0
+  },
+  {
+    "arm": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "248-251",
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-baseline/tests/test_variants",
+      "--gtest_filter=BasicHaplotypes/VariantTest.VariantPathsStatistics/0"
+    ],
+    "exit": -6
+  },
+  {
+    "arm": "B1",
+    "command": [
+      "taskset",
+      "-c",
+      "248-251",
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-B1/tests/test_variants",
+      "--gtest_filter=BasicHaplotypes/VariantTest.VariantPathsStatistics/0"
+    ],
+    "exit": -6
+  }
+]

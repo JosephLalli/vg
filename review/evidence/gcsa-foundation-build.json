@@ -1,0 +1,25 @@
+{
+  "owner_source": "3479b0811262f4b606abae7ebd168510f5ee793d",
+  "publication_source": "b57bcad2310da50f79e695561a9757da637759ff",
+  "publication_delta": "acceptance documentation only",
+  "native_build_and_tests_exit": 0,
+  "native_test_count": 9,
+  "full_vg_build_exit": 0,
+  "full_vg_log": "gcsa-remediated-fullvg.log",
+  "actual_index_command_receipt": "verification/gcsa-full/receipt.json",
+  "paired_bytes_equal": true,
+  "scratch_empty": true,
+  "unrun": [
+    "supported-platform CI",
+    "representative genome-scale RSS/runtime"
+  ],
+  "installed_only_consumer": {
+    "compile_link_exit": 0,
+    "run_exit": 0,
+    "installed_header_count": 9,
+    "binary_sha256": "91bb18313ce9c02041ec78f6d8facc2f7e073a443225714825f5116f0d29f026",
+    "owner_source": "3479b0811262f4b606abae7ebd168510f5ee793d",
+    "log": "gcsa-installed-run.log"
+  },
+  "current_owner_command_validation": "verification/gcsa-native/receipt.json; all nine optional replays in gcsa-optional-validation-receipt.json"
+}

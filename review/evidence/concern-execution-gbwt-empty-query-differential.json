@@ -1,0 +1,54 @@
+{
+  "commands": [
+    [
+      "./build-local.sh",
+      "-C",
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-baseline",
+      "-f",
+      "Makefile",
+      "SDSL_DIR=/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-lite",
+      "INC_DIR=/mnt/ssd/lalli/.codex/tmp/gbwt-B1-simplification-20261005/support/current/include",
+      "LIB_DIR=/mnt/ssd/lalli/.codex/tmp/gbwt-B1-simplification-20261005/support/current/lib",
+      "MY_CXX=g++-15",
+      "MY_CXX_FLAGS=-std=c++17 -g0",
+      "MY_CXX_OPT_FLAGS=-O2",
+      "CPPFLAGS=-I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-baseline/include -I/mnt/ssd/lalli/.codex/tmp/gbwt-B1-simplification-20261005/support/current/include",
+      "directories",
+      "lib/libgbwt.a"
+    ],
+    [
+      "./build-local.sh",
+      "-C",
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-baseline/tests",
+      "-f",
+      "Makefile",
+      "SDSL_DIR=/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-lite",
+      "INC_DIR=/mnt/ssd/lalli/.codex/tmp/gbwt-B1-simplification-20261005/support/current/include",
+      "LIB_DIR=/mnt/ssd/lalli/.codex/tmp/gbwt-B1-simplification-20261005/support/current/lib",
+      "MY_CXX=g++-15",
+      "MY_CXX_FLAGS=-std=c++17 -g0",
+      "MY_CXX_OPT_FLAGS=-O2",
+      "CPPFLAGS=-I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-baseline/include -I/mnt/ssd/lalli/.codex/tmp/gbwt-B1-simplification-20261005/support/current/include",
+      "test_queries"
+    ],
+    [
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-baseline/tests/test_queries",
+      "--gtest_filter=RIndexTest.OnlyEmptyPaths"
+    ],
+    [
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-B1/tests/test_queries",
+      "--gtest_filter=RIndexTest.OnlyEmptyPaths"
+    ]
+  ],
+  "rows": [
+    {
+      "arm": "baseline",
+      "exit": -6
+    },
+    {
+      "arm": "B1",
+      "exit": -6
+    }
+  ],
+  "scope": "untouched RIndex-only-empty-path test on exact owner baseline and B1 using identical fresh dependencies and debug flags"
+}

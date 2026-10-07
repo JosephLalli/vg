@@ -1,0 +1,159 @@
+{
+  "mode": "gcsa",
+  "arms": {
+    "candidate": "/review/bin/vg-GCSA-9"
+  },
+  "rows": [
+    {
+      "label": "prepare-graph",
+      "command": [
+        "/review/bin/vg-GCSA-9",
+        "convert",
+        "-g",
+        "-p",
+        "/review/verification/inputs/rna.gfa"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "gcsa-candidate-resident",
+      "command": [
+        "/review/bin/vg-GCSA-9",
+        "index",
+        "-t",
+        "1",
+        "-g",
+        "/review/verification/GCSA-9-gcsa/gcsa-candidate-resident.gcsa",
+        "-k",
+        "3",
+        "-X",
+        "2",
+        "-V",
+        "-b",
+        "/review/verification/GCSA-9-gcsa/scratch",
+        "/review/verification/GCSA-9-gcsa/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 1.28,
+      "peak_rss_kib": 50260
+    },
+    {
+      "label": "gcsa-candidate-resident",
+      "gcsa_sha256": "02748cc183cd73ec9127dac3fa21c3a6cafc2e62d10f72b0a845adbe11369413",
+      "lcp_sha256": "fcc7ad0605b79eee5ce3d597e269b49af427df77420a271ee58ccf92702e8cd4",
+      "exact_bytes_equal": true,
+      "scratch_empty": true
+    },
+    {
+      "label": "gcsa-candidate-external",
+      "command": [
+        "/review/bin/vg-GCSA-9",
+        "index",
+        "-t",
+        "1",
+        "-g",
+        "/review/verification/GCSA-9-gcsa/gcsa-candidate-external.gcsa",
+        "-k",
+        "3",
+        "-X",
+        "2",
+        "-V",
+        "-b",
+        "/review/verification/GCSA-9-gcsa/scratch",
+        "--gcsa-memory",
+        "16M",
+        "/review/verification/GCSA-9-gcsa/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.13,
+      "peak_rss_kib": 54904
+    },
+    {
+      "label": "gcsa-candidate-external",
+      "gcsa_sha256": "02748cc183cd73ec9127dac3fa21c3a6cafc2e62d10f72b0a845adbe11369413",
+      "lcp_sha256": "fcc7ad0605b79eee5ce3d597e269b49af427df77420a271ee58ccf92702e8cd4",
+      "exact_bytes_equal": true,
+      "scratch_empty": true
+    },
+    {
+      "label": "candidate-invalid-memory",
+      "command": [
+        "/review/bin/vg-GCSA-9",
+        "index",
+        "-t",
+        "1",
+        "-b",
+        "/review/verification/GCSA-9-gcsa/scratch",
+        "-g",
+        "/review/verification/GCSA-9-gcsa/gcsa-candidate-existing.gcsa",
+        "--gcsa-memory",
+        "invalid",
+        "/review/verification/GCSA-9-gcsa/rna.pg"
+      ],
+      "exit": 1,
+      "expected_rejection": true,
+      "existing_pair_preserved": true,
+      "scratch_empty": true
+    },
+    {
+      "label": "candidate-zero-memory",
+      "command": [
+        "/review/bin/vg-GCSA-9",
+        "index",
+        "-t",
+        "1",
+        "-b",
+        "/review/verification/GCSA-9-gcsa/scratch",
+        "-g",
+        "/review/verification/GCSA-9-gcsa/gcsa-candidate-existing.gcsa",
+        "--gcsa-memory",
+        "0",
+        "/review/verification/GCSA-9-gcsa/rna.pg"
+      ],
+      "exit": 1,
+      "expected_rejection": true,
+      "existing_pair_preserved": true,
+      "scratch_empty": true
+    },
+    {
+      "label": "candidate-too-small-memory",
+      "command": [
+        "/review/bin/vg-GCSA-9",
+        "index",
+        "-t",
+        "1",
+        "-b",
+        "/review/verification/GCSA-9-gcsa/scratch",
+        "-g",
+        "/review/verification/GCSA-9-gcsa/candidate-tiny.gcsa",
+        "--gcsa-memory",
+        "1",
+        "/review/verification/GCSA-9-gcsa/rna.pg"
+      ],
+      "exit": 1,
+      "expected_rejection": true,
+      "existing_pair_preserved": true,
+      "scratch_empty": true
+    },
+    {
+      "label": "candidate-missing-gcsa-selection",
+      "command": [
+        "/review/bin/vg-GCSA-9",
+        "index",
+        "-t",
+        "1",
+        "-b",
+        "/review/verification/GCSA-9-gcsa/scratch",
+        "--gcsa-memory",
+        "16M",
+        "/review/verification/GCSA-9-gcsa/rna.pg"
+      ],
+      "exit": 1,
+      "expected_rejection": true,
+      "existing_pair_preserved": true,
+      "scratch_empty": true
+    }
+  ]
+}

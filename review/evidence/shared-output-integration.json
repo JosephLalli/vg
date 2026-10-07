@@ -1,0 +1,36 @@
+[
+  {
+    "id": "R16",
+    "source_head": "f34715737a2fb64367fb801bf08d6832c04830ee",
+    "source_tree": "232241cb82c390cf6d9d3d47d5448dca8fdf6cfd",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "e03aadffd8a93e5216c3c594f966762a0ae464062503e62acd15da25c6df61c0",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "3d45611e917cf341fee1416f031bb9196637cc88",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T07:35:38.186390+00:00"
+  },
+  {
+    "id": "R17",
+    "source_head": "8d921ec0a0c8e8ab111aa12ec007f5676202e01d",
+    "source_tree": "b7d8d616434019f0fa4ad0313dce310c46d1e3ae",
+    "compiler": "GCC11.4",
+    "full_build_exit": 0,
+    "binary_sha256": "82cc91df8ade12ae4cd0cbf0c45b0280fb9bbb5f9bf73ce8ae0194ad9617e8d0",
+    "dependency_pins": {
+      "gcsa2": "1cb4a580e1a5983c08c99c370afb166a686efe20",
+      "libbdsg": "531c1ffbfd1998eb18aedf0ac9c5091c77027c98",
+      "gbwt": "625bd09ffadd8a633524b60e1af7c7b6eea65d0c",
+      "xg": "b306222cbe4bc14321c90a390e2f26ac69ab1cb8",
+      "sdsl-lite": "993857a820887787ddaf0ab678eca2d3ab30b741",
+      "libhandlegraph": "07fd981f0f43e9d4d8aa61a84169a9eeda69152a"
+    },
+    "completed_utc": "2026-10-07T07:40:55.182742+00:00"
+  }
+]

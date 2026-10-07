@@ -1,0 +1,149 @@
+[
+  {
+    "ids": [
+      "L07",
+      "L08"
+    ],
+    "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-serial",
+    "base": "b6d327da7e3447a38f99b51c54548934a7e30981",
+    "head": "b401d38c0723dffe73fd82d34fca88005d6795df",
+    "compile_command": [
+      "./build-local.sh",
+      "-C",
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-serial",
+      "-f",
+      "Makefile",
+      "CPPFLAGS=-I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-serial/bdsg/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-lite/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/libhandlegraph/src/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/sparsepp -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/DYNAMIC/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/hopscotch-map/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/mio/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/BBHash -I/mnt/ssd/lalli/.linuxbrew/opt/jansson/include -I/mnt/ssd/lalli/.codex/worktrees/vg-pr-P01-20261004/vg-latest/include",
+      "CXXFLAGS=-MMD -MP -O2 -g0 -Werror=return-type -std=c++20 -fopenmp",
+      "LDFLAGS=-L/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-private/lib -L/mnt/ssd/lalli/.codex/worktrees/vg-pr-P01-20261004/vg-latest/lib -L/mnt/ssd/lalli/.linuxbrew/opt/jansson/lib",
+      "LIB_FLAGS=-lbdsg -lsdsl -ldivsufsort -ldivsufsort64 /mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/handlegraph/libhandlegraph.a -ljansson -latomic -lz -pthread",
+      "all",
+      "bin/test_libbdsg"
+    ],
+    "owner_build": {
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/L07-complete-build.log"
+    },
+    "owner_suite": {
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/L07-complete-suite.log"
+    }
+  },
+  {
+    "ids": [
+      "L09",
+      "L10"
+    ],
+    "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-parallel",
+    "base": "b401d38c0723dffe73fd82d34fca88005d6795df",
+    "head": "d73da7629ec29f78ac601673ef0ad374dd77ff03",
+    "compile_command": [
+      "./build-local.sh",
+      "-C",
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-parallel",
+      "-f",
+      "Makefile",
+      "CPPFLAGS=-I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-parallel/bdsg/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-lite/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/libhandlegraph/src/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/sparsepp -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/DYNAMIC/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/hopscotch-map/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/mio/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/BBHash -I/mnt/ssd/lalli/.linuxbrew/opt/jansson/include -I/mnt/ssd/lalli/.codex/worktrees/vg-pr-P01-20261004/vg-latest/include",
+      "CXXFLAGS=-MMD -MP -O2 -g0 -Werror=return-type -std=c++20 -fopenmp",
+      "LDFLAGS=-L/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-private/lib -L/mnt/ssd/lalli/.codex/worktrees/vg-pr-P01-20261004/vg-latest/lib -L/mnt/ssd/lalli/.linuxbrew/opt/jansson/lib",
+      "LIB_FLAGS=-lbdsg -lsdsl -ldivsufsort -ldivsufsort64 /mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/handlegraph/libhandlegraph.a -ljansson -latomic -lz -pthread",
+      "all",
+      "bin/test_libbdsg"
+    ],
+    "owner_build": {
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/L09-complete-build.log"
+    },
+    "owner_suite": {
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/L09-complete-suite.log"
+    }
+  },
+  {
+    "ids": [
+      "L12"
+    ],
+    "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-local",
+    "base": "d73da7629ec29f78ac601673ef0ad374dd77ff03",
+    "head": "ad238c7c1594241f13824924bd49d32a74aeac11",
+    "compile_command": [
+      "./build-local.sh",
+      "-C",
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-local",
+      "-f",
+      "Makefile",
+      "CPPFLAGS=-I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-local/bdsg/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-lite/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/libhandlegraph/src/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/sparsepp -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/DYNAMIC/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/hopscotch-map/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/mio/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/BBHash -I/mnt/ssd/lalli/.linuxbrew/opt/jansson/include -I/mnt/ssd/lalli/.codex/worktrees/vg-pr-P01-20261004/vg-latest/include",
+      "CXXFLAGS=-MMD -MP -O2 -g0 -Werror=return-type -std=c++20 -fopenmp",
+      "LDFLAGS=-L/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-private/lib -L/mnt/ssd/lalli/.codex/worktrees/vg-pr-P01-20261004/vg-latest/lib -L/mnt/ssd/lalli/.linuxbrew/opt/jansson/lib",
+      "LIB_FLAGS=-lbdsg -lsdsl -ldivsufsort -ldivsufsort64 /mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/handlegraph/libhandlegraph.a -ljansson -latomic -lz -pthread",
+      "all",
+      "bin/test_libbdsg"
+    ],
+    "owner_build": {
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/L12-complete-build.log"
+    },
+    "owner_suite": {
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/L12-complete-suite.log"
+    }
+  },
+  {
+    "ids": [
+      "L11"
+    ],
+    "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-next",
+    "base": "d73da7629ec29f78ac601673ef0ad374dd77ff03",
+    "head": "a55b8226413cf0a984e4296a0433bd087f835e63",
+    "compile_command": [
+      "./build-local.sh",
+      "-C",
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-next",
+      "-f",
+      "Makefile",
+      "CPPFLAGS=-I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-next/bdsg/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-lite/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/libhandlegraph/src/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/sparsepp -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/DYNAMIC/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/hopscotch-map/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/mio/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/BBHash -I/mnt/ssd/lalli/.linuxbrew/opt/jansson/include -I/mnt/ssd/lalli/.codex/worktrees/vg-pr-P01-20261004/vg-latest/include",
+      "CXXFLAGS=-MMD -MP -O2 -g0 -Werror=return-type -std=c++20 -fopenmp",
+      "LDFLAGS=-L/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-private/lib -L/mnt/ssd/lalli/.codex/worktrees/vg-pr-P01-20261004/vg-latest/lib -L/mnt/ssd/lalli/.linuxbrew/opt/jansson/lib",
+      "LIB_FLAGS=-lbdsg -lsdsl -ldivsufsort -ldivsufsort64 /mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/handlegraph/libhandlegraph.a -ljansson -latomic -lz -pthread",
+      "all",
+      "bin/test_libbdsg"
+    ],
+    "owner_build": {
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/L11-complete-build.log"
+    },
+    "owner_suite": {
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/L11-complete-suite.log"
+    }
+  },
+  {
+    "ids": [
+      "D01"
+    ],
+    "worktree": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-distance",
+    "base": "b6d327da7e3447a38f99b51c54548934a7e30981",
+    "head": "bb0189c0fbf847b4d67ff2072534c8fb92550663",
+    "compile_command": [
+      "./build-local.sh",
+      "-C",
+      "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-distance",
+      "-f",
+      "Makefile",
+      "CPPFLAGS=-I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/libbdsg-distance/bdsg/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-lite/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/libhandlegraph/src/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/sparsepp -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/DYNAMIC/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/hopscotch-map/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/mio/include -I/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/libbdsg-L07/bdsg/deps/BBHash -I/mnt/ssd/lalli/.linuxbrew/opt/jansson/include -I/mnt/ssd/lalli/.codex/worktrees/vg-pr-P01-20261004/vg-latest/include",
+      "CXXFLAGS=-MMD -MP -O2 -g0 -Werror=return-type -std=c++20 -fopenmp",
+      "LDFLAGS=-L/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/sdsl-private/lib -L/mnt/ssd/lalli/.codex/worktrees/vg-pr-P01-20261004/vg-latest/lib -L/mnt/ssd/lalli/.linuxbrew/opt/jansson/lib",
+      "LIB_FLAGS=-lbdsg -lsdsl -ldivsufsort -ldivsufsort64 /mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/handlegraph/libhandlegraph.a -ljansson -latomic -lz -pthread",
+      "all",
+      "bin/test_libbdsg"
+    ],
+    "owner_build": {
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/D01-complete-build.log"
+    },
+    "owner_suite": {
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-packed-distance/D01-complete-suite.log"
+    }
+  }
+]

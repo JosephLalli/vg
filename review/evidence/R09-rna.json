@@ -1,0 +1,1110 @@
+{
+  "mode": "rna",
+  "arms": {
+    "baseline": "/review/bin/vg-gcsa9-before",
+    "R09": "/review/bin/vg-R09"
+  },
+  "rows": [
+    {
+      "label": "prepare-graph",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "convert",
+        "-g",
+        "-p",
+        "/review/verification/inputs/rna.gfa"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "prepare-gbwt",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "gbwt",
+        "-G",
+        "--max-node",
+        "0",
+        "-o",
+        "/review/verification/R09-rna/input.gbwt",
+        "/review/verification/inputs/rna-haplotypes.gfa"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "embedded-1-baseline",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "rna",
+        "-t",
+        "1",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-embedded.gtf",
+        "-e",
+        "-a",
+        "-k",
+        "3",
+        "-d",
+        "-f",
+        "/review/verification/R09-rna/embedded-1-baseline/out.fa",
+        "-i",
+        "/review/verification/R09-rna/embedded-1-baseline/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/embedded-1-baseline/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.1,
+      "peak_rss_kib": 147456
+    },
+    {
+      "label": "embedded-1-baseline-graph",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/embedded-1-baseline/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "embedded-1-baseline-gbwt-walks",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/embedded-1-baseline/out.pg",
+        "-g",
+        "/review/verification/R09-rna/embedded-1-baseline/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "embedded-1-baseline",
+      "output_sha256": {
+        "pg": "89ef7198bc8538cc87838f52cae7eacbd166debf27559adaf882153d03d74c0d",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "904c679312c4a47c2c46f8b2c383b6b2d6d0f4d07e2dee32ab5d2b771e8cc9a2",
+        "gbwt": "84a42a46f888d836fbbc016f8131ad4101b6d7e5929023bc59048f9065e76b9c"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "embedded-1-R09",
+      "command": [
+        "/review/bin/vg-R09",
+        "rna",
+        "-t",
+        "1",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-embedded.gtf",
+        "-e",
+        "-a",
+        "-k",
+        "3",
+        "-d",
+        "-f",
+        "/review/verification/R09-rna/embedded-1-R09/out.fa",
+        "-i",
+        "/review/verification/R09-rna/embedded-1-R09/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/embedded-1-R09/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.15,
+      "peak_rss_kib": 147456
+    },
+    {
+      "label": "embedded-1-R09-graph",
+      "command": [
+        "/review/bin/vg-R09",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/embedded-1-R09/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "embedded-1-R09-gbwt-walks",
+      "command": [
+        "/review/bin/vg-R09",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/embedded-1-R09/out.pg",
+        "-g",
+        "/review/verification/R09-rna/embedded-1-R09/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "embedded-1-R09",
+      "output_sha256": {
+        "pg": "89ef7198bc8538cc87838f52cae7eacbd166debf27559adaf882153d03d74c0d",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "904c679312c4a47c2c46f8b2c383b6b2d6d0f4d07e2dee32ab5d2b771e8cc9a2",
+        "gbwt": "84a42a46f888d836fbbc016f8131ad4101b6d7e5929023bc59048f9065e76b9c"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "hap-reference-1-baseline",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "rna",
+        "-t",
+        "1",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-haplotype.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-j",
+        "-o",
+        "-f",
+        "/review/verification/R09-rna/hap-reference-1-baseline/out.fa",
+        "-i",
+        "/review/verification/R09-rna/hap-reference-1-baseline/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/hap-reference-1-baseline/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.14,
+      "peak_rss_kib": 196608
+    },
+    {
+      "label": "hap-reference-1-baseline-graph",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/hap-reference-1-baseline/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 26624
+    },
+    {
+      "label": "hap-reference-1-baseline-gbwt-walks",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/hap-reference-1-baseline/out.pg",
+        "-g",
+        "/review/verification/R09-rna/hap-reference-1-baseline/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-reference-1-baseline",
+      "output_sha256": {
+        "pg": "a7a53c2904f930ee06ab0ec9ca7023f4275643a23c79d43ab3eeea0cb644a94a",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "61ab42682f2a0b43f7d306205d9003f5c915b1a103cb9d51859c0be653f6aeeb",
+        "gbwt": "6fff9e46377c0914542fac8738cf0ef727f3c3ae479c63e765403f4593e32171"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "hap-reference-1-R09",
+      "command": [
+        "/review/bin/vg-R09",
+        "rna",
+        "-t",
+        "1",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-haplotype.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-j",
+        "-o",
+        "-f",
+        "/review/verification/R09-rna/hap-reference-1-R09/out.fa",
+        "-i",
+        "/review/verification/R09-rna/hap-reference-1-R09/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/hap-reference-1-R09/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.18,
+      "peak_rss_kib": 194560
+    },
+    {
+      "label": "hap-reference-1-R09-graph",
+      "command": [
+        "/review/bin/vg-R09",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/hap-reference-1-R09/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-reference-1-R09-gbwt-walks",
+      "command": [
+        "/review/bin/vg-R09",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/hap-reference-1-R09/out.pg",
+        "-g",
+        "/review/verification/R09-rna/hap-reference-1-R09/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-reference-1-R09",
+      "output_sha256": {
+        "pg": "a7a53c2904f930ee06ab0ec9ca7023f4275643a23c79d43ab3eeea0cb644a94a",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "61ab42682f2a0b43f7d306205d9003f5c915b1a103cb9d51859c0be653f6aeeb",
+        "gbwt": "6fff9e46377c0914542fac8738cf0ef727f3c3ae479c63e765403f4593e32171"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "hap-mutation-1-baseline",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "rna",
+        "-t",
+        "1",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-haplotype.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-j",
+        "-k",
+        "3",
+        "-d",
+        "-f",
+        "/review/verification/R09-rna/hap-mutation-1-baseline/out.fa",
+        "-i",
+        "/review/verification/R09-rna/hap-mutation-1-baseline/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/hap-mutation-1-baseline/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.1,
+      "peak_rss_kib": 147456
+    },
+    {
+      "label": "hap-mutation-1-baseline-graph",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/hap-mutation-1-baseline/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-mutation-1-baseline-gbwt-walks",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/hap-mutation-1-baseline/out.pg",
+        "-g",
+        "/review/verification/R09-rna/hap-mutation-1-baseline/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-mutation-1-baseline",
+      "output_sha256": {
+        "pg": "89ef7198bc8538cc87838f52cae7eacbd166debf27559adaf882153d03d74c0d",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "61ab42682f2a0b43f7d306205d9003f5c915b1a103cb9d51859c0be653f6aeeb",
+        "gbwt": "84a42a46f888d836fbbc016f8131ad4101b6d7e5929023bc59048f9065e76b9c"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "hap-mutation-1-R09",
+      "command": [
+        "/review/bin/vg-R09",
+        "rna",
+        "-t",
+        "1",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-haplotype.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-j",
+        "-k",
+        "3",
+        "-d",
+        "-f",
+        "/review/verification/R09-rna/hap-mutation-1-R09/out.fa",
+        "-i",
+        "/review/verification/R09-rna/hap-mutation-1-R09/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/hap-mutation-1-R09/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.1,
+      "peak_rss_kib": 145408
+    },
+    {
+      "label": "hap-mutation-1-R09-graph",
+      "command": [
+        "/review/bin/vg-R09",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/hap-mutation-1-R09/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 26624
+    },
+    {
+      "label": "hap-mutation-1-R09-gbwt-walks",
+      "command": [
+        "/review/bin/vg-R09",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/hap-mutation-1-R09/out.pg",
+        "-g",
+        "/review/verification/R09-rna/hap-mutation-1-R09/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-mutation-1-R09",
+      "output_sha256": {
+        "pg": "89ef7198bc8538cc87838f52cae7eacbd166debf27559adaf882153d03d74c0d",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "61ab42682f2a0b43f7d306205d9003f5c915b1a103cb9d51859c0be653f6aeeb",
+        "gbwt": "84a42a46f888d836fbbc016f8131ad4101b6d7e5929023bc59048f9065e76b9c"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "projection-1-baseline",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "rna",
+        "-t",
+        "1",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-embedded.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-a",
+        "-k",
+        "3",
+        "-f",
+        "/review/verification/R09-rna/projection-1-baseline/out.fa",
+        "-i",
+        "/review/verification/R09-rna/projection-1-baseline/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/projection-1-baseline/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.28,
+      "peak_rss_kib": 221364
+    },
+    {
+      "label": "projection-1-baseline-graph",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/projection-1-baseline/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 26624
+    },
+    {
+      "label": "projection-1-baseline-gbwt-walks",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/projection-1-baseline/out.pg",
+        "-g",
+        "/review/verification/R09-rna/projection-1-baseline/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "projection-1-baseline",
+      "output_sha256": {
+        "pg": "da8f1998b01aedb23ea620f480e631bfa9f8a8ce877b9f559f04cb064fca453b",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "904c679312c4a47c2c46f8b2c383b6b2d6d0f4d07e2dee32ab5d2b771e8cc9a2",
+        "gbwt": "4d507992ffaaba94fbaa1ae3a850d3b9c68e464d9861fdd745a874dd8b712408"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "projection-1-R09",
+      "command": [
+        "/review/bin/vg-R09",
+        "rna",
+        "-t",
+        "1",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-embedded.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-a",
+        "-k",
+        "3",
+        "-f",
+        "/review/verification/R09-rna/projection-1-R09/out.fa",
+        "-i",
+        "/review/verification/R09-rna/projection-1-R09/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/projection-1-R09/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.29,
+      "peak_rss_kib": 221212
+    },
+    {
+      "label": "projection-1-R09-graph",
+      "command": [
+        "/review/bin/vg-R09",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/projection-1-R09/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 26624
+    },
+    {
+      "label": "projection-1-R09-gbwt-walks",
+      "command": [
+        "/review/bin/vg-R09",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/projection-1-R09/out.pg",
+        "-g",
+        "/review/verification/R09-rna/projection-1-R09/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "projection-1-R09",
+      "output_sha256": {
+        "pg": "da8f1998b01aedb23ea620f480e631bfa9f8a8ce877b9f559f04cb064fca453b",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "904c679312c4a47c2c46f8b2c383b6b2d6d0f4d07e2dee32ab5d2b771e8cc9a2",
+        "gbwt": "4d507992ffaaba94fbaa1ae3a850d3b9c68e464d9861fdd745a874dd8b712408"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "embedded-4-baseline",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "rna",
+        "-t",
+        "4",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-embedded.gtf",
+        "-e",
+        "-a",
+        "-k",
+        "3",
+        "-d",
+        "-f",
+        "/review/verification/R09-rna/embedded-4-baseline/out.fa",
+        "-i",
+        "/review/verification/R09-rna/embedded-4-baseline/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/embedded-4-baseline/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.1,
+      "peak_rss_kib": 147456
+    },
+    {
+      "label": "embedded-4-baseline-graph",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/embedded-4-baseline/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "embedded-4-baseline-gbwt-walks",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/embedded-4-baseline/out.pg",
+        "-g",
+        "/review/verification/R09-rna/embedded-4-baseline/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "embedded-4-baseline",
+      "output_sha256": {
+        "pg": "89ef7198bc8538cc87838f52cae7eacbd166debf27559adaf882153d03d74c0d",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "904c679312c4a47c2c46f8b2c383b6b2d6d0f4d07e2dee32ab5d2b771e8cc9a2",
+        "gbwt": "84a42a46f888d836fbbc016f8131ad4101b6d7e5929023bc59048f9065e76b9c"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "embedded-4-R09",
+      "command": [
+        "/review/bin/vg-R09",
+        "rna",
+        "-t",
+        "4",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-embedded.gtf",
+        "-e",
+        "-a",
+        "-k",
+        "3",
+        "-d",
+        "-f",
+        "/review/verification/R09-rna/embedded-4-R09/out.fa",
+        "-i",
+        "/review/verification/R09-rna/embedded-4-R09/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/embedded-4-R09/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.14,
+      "peak_rss_kib": 147456
+    },
+    {
+      "label": "embedded-4-R09-graph",
+      "command": [
+        "/review/bin/vg-R09",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/embedded-4-R09/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "embedded-4-R09-gbwt-walks",
+      "command": [
+        "/review/bin/vg-R09",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/embedded-4-R09/out.pg",
+        "-g",
+        "/review/verification/R09-rna/embedded-4-R09/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "embedded-4-R09",
+      "output_sha256": {
+        "pg": "89ef7198bc8538cc87838f52cae7eacbd166debf27559adaf882153d03d74c0d",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "904c679312c4a47c2c46f8b2c383b6b2d6d0f4d07e2dee32ab5d2b771e8cc9a2",
+        "gbwt": "84a42a46f888d836fbbc016f8131ad4101b6d7e5929023bc59048f9065e76b9c"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "hap-reference-4-baseline",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "rna",
+        "-t",
+        "4",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-haplotype.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-j",
+        "-o",
+        "-f",
+        "/review/verification/R09-rna/hap-reference-4-baseline/out.fa",
+        "-i",
+        "/review/verification/R09-rna/hap-reference-4-baseline/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/hap-reference-4-baseline/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.14,
+      "peak_rss_kib": 196608
+    },
+    {
+      "label": "hap-reference-4-baseline-graph",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/hap-reference-4-baseline/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-reference-4-baseline-gbwt-walks",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/hap-reference-4-baseline/out.pg",
+        "-g",
+        "/review/verification/R09-rna/hap-reference-4-baseline/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-reference-4-baseline",
+      "output_sha256": {
+        "pg": "a7a53c2904f930ee06ab0ec9ca7023f4275643a23c79d43ab3eeea0cb644a94a",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "61ab42682f2a0b43f7d306205d9003f5c915b1a103cb9d51859c0be653f6aeeb",
+        "gbwt": "6fff9e46377c0914542fac8738cf0ef727f3c3ae479c63e765403f4593e32171"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "hap-reference-4-R09",
+      "command": [
+        "/review/bin/vg-R09",
+        "rna",
+        "-t",
+        "4",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-haplotype.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-j",
+        "-o",
+        "-f",
+        "/review/verification/R09-rna/hap-reference-4-R09/out.fa",
+        "-i",
+        "/review/verification/R09-rna/hap-reference-4-R09/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/hap-reference-4-R09/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.18,
+      "peak_rss_kib": 196608
+    },
+    {
+      "label": "hap-reference-4-R09-graph",
+      "command": [
+        "/review/bin/vg-R09",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/hap-reference-4-R09/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-reference-4-R09-gbwt-walks",
+      "command": [
+        "/review/bin/vg-R09",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/hap-reference-4-R09/out.pg",
+        "-g",
+        "/review/verification/R09-rna/hap-reference-4-R09/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-reference-4-R09",
+      "output_sha256": {
+        "pg": "a7a53c2904f930ee06ab0ec9ca7023f4275643a23c79d43ab3eeea0cb644a94a",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "61ab42682f2a0b43f7d306205d9003f5c915b1a103cb9d51859c0be653f6aeeb",
+        "gbwt": "6fff9e46377c0914542fac8738cf0ef727f3c3ae479c63e765403f4593e32171"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "hap-mutation-4-baseline",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "rna",
+        "-t",
+        "4",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-haplotype.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-j",
+        "-k",
+        "3",
+        "-d",
+        "-f",
+        "/review/verification/R09-rna/hap-mutation-4-baseline/out.fa",
+        "-i",
+        "/review/verification/R09-rna/hap-mutation-4-baseline/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/hap-mutation-4-baseline/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.1,
+      "peak_rss_kib": 147456
+    },
+    {
+      "label": "hap-mutation-4-baseline-graph",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/hap-mutation-4-baseline/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-mutation-4-baseline-gbwt-walks",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/hap-mutation-4-baseline/out.pg",
+        "-g",
+        "/review/verification/R09-rna/hap-mutation-4-baseline/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 26624
+    },
+    {
+      "label": "hap-mutation-4-baseline",
+      "output_sha256": {
+        "pg": "89ef7198bc8538cc87838f52cae7eacbd166debf27559adaf882153d03d74c0d",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "61ab42682f2a0b43f7d306205d9003f5c915b1a103cb9d51859c0be653f6aeeb",
+        "gbwt": "84a42a46f888d836fbbc016f8131ad4101b6d7e5929023bc59048f9065e76b9c"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "hap-mutation-4-R09",
+      "command": [
+        "/review/bin/vg-R09",
+        "rna",
+        "-t",
+        "4",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-haplotype.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-j",
+        "-k",
+        "3",
+        "-d",
+        "-f",
+        "/review/verification/R09-rna/hap-mutation-4-R09/out.fa",
+        "-i",
+        "/review/verification/R09-rna/hap-mutation-4-R09/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/hap-mutation-4-R09/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.1,
+      "peak_rss_kib": 147456
+    },
+    {
+      "label": "hap-mutation-4-R09-graph",
+      "command": [
+        "/review/bin/vg-R09",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/hap-mutation-4-R09/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 26624
+    },
+    {
+      "label": "hap-mutation-4-R09-gbwt-walks",
+      "command": [
+        "/review/bin/vg-R09",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/hap-mutation-4-R09/out.pg",
+        "-g",
+        "/review/verification/R09-rna/hap-mutation-4-R09/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "hap-mutation-4-R09",
+      "output_sha256": {
+        "pg": "89ef7198bc8538cc87838f52cae7eacbd166debf27559adaf882153d03d74c0d",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "61ab42682f2a0b43f7d306205d9003f5c915b1a103cb9d51859c0be653f6aeeb",
+        "gbwt": "84a42a46f888d836fbbc016f8131ad4101b6d7e5929023bc59048f9065e76b9c"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "projection-4-baseline",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "rna",
+        "-t",
+        "4",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-embedded.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-a",
+        "-k",
+        "3",
+        "-f",
+        "/review/verification/R09-rna/projection-4-baseline/out.fa",
+        "-i",
+        "/review/verification/R09-rna/projection-4-baseline/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/projection-4-baseline/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.34,
+      "peak_rss_kib": 221368
+    },
+    {
+      "label": "projection-4-baseline-graph",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/projection-4-baseline/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "projection-4-baseline-gbwt-walks",
+      "command": [
+        "/review/bin/vg-gcsa9-before",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/projection-4-baseline/out.pg",
+        "-g",
+        "/review/verification/R09-rna/projection-4-baseline/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "projection-4-baseline",
+      "output_sha256": {
+        "pg": "da8f1998b01aedb23ea620f480e631bfa9f8a8ce877b9f559f04cb064fca453b",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "904c679312c4a47c2c46f8b2c383b6b2d6d0f4d07e2dee32ab5d2b771e8cc9a2",
+        "gbwt": "4d507992ffaaba94fbaa1ae3a850d3b9c68e464d9861fdd745a874dd8b712408"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    },
+    {
+      "label": "projection-4-R09",
+      "command": [
+        "/review/bin/vg-R09",
+        "rna",
+        "-t",
+        "4",
+        "-c",
+        "no",
+        "-r",
+        "-n",
+        "/review/verification/inputs/rna-embedded.gtf",
+        "-l",
+        "/review/verification/R09-rna/input.gbwt",
+        "-a",
+        "-k",
+        "3",
+        "-f",
+        "/review/verification/R09-rna/projection-4-R09/out.fa",
+        "-i",
+        "/review/verification/R09-rna/projection-4-R09/out.tsv",
+        "-b",
+        "/review/verification/R09-rna/projection-4-R09/out.gbwt",
+        "/review/verification/R09-rna/rna.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.34,
+      "peak_rss_kib": 221240
+    },
+    {
+      "label": "projection-4-R09-graph",
+      "command": [
+        "/review/bin/vg-R09",
+        "convert",
+        "-f",
+        "/review/verification/R09-rna/projection-4-R09/out.pg"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "projection-4-R09-gbwt-walks",
+      "command": [
+        "/review/bin/vg-R09",
+        "paths",
+        "-x",
+        "/review/verification/R09-rna/projection-4-R09/out.pg",
+        "-g",
+        "/review/verification/R09-rna/projection-4-R09/out.gbwt",
+        "-F"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.01,
+      "peak_rss_kib": 28672
+    },
+    {
+      "label": "projection-4-R09",
+      "output_sha256": {
+        "pg": "da8f1998b01aedb23ea620f480e631bfa9f8a8ce877b9f559f04cb064fca453b",
+        "fa": "22c3de5d61918c8042a2ccfbaa9f074bfe7e9956f7e84320ddeb1cf673ca2042",
+        "tsv": "904c679312c4a47c2c46f8b2c383b6b2d6d0f4d07e2dee32ab5d2b771e8cc9a2",
+        "gbwt": "4d507992ffaaba94fbaa1ae3a850d3b9c68e464d9861fdd745a874dd8b712408"
+      },
+      "semantic_equal": true,
+      "exact_bytes_equal": true
+    }
+  ]
+}

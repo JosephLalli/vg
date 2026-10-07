@@ -1,0 +1,173 @@
+{
+  "mode": "serialization",
+  "scope": "final graph output only; setup excluded from stage time and included in process RSS",
+  "order": "ABBA x3",
+  "summary": {
+    "baseline": {
+      "median_stage_seconds": 0.5071455,
+      "median_peak_rss_kib": 38912.0
+    },
+    "candidate": {
+      "median_stage_seconds": 0.2158675,
+      "median_peak_rss_kib": 38912.0
+    }
+  },
+  "rows": [
+    {
+      "label": "0-baseline",
+      "command": [
+        "/review/verification/serialization-R16",
+        "/review/verification/serialization-current/0-baseline.pg"
+      ],
+      "wall_seconds": 0.91,
+      "peak_rss_kib": 36864,
+      "arm": "baseline",
+      "stage_seconds": 0.507581,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    },
+    {
+      "label": "1-candidate",
+      "command": [
+        "/review/verification/serialization-R17",
+        "/review/verification/serialization-current/1-candidate.pg"
+      ],
+      "wall_seconds": 0.74,
+      "peak_rss_kib": 38912,
+      "arm": "candidate",
+      "stage_seconds": 0.333654,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    },
+    {
+      "label": "2-candidate",
+      "command": [
+        "/review/verification/serialization-R17",
+        "/review/verification/serialization-current/2-candidate.pg"
+      ],
+      "wall_seconds": 0.63,
+      "peak_rss_kib": 38912,
+      "arm": "candidate",
+      "stage_seconds": 0.215329,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    },
+    {
+      "label": "3-baseline",
+      "command": [
+        "/review/verification/serialization-R16",
+        "/review/verification/serialization-current/3-baseline.pg"
+      ],
+      "wall_seconds": 0.91,
+      "peak_rss_kib": 38912,
+      "arm": "baseline",
+      "stage_seconds": 0.500087,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    },
+    {
+      "label": "4-baseline",
+      "command": [
+        "/review/verification/serialization-R16",
+        "/review/verification/serialization-current/4-baseline.pg"
+      ],
+      "wall_seconds": 0.91,
+      "peak_rss_kib": 38912,
+      "arm": "baseline",
+      "stage_seconds": 0.502176,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    },
+    {
+      "label": "5-candidate",
+      "command": [
+        "/review/verification/serialization-R17",
+        "/review/verification/serialization-current/5-candidate.pg"
+      ],
+      "wall_seconds": 0.63,
+      "peak_rss_kib": 38912,
+      "arm": "candidate",
+      "stage_seconds": 0.212695,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    },
+    {
+      "label": "6-candidate",
+      "command": [
+        "/review/verification/serialization-R17",
+        "/review/verification/serialization-current/6-candidate.pg"
+      ],
+      "wall_seconds": 2.72,
+      "peak_rss_kib": 36864,
+      "arm": "candidate",
+      "stage_seconds": 2.31349,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    },
+    {
+      "label": "7-baseline",
+      "command": [
+        "/review/verification/serialization-R16",
+        "/review/verification/serialization-current/7-baseline.pg"
+      ],
+      "wall_seconds": 0.92,
+      "peak_rss_kib": 38912,
+      "arm": "baseline",
+      "stage_seconds": 0.510968,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    },
+    {
+      "label": "8-baseline",
+      "command": [
+        "/review/verification/serialization-R16",
+        "/review/verification/serialization-current/8-baseline.pg"
+      ],
+      "wall_seconds": 0.98,
+      "peak_rss_kib": 38912,
+      "arm": "baseline",
+      "stage_seconds": 0.571311,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    },
+    {
+      "label": "9-candidate",
+      "command": [
+        "/review/verification/serialization-R17",
+        "/review/verification/serialization-current/9-candidate.pg"
+      ],
+      "wall_seconds": 0.62,
+      "peak_rss_kib": 38912,
+      "arm": "candidate",
+      "stage_seconds": 0.210545,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    },
+    {
+      "label": "10-candidate",
+      "command": [
+        "/review/verification/serialization-R17",
+        "/review/verification/serialization-current/10-candidate.pg"
+      ],
+      "wall_seconds": 0.63,
+      "peak_rss_kib": 38912,
+      "arm": "candidate",
+      "stage_seconds": 0.216406,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    },
+    {
+      "label": "11-baseline",
+      "command": [
+        "/review/verification/serialization-R16",
+        "/review/verification/serialization-current/11-baseline.pg"
+      ],
+      "wall_seconds": 0.91,
+      "peak_rss_kib": 38912,
+      "arm": "baseline",
+      "stage_seconds": 0.50671,
+      "output_bytes": 12131547,
+      "output_sha256": "693d20c6ed2ddd6ca2208eedb23751c639ff1119ffc49fed60b2491d03bd9ecf"
+    }
+  ]
+}

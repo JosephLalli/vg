@@ -1,0 +1,310 @@
+[
+  {
+    "label": "empty-resident",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/empty-resident",
+      "/review/verification/gcsa-3a-native-t4/empty"
+    ],
+    "exit": 0,
+    "scratch_empty": true,
+    "sha256": [
+      "59a531cee6297b659920996bd410a1ee40e965836ddb30cccbc789e84671c297",
+      "f0d916f98f97d5f28db16cc6d0e6132df9405e1191a3c08ae2bb67505fb8add8"
+    ],
+    "paired_bytes_equal": true
+  },
+  {
+    "label": "empty-resident-reload",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/empty-resident",
+      "-L",
+      "/review/verification/gcsa-3a-native-t4/empty"
+    ],
+    "exit": 0,
+    "scratch_empty": true
+  },
+  {
+    "label": "empty-external",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/empty-external",
+      "--memory-limit",
+      "1M",
+      "/review/verification/gcsa-3a-native-t4/empty"
+    ],
+    "exit": 0,
+    "scratch_empty": true,
+    "sha256": [
+      "59a531cee6297b659920996bd410a1ee40e965836ddb30cccbc789e84671c297",
+      "f0d916f98f97d5f28db16cc6d0e6132df9405e1191a3c08ae2bb67505fb8add8"
+    ],
+    "paired_bytes_equal": true
+  },
+  {
+    "label": "empty-external-reload",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/empty-external",
+      "-L",
+      "/review/verification/gcsa-3a-native-t4/empty"
+    ],
+    "exit": 0,
+    "scratch_empty": true
+  },
+  {
+    "label": "zero-resident",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/zero-resident",
+      "-d",
+      "0",
+      "/review/gcsa-native-fixtures/cycle"
+    ],
+    "exit": 0,
+    "scratch_empty": true,
+    "sha256": [
+      "ef21b733344e6d9d733663bb66f313f00e787af15e4a14f0d15bd9d8801af331",
+      "65e85c7ff3bdc5aafe2ba7d4a71eb2b511fe237a3ceba301dea7a501678a9714"
+    ],
+    "paired_bytes_equal": true
+  },
+  {
+    "label": "zero-resident-reload",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/zero-resident",
+      "-L",
+      "/review/gcsa-native-fixtures/cycle"
+    ],
+    "exit": 0,
+    "scratch_empty": true
+  },
+  {
+    "label": "zero-external",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/zero-external",
+      "-d",
+      "0",
+      "--memory-limit",
+      "1M",
+      "/review/gcsa-native-fixtures/cycle"
+    ],
+    "exit": 0,
+    "scratch_empty": true,
+    "sha256": [
+      "ef21b733344e6d9d733663bb66f313f00e787af15e4a14f0d15bd9d8801af331",
+      "65e85c7ff3bdc5aafe2ba7d4a71eb2b511fe237a3ceba301dea7a501678a9714"
+    ],
+    "paired_bytes_equal": true
+  },
+  {
+    "label": "zero-external-reload",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/zero-external",
+      "-L",
+      "/review/gcsa-native-fixtures/cycle"
+    ],
+    "exit": 0,
+    "scratch_empty": true
+  },
+  {
+    "label": "cycle-resident",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/cycle-resident",
+      "/review/gcsa-native-fixtures/cycle"
+    ],
+    "exit": 0,
+    "scratch_empty": true,
+    "sha256": [
+      "6aa076220fefdc865e3fa4c7663e265694ec8fc313a00b1c763d8fb5c58d592a",
+      "65e85c7ff3bdc5aafe2ba7d4a71eb2b511fe237a3ceba301dea7a501678a9714"
+    ],
+    "paired_bytes_equal": true
+  },
+  {
+    "label": "cycle-resident-reload",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/cycle-resident",
+      "-L",
+      "/review/gcsa-native-fixtures/cycle"
+    ],
+    "exit": 0,
+    "scratch_empty": true
+  },
+  {
+    "label": "cycle-external",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/cycle-external",
+      "--memory-limit",
+      "1M",
+      "/review/gcsa-native-fixtures/cycle"
+    ],
+    "exit": 0,
+    "scratch_empty": true,
+    "sha256": [
+      "6aa076220fefdc865e3fa4c7663e265694ec8fc313a00b1c763d8fb5c58d592a",
+      "65e85c7ff3bdc5aafe2ba7d4a71eb2b511fe237a3ceba301dea7a501678a9714"
+    ],
+    "paired_bytes_equal": true
+  },
+  {
+    "label": "cycle-external-reload",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/cycle-external",
+      "-L",
+      "/review/gcsa-native-fixtures/cycle"
+    ],
+    "exit": 0,
+    "scratch_empty": true
+  },
+  {
+    "label": "insufficient-memory",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/insufficient",
+      "--memory-limit",
+      "1",
+      "/review/gcsa-native-fixtures/cycle"
+    ],
+    "exit": 1,
+    "scratch_empty": true
+  },
+  {
+    "label": "gcsa-publication-failure",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/blocked-gcsa",
+      "--memory-limit",
+      "1M",
+      "/review/gcsa-native-fixtures/cycle"
+    ],
+    "exit": 1,
+    "scratch_empty": true
+  },
+  {
+    "label": "lcp-publication-failure",
+    "command": [
+      "/review/gcsa-optionals/gcsa-3a/bin/build_gcsa",
+      "-t",
+      "-T",
+      "4",
+      "-D",
+      "/review/verification/gcsa-3a-native-t4/scratch",
+      "-v",
+      "-o",
+      "/review/verification/gcsa-3a-native-t4/blocked-lcp",
+      "--memory-limit",
+      "1M",
+      "/review/gcsa-native-fixtures/cycle"
+    ],
+    "exit": 1,
+    "scratch_empty": true,
+    "complete_gcsa_preserved_after_lcp_failure": true
+  }
+]

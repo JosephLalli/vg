@@ -1,0 +1,136 @@
+{
+  "mode": "xg",
+  "rows": [
+    {
+      "label": "prepare-graph",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-g",
+        "-p",
+        "/review/verification/XG-vg-caller/paths.gfa"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-1",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "index",
+        "-t",
+        "1",
+        "-x",
+        "/review/verification/XG-vg-caller/baseline-1.xg",
+        "/review/verification/XG-vg-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-1-walks",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "paths",
+        "-x",
+        "/review/verification/XG-vg-caller/baseline-1.xg",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-1",
+      "index_sha256": "ef2384203f08fa2ffc703bf51f6c81309ba81b431da5beeda6aed6e6ca79b4cd",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    },
+    {
+      "label": "baseline-4",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "index",
+        "-t",
+        "4",
+        "-x",
+        "/review/verification/XG-vg-caller/baseline-4.xg",
+        "/review/verification/XG-vg-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-4-walks",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "paths",
+        "-x",
+        "/review/verification/XG-vg-caller/baseline-4.xg",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-4",
+      "index_sha256": "ef2384203f08fa2ffc703bf51f6c81309ba81b431da5beeda6aed6e6ca79b4cd",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    },
+    {
+      "label": "candidate-1",
+      "command": [
+        "/review/bin/vg-XG-vg",
+        "index",
+        "-t",
+        "1",
+        "-x",
+        "/review/verification/XG-vg-caller/candidate-1.xg",
+        "/review/verification/XG-vg-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-1-walks",
+      "command": [
+        "/review/bin/vg-XG-vg",
+        "paths",
+        "-x",
+        "/review/verification/XG-vg-caller/candidate-1.xg",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-1",
+      "index_sha256": "ef2384203f08fa2ffc703bf51f6c81309ba81b431da5beeda6aed6e6ca79b4cd",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    },
+    {
+      "label": "candidate-4",
+      "command": [
+        "/review/bin/vg-XG-vg",
+        "index",
+        "-t",
+        "4",
+        "-x",
+        "/review/verification/XG-vg-caller/candidate-4.xg",
+        "/review/verification/XG-vg-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-4-walks",
+      "command": [
+        "/review/bin/vg-XG-vg",
+        "paths",
+        "-x",
+        "/review/verification/XG-vg-caller/candidate-4.xg",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-4",
+      "index_sha256": "ef2384203f08fa2ffc703bf51f6c81309ba81b431da5beeda6aed6e6ca79b4cd",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    }
+  ]
+}

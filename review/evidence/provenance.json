@@ -1,0 +1,76 @@
+{
+  "created_utc": "2026-10-07T08:35:25.068230+00:00",
+  "upstream_vg": "c91cc1d91fe1894274c6905c6bd089be12911329",
+  "environment": {
+    "os": "Ubuntu22.04",
+    "compiler": "GCC11.4",
+    "container_memory_limit_gib": 24,
+    "container_cpus": "232-247",
+    "runtime_process_address_space_limit_gib": 2,
+    "timing_load": "No review builds running; shared host otherwise uncontrolled"
+  },
+  "binary_sha256": {
+    "serialization-R16": "f1d602e43279f41ef8f2390bc38b66b5f9c557a6a3f228b640a3784e26cd1c52",
+    "serialization-R17": "2c1afee4b5ab7c8905e8914c1659316d5730af6710f62c135242d50dac9d6586",
+    "distance-D01-baseline": "3b0695d9921870d8e0c545cd72a4615bbe852258c00215299f52e514b5d1fe7c",
+    "distance-D01-vg": "0e7aabe8497ed8516a55459315f280e4de15d8fe91814c4b3bcd96175ca5925f",
+    "distance-staging": "20e7ab8608ccc5ee2f08e9aeee59b2904e285eee46cb7483ed78e8bf6df2b55b"
+  },
+  "probe_source_sha256": {
+    "serialization_benchmark.cpp": "5f90adfa8403880249219688772be728fdcc77ee45c9d4b73e1facdbf21d37a5",
+    "distance_fixture.cpp": "a56c9ccea33ea1b58fbba45d4adf0c0f0bc9808bbe6358fc13cc60e637b162ea",
+    "distance_staging_benchmark.cpp": "eeb8cab039ec29af511492ec7318bfb001de9b1b1b572eb465b6d8ebaf63c36b",
+    "standalone_serialization_benchmark.cpp": "890318f9df772221d18700449bff37d167e19eadb57be8519057fe19514003f6"
+  },
+  "native_summaries": [
+    {
+      "log": "D01-baseline-distance-native.log",
+      "summary": "3228036 assertions in 60 test cases"
+    },
+    {
+      "log": "D01-vg-distance-native.log",
+      "summary": "3228036 assertions in 60 test cases"
+    },
+    {
+      "log": "P01-P03-prune-native.log",
+      "summary": "2196 assertions in 10 test cases"
+    },
+    {
+      "log": "R03-transcriptome-native.log",
+      "summary": "737 assertions in 2 test cases"
+    },
+    {
+      "log": "R07-transcriptome-native.log",
+      "summary": "737 assertions in 2 test cases"
+    },
+    {
+      "log": "R08-transcriptome-native.log",
+      "summary": "798 assertions in 5 test cases"
+    },
+    {
+      "log": "R09-transcriptome-native.log",
+      "summary": "798 assertions in 5 test cases"
+    },
+    {
+      "log": "R10-transcriptome-native.log",
+      "summary": "813 assertions in 6 test cases"
+    },
+    {
+      "log": "R11-transcriptome-native.log",
+      "summary": "848 assertions in 7 test cases"
+    },
+    {
+      "log": "R16-transcriptome-native.log",
+      "summary": "747 assertions in 2 test cases"
+    },
+    {
+      "log": "R17-transcriptome-native.log",
+      "summary": "753 assertions in 3 test cases"
+    },
+    {
+      "log": "combined-transcriptome-native.log",
+      "summary": "863 assertions in 8 test cases"
+    }
+  ],
+  "provenance_note": "Local paths in raw receipts identify their recorded environment. Replace them when reproducing. Exact source commits, trees, dependency pins and binary hashes are authoritative; timings are fixture results. No supported-platform CI or genome result is claimed."
+}

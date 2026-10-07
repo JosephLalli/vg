@@ -1,0 +1,70 @@
+{
+  "known_baseline_debug_failure": "RIndexTest.OnlyEmptyPaths aborts identically on unmodified 14a06d5 and B1; recorded separately, not counted as passing",
+  "rows": [
+    {
+      "executable": "test_utils",
+      "command": [
+        "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-B1/tests/test_utils"
+      ],
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/test_utils-owner-run.log"
+    },
+    {
+      "executable": "test_support",
+      "command": [
+        "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-B1/tests/test_support"
+      ],
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/test_support-owner-run.log"
+    },
+    {
+      "executable": "test_metadata",
+      "command": [
+        "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-B1/tests/test_metadata"
+      ],
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/test_metadata-owner-run.log"
+    },
+    {
+      "executable": "test_gbwt",
+      "command": [
+        "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-B1/tests/test_gbwt"
+      ],
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/test_gbwt-owner-run.log"
+    },
+    {
+      "executable": "test_bwtmerge",
+      "command": [
+        "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-B1/tests/test_bwtmerge"
+      ],
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/test_bwtmerge-owner-run.log"
+    },
+    {
+      "executable": "test_queries",
+      "command": [
+        "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-B1/tests/test_queries",
+        "--gtest_filter=-RIndexTest.OnlyEmptyPaths"
+      ],
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/test_queries-owner-run.log"
+    },
+    {
+      "executable": "test_sequence_locate",
+      "command": [
+        "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-B1/tests/test_sequence_locate"
+      ],
+      "exit": 0,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/test_sequence_locate-owner-run.log"
+    },
+    {
+      "executable": "test_variants",
+      "command": [
+        "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/gbwt-B1/tests/test_variants"
+      ],
+      "exit": -6,
+      "log": "/mnt/ssd/lalli/.codex/worktrees/vg-publish-20261006/concern-execution/test_variants-owner-run.log"
+    }
+  ]
+}

@@ -1,0 +1,368 @@
+{
+  "mode": "gbwt",
+  "rows": [
+    {
+      "label": "prepare-graph",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "convert",
+        "-g",
+        "-p",
+        "/review/verification/B2-caller/paths.gfa"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-1",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "gbwt",
+        "-E",
+        "--num-jobs",
+        "1",
+        "-o",
+        "/review/verification/B2-caller/baseline-1.gbwt",
+        "-x",
+        "/review/verification/B2-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-1-count",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "gbwt",
+        "-c",
+        "/review/verification/B2-caller/baseline-1.gbwt"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-1-walks",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "paths",
+        "-x",
+        "/review/verification/B2-caller/paths.pg",
+        "-g",
+        "/review/verification/B2-caller/baseline-1.gbwt",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-1",
+      "index_sha256": "8599b81c6da36bbc42d17b03345c802e839705dc8c33f9e2ee61a8993d0725a9",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    },
+    {
+      "label": "baseline-2",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "gbwt",
+        "-E",
+        "--num-jobs",
+        "2",
+        "-o",
+        "/review/verification/B2-caller/baseline-2.gbwt",
+        "-x",
+        "/review/verification/B2-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-2-count",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "gbwt",
+        "-c",
+        "/review/verification/B2-caller/baseline-2.gbwt"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-2-walks",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "paths",
+        "-x",
+        "/review/verification/B2-caller/paths.pg",
+        "-g",
+        "/review/verification/B2-caller/baseline-2.gbwt",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-2",
+      "index_sha256": "8599b81c6da36bbc42d17b03345c802e839705dc8c33f9e2ee61a8993d0725a9",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    },
+    {
+      "label": "baseline-4",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "gbwt",
+        "-E",
+        "--num-jobs",
+        "4",
+        "-o",
+        "/review/verification/B2-caller/baseline-4.gbwt",
+        "-x",
+        "/review/verification/B2-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-4-count",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "gbwt",
+        "-c",
+        "/review/verification/B2-caller/baseline-4.gbwt"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-4-walks",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "paths",
+        "-x",
+        "/review/verification/B2-caller/paths.pg",
+        "-g",
+        "/review/verification/B2-caller/baseline-4.gbwt",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-4",
+      "index_sha256": "8599b81c6da36bbc42d17b03345c802e839705dc8c33f9e2ee61a8993d0725a9",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    },
+    {
+      "label": "baseline-24",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "gbwt",
+        "-E",
+        "--num-jobs",
+        "24",
+        "-o",
+        "/review/verification/B2-caller/baseline-24.gbwt",
+        "-x",
+        "/review/verification/B2-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-24-count",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "gbwt",
+        "-c",
+        "/review/verification/B2-caller/baseline-24.gbwt"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-24-walks",
+      "command": [
+        "/review/bin/vg-D01-baseline",
+        "paths",
+        "-x",
+        "/review/verification/B2-caller/paths.pg",
+        "-g",
+        "/review/verification/B2-caller/baseline-24.gbwt",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "baseline-24",
+      "index_sha256": "8599b81c6da36bbc42d17b03345c802e839705dc8c33f9e2ee61a8993d0725a9",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    },
+    {
+      "label": "candidate-1",
+      "command": [
+        "/review/bin/vg-B2",
+        "gbwt",
+        "-E",
+        "--num-jobs",
+        "1",
+        "-o",
+        "/review/verification/B2-caller/candidate-1.gbwt",
+        "-x",
+        "/review/verification/B2-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-1-count",
+      "command": [
+        "/review/bin/vg-B2",
+        "gbwt",
+        "-c",
+        "/review/verification/B2-caller/candidate-1.gbwt"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-1-walks",
+      "command": [
+        "/review/bin/vg-B2",
+        "paths",
+        "-x",
+        "/review/verification/B2-caller/paths.pg",
+        "-g",
+        "/review/verification/B2-caller/candidate-1.gbwt",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-1",
+      "index_sha256": "8599b81c6da36bbc42d17b03345c802e839705dc8c33f9e2ee61a8993d0725a9",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    },
+    {
+      "label": "candidate-2",
+      "command": [
+        "/review/bin/vg-B2",
+        "gbwt",
+        "-E",
+        "--num-jobs",
+        "2",
+        "-o",
+        "/review/verification/B2-caller/candidate-2.gbwt",
+        "-x",
+        "/review/verification/B2-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-2-count",
+      "command": [
+        "/review/bin/vg-B2",
+        "gbwt",
+        "-c",
+        "/review/verification/B2-caller/candidate-2.gbwt"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-2-walks",
+      "command": [
+        "/review/bin/vg-B2",
+        "paths",
+        "-x",
+        "/review/verification/B2-caller/paths.pg",
+        "-g",
+        "/review/verification/B2-caller/candidate-2.gbwt",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-2",
+      "index_sha256": "8599b81c6da36bbc42d17b03345c802e839705dc8c33f9e2ee61a8993d0725a9",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    },
+    {
+      "label": "candidate-4",
+      "command": [
+        "/review/bin/vg-B2",
+        "gbwt",
+        "-E",
+        "--num-jobs",
+        "4",
+        "-o",
+        "/review/verification/B2-caller/candidate-4.gbwt",
+        "-x",
+        "/review/verification/B2-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-4-count",
+      "command": [
+        "/review/bin/vg-B2",
+        "gbwt",
+        "-c",
+        "/review/verification/B2-caller/candidate-4.gbwt"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-4-walks",
+      "command": [
+        "/review/bin/vg-B2",
+        "paths",
+        "-x",
+        "/review/verification/B2-caller/paths.pg",
+        "-g",
+        "/review/verification/B2-caller/candidate-4.gbwt",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-4",
+      "index_sha256": "8599b81c6da36bbc42d17b03345c802e839705dc8c33f9e2ee61a8993d0725a9",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    },
+    {
+      "label": "candidate-24",
+      "command": [
+        "/review/bin/vg-B2",
+        "gbwt",
+        "-E",
+        "--num-jobs",
+        "24",
+        "-o",
+        "/review/verification/B2-caller/candidate-24.gbwt",
+        "-x",
+        "/review/verification/B2-caller/paths.pg"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-24-count",
+      "command": [
+        "/review/bin/vg-B2",
+        "gbwt",
+        "-c",
+        "/review/verification/B2-caller/candidate-24.gbwt"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-24-walks",
+      "command": [
+        "/review/bin/vg-B2",
+        "paths",
+        "-x",
+        "/review/verification/B2-caller/paths.pg",
+        "-g",
+        "/review/verification/B2-caller/candidate-24.gbwt",
+        "-F"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "candidate-24",
+      "index_sha256": "8599b81c6da36bbc42d17b03345c802e839705dc8c33f9e2ee61a8993d0725a9",
+      "exact_bytes_equal": true,
+      "reloaded_walks_equal": true
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 #include "catch.hpp"
 #include "../source_sink_overlay.hpp"
 #include <bdsg/packed_graph.hpp>
+#include <bdsg/hash_graph.hpp>
+#include <limits>
 
 namespace vg {
 namespace unittest {
@@ -57,6 +59,26 @@ TEST_CASE("SourceSinkOverlay handles empty and tipless components", "[overlay][c
         REQUIRE(overlay.get_degree(overlay.get_source_handle(), false) == 2);
         REQUIRE(overlay.get_degree(overlay.get_sink_handle(), true) == 2);
     }
+}
+
+TEST_CASE("SourceSinkOverlay handles dense and sparse ID spans", "[overlay][components]") {
+    bdsg::HashGraph graph;
+    SECTION("dense IDs cross bitmap word boundaries") {
+        for (handlegraph::nid_t id = 1; id <= 129; ++id) {
+            graph.create_handle("A", id);
+        }
+    }
+    SECTION("sparse IDs do not require a max-ID allocation") {
+        graph.create_handle("A", 1);
+        graph.create_handle("C", 1000000000000LL);
+    }
+    SECTION("sparse IDs near the handle encoding limit") {
+        graph.create_handle("A", 1);
+        graph.create_handle("C", std::numeric_limits<handlegraph::nid_t>::max() / 2);
+    }
+    SourceSinkOverlay overlay(&graph, 4, 200, 201);
+    REQUIRE(overlay.get_degree(overlay.get_source_handle(), false) == graph.get_node_count());
+    REQUIRE(overlay.get_degree(overlay.get_sink_handle(), true) == graph.get_node_count());
 }
 
 }

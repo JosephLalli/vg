@@ -28,7 +28,7 @@ public:
         explicit Source(std::vector<Mapping> mappings) : mappings_(std::move(mappings)) {
             // Validate once per source, not once per transcript occurrence.
             for (const Mapping& mapping : mappings_) {
-                if (mapping.offset != 0 || mapping.length == 0) {
+                if (mapping.offset != 0 || mapping.length <= 0) {
                     throw std::invalid_argument("Shared transcript source must contain whole nodes");
                 }
             }
@@ -44,8 +44,8 @@ public:
         std::shared_ptr<const Source> source;
         uint64_t begin;
         uint64_t end;
-        uint32_t first_offset;
-        uint32_t last_end;
+        int64_t first_offset;
+        int32_t last_end;
     };
 
     SharedTranscriptPath() = default;
@@ -66,13 +66,14 @@ public:
 
     /** Append [begin, end), clipping the first offset and last exclusive end. */
     void append(const std::shared_ptr<const Source>& source, uint64_t begin, uint64_t end,
-                uint32_t first_offset, uint32_t last_end) {
+                int64_t first_offset, int32_t last_end) {
         if (!source || begin >= end || end > source->size()) {
             throw std::invalid_argument("Invalid shared transcript slice");
         }
         const Mapping& first = (*source)[begin];
         const Mapping& last = (*source)[end - 1];
-        if (first_offset >= first.length || last_end == 0 || last_end > last.length ||
+        if (first_offset < 0 || first_offset >= first.length ||
+            last_end <= 0 || last_end > last.length ||
             (end == begin + 1 && first_offset >= last_end)) {
             throw std::invalid_argument("Invalid shared transcript slice boundaries");
         }
@@ -129,13 +130,13 @@ private:
     template<class Flip>
     Mapping mapping_at(const Slice& slice, uint64_t index, const Flip& flip) const {
         Mapping mapping = (*slice.source)[index];
-        const uint32_t original_length = mapping.length;
+        const int32_t original_length = mapping.length;
         mapping.offset = index == slice.begin ? slice.first_offset : 0;
-        const uint32_t end = index + 1 == slice.end ? slice.last_end : original_length;
-        mapping.length = end - mapping.offset;
+        const int32_t end = index + 1 == slice.end ? slice.last_end : original_length;
+        mapping.length = static_cast<int32_t>(static_cast<int64_t>(end) - mapping.offset);
         if (reverse_) {
             mapping.handle = flip(mapping.handle);
-            mapping.offset = original_length - end;
+            mapping.offset = static_cast<int64_t>(original_length) - end;
         }
         return mapping;
     }

@@ -243,10 +243,12 @@ struct CompletedTranscriptPath : public TranscriptPath {
     /// Expand an explicitly requested copy, preserving the legacy vector API.
     void materialize(const HandleGraph & graph) {
         if (!shared_path.empty()) {
-            path.reserve(shared_path.size());
-            for_each_handle(graph, [&](const handle_t & handle, uint64_t) {
-                path.emplace_back(handle);
-            });
+            if (path.empty()) {
+                path.reserve(shared_path.size());
+                for_each_handle(graph, [&](const handle_t & handle, uint64_t) {
+                    path.emplace_back(handle);
+                });
+            }
             shared_path = {};
         }
     }
@@ -309,7 +311,7 @@ class Transcriptome {
         /// in a GBWT index. Returns the number of haplotype transcript paths projected.   
         int32_t add_haplotype_transcripts(vector<istream *> transcript_streams, const gbwt::GBWT & haplotype_index, const bool proj_emded_paths);
 
-        /// Returns resident transcript paths; shared walks use for_each_handle.
+        /// Returns transcript paths with the legacy path vectors populated.
         const vector<CompletedTranscriptPath> & transcript_paths() const;
 
         /// Returns the reference transcript paths.
@@ -354,8 +356,8 @@ class Transcriptome {
     private:
 
         /// Transcript paths representing the transcriptome. 
-        vector<CompletedTranscriptPath> _transcript_paths;
-        mutex mutex_transcript_paths;
+        mutable vector<CompletedTranscriptPath> _transcript_paths;
+        mutable mutex mutex_transcript_paths;
 
         /// Spliced pangenome graph.
         unique_ptr<MutablePathDeletableHandleGraph> _graph;

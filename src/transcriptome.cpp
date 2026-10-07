@@ -210,7 +210,11 @@ static SharedTranscriptPath<EditedMapping> share_completed_path(const vector<han
     vector<EditedMapping> mappings;
     mappings.reserve(handles.size());
     for (const auto& handle : handles) {
-        mappings.push_back({handle, 0, static_cast<uint32_t>(graph.get_length(handle))});
+        const auto length = graph.get_length(handle);
+        if (length > numeric_limits<int32_t>::max()) {
+            throw overflow_error("Shared transcript node length exceeds Mapping Edit range");
+        }
+        mappings.push_back({handle, 0, static_cast<int32_t>(length)});
     }
     auto source = make_shared<SharedTranscriptPath<EditedMapping>::Source>(std::move(mappings));
     SharedTranscriptPath<EditedMapping> result;
@@ -1449,10 +1453,10 @@ void Transcriptome::construct_reference_transcript_paths_gbwt_callback(list<Edit
                 for (auto node : gbwt_haplotype) {
                     auto handle = gbwt_to_handle(*_graph, node);
                     auto length = _graph->get_length(handle);
-                    if (length > numeric_limits<uint32_t>::max()) {
-                        throw overflow_error("Shared transcript node length exceeds edited mapping format");
+                    if (length > numeric_limits<int32_t>::max()) {
+                        throw overflow_error("Shared transcript node length exceeds Mapping Edit range");
                     }
-                    mappings.push_back({handle, 0, static_cast<uint32_t>(length)});
+                    mappings.push_back({handle, 0, static_cast<int32_t>(length)});
                 }
                 shared_source = make_shared<SharedSource>(std::move(mappings));
             }
@@ -2622,8 +2626,11 @@ void Transcriptome::update_transcript_paths(const spp::sparse_hash_map<handle_t,
 
             if (shared) {
                 _transcript_paths[i].shared_path = share_completed_path(new_transcript_path, *_graph);
+                if (!_transcript_paths[i].path.empty()) {
+                    _transcript_paths[i].path = std::move(new_transcript_path);
+                }
             } else {
-            _transcript_paths.at(i).path = std::move(new_transcript_path);
+                _transcript_paths.at(i).path = std::move(new_transcript_path);
             }
         }
     }
@@ -2700,11 +2707,23 @@ void Transcriptome::sort_transcript_paths_update_copy_id() {
 
 const vector<CompletedTranscriptPath> & Transcriptome::transcript_paths() const {
 
+    lock_guard<mutex> guard(mutex_transcript_paths);
+    for (auto & transcript_path: _transcript_paths) {
+        if (!transcript_path.shared_path.empty() && transcript_path.path.empty()) {
+            vector<handle_t> materialized_path;
+            materialized_path.reserve(transcript_path.shared_path.size());
+            transcript_path.for_each_handle(*_graph, [&](const handle_t & handle, uint64_t) {
+                materialized_path.emplace_back(handle);
+            });
+            transcript_path.path = std::move(materialized_path);
+        }
+    }
     return _transcript_paths;
 }
 
 vector<CompletedTranscriptPath> Transcriptome::reference_transcript_paths() const {
 
+    lock_guard<mutex> guard(mutex_transcript_paths);
     vector<CompletedTranscriptPath> reference_transcript_paths;
 
     for (auto & transcript_path: _transcript_paths) {
@@ -2723,6 +2742,7 @@ vector<CompletedTranscriptPath> Transcriptome::reference_transcript_paths() cons
 
 vector<CompletedTranscriptPath> Transcriptome::haplotype_transcript_paths() const {
 
+    lock_guard<mutex> guard(mutex_transcript_paths);
     vector<CompletedTranscriptPath> haplotype_transcript_paths;
 
     for (auto & transcript_path: _transcript_paths) {

@@ -2129,7 +2129,7 @@ bool Transcriptome::has_novel_exon_boundaries(const list<EditedTranscriptPath> &
     return false;
 }
 
-void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_transcript_paths, const bool is_introns, unique_ptr<gbwt::GBWT> & haplotype_index, const bool update_haplotypes, const bool add_reference_transcript_paths) {
+void Transcriptome::augment_graph(list<EditedTranscriptPath> & edited_transcript_paths, const bool is_introns, unique_ptr<gbwt::GBWT> & haplotype_index, const bool update_haplotypes, const bool add_reference_transcript_paths) {
 
 #ifdef transcriptome_debug
     double time_convert_1 = gcsa::readTimer();
@@ -2364,8 +2364,12 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
     list<CompletedTranscriptPath> updated_transcript_paths;
 
     // Update paths to match new augmented graph and add them
-    // as reference transcript paths.
-    for (auto & transcript_path: edited_transcript_paths) {
+    // as reference transcript paths, releasing each consumed input path.
+    auto edited_transcript_paths_it = edited_transcript_paths.begin();
+
+    while (edited_transcript_paths_it != edited_transcript_paths.end()) {
+
+        const EditedTranscriptPath & transcript_path = *edited_transcript_paths_it;
 
         updated_transcript_paths.emplace_back(transcript_path);
 
@@ -2401,6 +2405,8 @@ void Transcriptome::augment_graph(const list<EditedTranscriptPath> & edited_tran
                 updated_transcript_paths.back().path.emplace_back(mapping_handle);
             }
         }
+
+        edited_transcript_paths_it = edited_transcript_paths.erase(edited_transcript_paths_it);
     }
 
     add_splice_junction_edges(updated_transcript_paths);

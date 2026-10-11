@@ -57,6 +57,8 @@ void help_index(char** argv) {
                                      << "[" << gcsa::ConstructionParameters::DOUBLING_STEPS << "]" << endl
          << "  -Z, --size-limit N        limit temp disk space usage to N GB "
                                      << "[" << gcsa::ConstructionParameters::SIZE_LIMIT << "]" << endl
+         << "      --gcsa-memory SIZE    build on disk with SIZE construction memory" << endl
+         << "                           (bytes, optionally suffixed with K, M, G or T)" << endl
          << "  -V, --verify-index        validate the GCSA2 index using the input kmers" << endl
          << "                            (important for testing)" << endl
          << "GAM indexing options:" << endl
@@ -90,6 +92,7 @@ int main_index(int argc, char** argv) {
     constexpr int OPT_RENAME_VARIANTS = 1001;
     constexpr int OPT_DISTANCE_SNARL_LIMIT = 1002;
     constexpr int OPT_DISTANCE_NESTING = 1003;
+    constexpr int OPT_GCSA_MEMORY = 1004;
 
     // Which indexes to build.
     bool build_xg = false, build_gcsa = false, build_dist = false;
@@ -108,6 +111,7 @@ int main_index(int argc, char** argv) {
     gcsa::size_type kmer_size = gcsa::Key::MAX_LENGTH;
     gcsa::ConstructionParameters params;
     bool verify_gcsa = false;
+    bool external_gcsa = false;
     
     // Gam index (GAI)
     bool build_gai_index = false;
@@ -170,6 +174,7 @@ int main_index(int argc, char** argv) {
             {"doubling-steps", required_argument, 0, 'X'},
             {"size-limit", required_argument, 0, 'Z'},
             {"verify-index", no_argument, 0, 'V'},
+            {"gcsa-memory", required_argument, 0, OPT_GCSA_MEMORY},
             
             // GAM index (GAI)
             {"index-sorted-gam", no_argument, 0, 'l'},
@@ -263,6 +268,18 @@ int main_index(int argc, char** argv) {
         case 'V':
             verify_gcsa = true;
             break;
+        case OPT_GCSA_MEMORY:
+            try {
+                gcsa::size_type bytes = gcsa::parseBytes(optarg);
+                if (bytes == 0) {
+                    logger.error() << "--gcsa-memory requires a positive size" << endl;
+                }
+                params.setMemoryLimitBytes(bytes);
+                external_gcsa = true;
+            } catch (const std::exception& error) {
+                logger.error() << "invalid --gcsa-memory: " << error.what() << endl;
+            }
+            break;
             
         // Gam index (GAI)
         case 'l':
@@ -337,6 +354,9 @@ int main_index(int argc, char** argv) {
         logger.error() << "GCSA2 cannot index with kmer size greater than "
                        << gcsa::Key::MAX_LENGTH << endl;
     }
+    if (external_gcsa && !build_gcsa) {
+        logger.error() << "--gcsa-memory requires -g/--gcsa-out" << endl;
+    }
 
     if (!build_dist && !extra_node_weight.empty()) {
         logger.error() << "cannot up-weight nodes for snarl finding if not building distance index" << endl;
@@ -381,6 +401,13 @@ int main_index(int argc, char** argv) {
 
     // Build GCSA
     if (build_gcsa) {
+
+        string scratch_directory;
+        if (external_gcsa) {
+            scratch_directory = temp_file::create_directory();
+            params.setWorkDirectory(scratch_directory);
+            gcsa::TempFile::setDirectory(scratch_directory);
+        }
 
         // Configure GCSA2 verbosity so it doesn't spit out loads of extra info
         if (!show_progress) {
@@ -477,8 +504,18 @@ int main_index(int argc, char** argv) {
             logger.info() << "Building the GCSA2 index..." << endl;
         }
         gcsa::InputGraph input_graph(dbg_names, true, params, gcsa::Alphabet(), mapping_name);
-        gcsa::GCSA gcsa_index(input_graph, params);
-        gcsa::LCPArray lcp_array(input_graph, params);
+        gcsa::GCSA gcsa_index;
+        gcsa::LCPArray lcp_array;
+        if (external_gcsa) {
+            try {
+                gcsa::GCSA::buildAndStore(input_graph, params, gcsa_name, gcsa_name + ".lcp");
+            } catch (const std::exception& error) {
+                logger.error() << "external GCSA construction failed: " << error.what() << endl;
+            }
+        } else {
+            gcsa_index = gcsa::GCSA(input_graph, params);
+            lcp_array = gcsa::LCPArray(input_graph, params);
+        }
         if (show_progress) {
             double seconds = gcsa::readTimer() - start;
             logger.info() << "GCSA2 index built in " << seconds << " seconds, "
@@ -488,13 +525,21 @@ int main_index(int argc, char** argv) {
         }
 
         // Save the indexes
-        save_gcsa(gcsa_index, gcsa_name, show_progress);
-        save_lcp(lcp_array, gcsa_name + ".lcp", show_progress);
+        if (!external_gcsa) {
+            save_gcsa(gcsa_index, gcsa_name, show_progress);
+            save_lcp(lcp_array, gcsa_name + ".lcp", show_progress);
+        }
 
         // Verify the index
         if (verify_gcsa) {
             if (show_progress) {
                 logger.info() << "Verifying the index..." << endl;
+            }
+            // The existing verifier loads resident indexes, even when their
+            // construction used the bounded external route.
+            if (external_gcsa) {
+                load_gcsa(gcsa_index, gcsa_name, show_progress);
+                load_lcp(lcp_array, gcsa_name + ".lcp", show_progress);
             }
             if (!gcsa::verifyIndex(gcsa_index, &lcp_array, input_graph)) {
                 logger.warn() << "GCSA2 index verification failed" << endl;
@@ -506,6 +551,10 @@ int main_index(int argc, char** argv) {
             for (auto& filename : dbg_names) {
                 temp_file::remove(filename);
             }
+        }
+        if (external_gcsa) {
+            gcsa::TempFile::setDirectory(temp_file::get_dir());
+            temp_file::remove(scratch_directory);
         }
     }
     

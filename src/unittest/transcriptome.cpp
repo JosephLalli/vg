@@ -4,7 +4,9 @@
 ///
 
 #include <stdio.h>
+#include <array>
 #include <iostream>
+#include <thread>
 
 #include "gbwt/dynamic_gbwt.h"
 #include "bdsg/packed_graph.hpp"
@@ -691,6 +693,64 @@ namespace vg {
                 transcript_stream2 << "sample1#0#path1\t.\texon\t16\t21\t.\t-\t.\texon_number 2; transcript_id \"transcript2\";" << endl;
                 transcript_stream2 << "sample1#0#path1\t.\texon\t9\t11\t.\t+\t.\ttranscript_id \"transcript3\";" << endl;
                 transcript_stream2 << "sample1#0#path1\t.\texon\t18\t21\t.\t+\t.\ttranscript_id \"transcript3\";" << endl;
+
+                SECTION("Transcriptome preserves raw path access for shared GBWT sources") {
+
+                    transcriptome.path_collapse_type = "no";
+                    transcriptome.add_reference_transcripts(vector<istream *>({&transcript_stream2}), haplotype_index, true, false);
+
+                    array<size_t, 4> reader_path_counts{};
+                    array<size_t, 4> reader_step_counts{};
+                    vector<thread> readers;
+                    readers.reserve(reader_path_counts.size());
+                    for (size_t i = 0; i < reader_path_counts.size(); ++i) {
+                        readers.emplace_back([&, i]() {
+                            const auto & paths = transcriptome.transcript_paths();
+                            reader_path_counts[i] = paths.size();
+                            for (const auto & path: paths) {
+                                reader_step_counts[i] += path.path.size();
+                            }
+                        });
+                    }
+                    for (auto & reader: readers) {
+                        reader.join();
+                    }
+                    for (size_t i = 1; i < reader_path_counts.size(); ++i) {
+                        REQUIRE(reader_path_counts[i] == reader_path_counts.front());
+                        REQUIRE(reader_step_counts[i] == reader_step_counts.front());
+                    }
+                    REQUIRE(reader_path_counts.front() > 0);
+                    REQUIRE(reader_step_counts.front() > 0);
+
+                    const auto & raw_paths = transcriptome.transcript_paths();
+                    REQUIRE(&transcriptome.transcript_paths() == &raw_paths);
+                    bool has_shared_path = false;
+                    for (const auto & path: raw_paths) {
+                        REQUIRE(path.path.size() == path.resident_size());
+                        has_shared_path = has_shared_path || !path.shared_path.empty();
+                    }
+                    REQUIRE(has_shared_path);
+
+                    const auto raw_handles = transcript_paths_to_int_vectors(raw_paths);
+                    auto owned_paths = transcriptome.reference_transcript_paths();
+                    REQUIRE(transcript_paths_to_int_vectors(owned_paths) == raw_handles);
+                    REQUIRE(!owned_paths.empty());
+                    for (const auto & path: owned_paths) {
+                        REQUIRE(path.shared_path.empty());
+                    }
+                    owned_paths.front().path.clear();
+                    REQUIRE(transcript_paths_to_int_vectors(transcriptome.transcript_paths()) == raw_handles);
+
+                    transcriptome.chop_nodes(2);
+                    REQUIRE(transcriptome.sort_compact_nodes());
+
+                    const auto & updated_raw_paths = transcriptome.transcript_paths();
+                    for (const auto & path: updated_raw_paths) {
+                        REQUIRE(path.path.size() == path.resident_size());
+                    }
+                    REQUIRE(transcript_paths_to_int_vectors(updated_raw_paths) ==
+                            transcript_paths_to_int_vectors(transcriptome.reference_transcript_paths()));
+                }
 
                 SECTION("Transcriptome can add splice-junctions and reference transcript paths using GBWT haplotypes") {
 

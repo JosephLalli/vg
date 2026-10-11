@@ -792,7 +792,7 @@ SnarlDistanceIndex::TemporaryDistanceIndex make_temporary_distance_index(
  * Populate a row of the distance matrix.
  * Also responsible for filling in min_length, distance_start_start, and distance_start_end on the TemporarySnarlRecord when a distance matrix is used.
  */
-static void populate_distance_matrix_row(SnarlDistanceIndex::TemporaryDistanceIndex& temp_index, const SnarlDistanceIndex::temp_record_ref_t& snarl_index, SnarlDistanceIndex::TemporaryDistanceIndex::TemporarySnarlRecord& temp_snarl_record, const SnarlDistanceIndex::temp_record_ref_t& start_index, const HandleGraph* graph, size_t start_rank, bool is_internal_node, size_t size_limit); 
+static void populate_distance_matrix_row(SnarlDistanceIndex::TemporaryDistanceIndex& temp_index, const SnarlDistanceIndex::temp_record_ref_t& snarl_index, SnarlDistanceIndex::TemporaryDistanceIndex::TemporarySnarlRecord& temp_snarl_record, const SnarlDistanceIndex::temp_record_ref_t& start_index, const HandleGraph* graph, size_t start_rank, bool is_internal_node, size_t size_limit, vector<size_t>& recorded_in_traversal, size_t& traversal_number);
 
 /**
  * Fills in required distance matrix rows for each child.
@@ -1226,13 +1226,18 @@ void populate_distance_matrix_if_needed(SnarlDistanceIndex::TemporaryDistanceInd
     assert(size_limit == 0 || temp_snarl_record.node_count <= size_limit);
 #endif
     if (size_limit != 0 && !only_top_level_chain_distances) {
-      //If we are saving distances
-      //Reserve enough space to store all possible distances. Since we are not oversized, node_count <= size_limit,
-      //so we always need the full node_count * node_count matrix.
-      temp_snarl_record.distances.reserve(temp_snarl_record.node_count * temp_snarl_record.node_count);
+      //If we are saving distances, stage them in the finished record's dense triangle.
+      temp_snarl_record.allocate_staged_distances();
     } else {
       temp_snarl_record.include_distances = false;
     }
+    //For each traversal, mark which child sides already received a distance.
+    //A traversal starts from one side of one child, so this preserves the old
+    //one-recording-per-(start,next)-pair behavior without a hash lookup.
+    vector<size_t> recorded_in_traversal(size_limit == 0 ? 0 : (temp_snarl_record.node_count + 2) * 2,
+                                         std::numeric_limits<size_t>::max());
+    size_t traversal_number = 0;
+
     for (auto it = all_children.rbegin(); it != all_children.rend(); ++it) {
         // Visit all the children in reverse order
         const SnarlDistanceIndex::temp_record_ref_t& start_index = *it;
@@ -1301,13 +1306,14 @@ void populate_distance_matrix_if_needed(SnarlDistanceIndex::TemporaryDistanceInd
             continue;
         }
         //fill in all distances for a row
-        populate_distance_matrix_row(temp_index, snarl_index, temp_snarl_record, start_index, graph, start_rank, is_internal_node, size_limit);   
+        populate_distance_matrix_row(temp_index, snarl_index, temp_snarl_record, start_index, graph, start_rank, is_internal_node, size_limit,
+                                     recorded_in_traversal, traversal_number);
     }                                                                                                                    
 }      
       
     
                         
-void populate_distance_matrix_row(SnarlDistanceIndex::TemporaryDistanceIndex& temp_index, const SnarlDistanceIndex::temp_record_ref_t& snarl_index, SnarlDistanceIndex::TemporaryDistanceIndex::TemporarySnarlRecord& temp_snarl_record, const SnarlDistanceIndex::temp_record_ref_t& start_index, const HandleGraph* graph, size_t start_rank, bool is_internal_node, size_t size_limit) {
+void populate_distance_matrix_row(SnarlDistanceIndex::TemporaryDistanceIndex& temp_index, const SnarlDistanceIndex::temp_record_ref_t& snarl_index, SnarlDistanceIndex::TemporaryDistanceIndex::TemporarySnarlRecord& temp_snarl_record, const SnarlDistanceIndex::temp_record_ref_t& start_index, const HandleGraph* graph, size_t start_rank, bool is_internal_node, size_t size_limit, vector<size_t>& recorded_in_traversal, size_t& traversal_number) {
     /*Helper function to find the ancestor of a node that is a child of this snarl */
     auto get_ancestor_of_node = [&](SnarlDistanceIndex::temp_record_ref_t curr_index,
                                     SnarlDistanceIndex::temp_record_ref_t ancestor_snarl_index) {
@@ -1346,6 +1352,7 @@ void populate_distance_matrix_row(SnarlDistanceIndex::TemporaryDistanceIndex& te
         //Start a dijkstra traversal from start_index going in the direction indicated by start_rev
         //Record the distances to each node (child of the snarl) found
         size_t reachable_node_count = 0; //How many nodes can we reach from this node side?
+        traversal_number++;
 
 #ifdef debug_distance_indexing
         cerr << "  Starting from child " << temp_index.structure_start_end_as_string(start_index)
@@ -1567,11 +1574,17 @@ void populate_distance_matrix_row(SnarlDistanceIndex::TemporaryDistanceIndex& te
                                 added_new_distance = true; 
                             }
                         }
-                    } else if (!next_is_boundary && !temp_snarl_record.distances.count(make_pair(start, next))) {
+                    } else if (!next_is_boundary
+                               && recorded_in_traversal.at(next.first * 2 + next.second) != traversal_number) {
                         //Otherwise the snarl stores it in its distance
                         //If the distance isn't from an internal node to a bound and we haven't stored the distance yet
 
-                        temp_snarl_record.distances[make_pair(start, next)] = current_distance;
+                        recorded_in_traversal.at(next.first * 2 + next.second) = traversal_number;
+                        if (temp_snarl_record.include_distances) {
+                            temp_snarl_record.stage_distance(start.first, start.second,
+                                                             next.first, next.second,
+                                                             current_distance);
+                        }
                         added_new_distance = true;
 #ifdef debug_distance_indexing
                         cerr << "           Adding distance between ranks " << start.first << " " << start.second << " and " << next.first << " " << next.second << ": " << current_distance << endl;
